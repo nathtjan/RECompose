@@ -2,9 +2,10 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Turns failed tests into GitHub annotations so they show on the run summary.
 
-Usage: report-test-failures.py <results dir> [<console output file>]
-Reads every .trx file under the results directory. If there are none (the test host
-crashed before writing results), annotates the last lines of the console output instead.
+Usage: report-test-failures.py <results dir> [<log file or directory of step logs>]
+Reads every .trx file under the results directory. If no test failed (a build step
+failed, or the test host crashed before writing results), annotates the last lines of
+the most recent step log instead.
 """
 import pathlib
 import sys
@@ -37,8 +38,10 @@ def main() -> int:
             print(f"::error title={escape(name)}::{escape(message + chr(10) + stack)}")
 
     if failures == 0 and output is not None and output.exists():
-        tail = output.read_text(encoding="utf-8", errors="replace").splitlines()[-40:]
-        print(f"::error title=Test run failed without failed tests (last lines)::{escape(chr(10).join(tail))}")
+        logs = sorted(output.glob("*.txt"), key=lambda f: f.stat().st_mtime) if output.is_dir() else [output]
+        if logs:
+            tail = logs[-1].read_text(encoding="utf-8", errors="replace").splitlines()[-40:]
+            print(f"::error title={escape(logs[-1].name)} (last lines)::{escape(chr(10).join(tail))}")
 
     print(f"{failures} failed test(s) in {len(trx_files)} result file(s)")
     return 0

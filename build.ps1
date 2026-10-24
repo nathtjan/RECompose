@@ -20,7 +20,7 @@ Invoke-Step 'Build engine'     { cmake --build $engineBuild --config Release --p
 Invoke-Step 'Test engine'      { ctest --test-dir $engineBuild -C Release --output-on-failure }
 Invoke-Step 'Stage engine'     { cmake --install $engineBuild --config Release --component engine --prefix (Join-Path $root 'artifacts/native') }
 Invoke-Step 'Build app'        { dotnet build (Join-Path $root 'RECompose.slnx') -c $Configuration }
-Invoke-Step 'Test app'         { dotnet test (Join-Path $root 'RECompose.slnx') -c $Configuration --no-build }
+Invoke-Step 'Test app'         { dotnet test --solution (Join-Path $root 'RECompose.slnx') -c $Configuration --no-build }
 
 Write-Host ''
 Write-Host "Done. Run the app with: dotnet run --project src/RECompose.App -c $Configuration"

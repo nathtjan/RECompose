@@ -52,30 +52,48 @@ jobs:
 
       - name: Configure engine
         shell: bash
-        run: cmake -S engine -B build/engine -DCMAKE_BUILD_TYPE=Release ${{ matrix.cmake-args }}
+        run: |
+          set -o pipefail
+          mkdir -p ci-logs
+          cmake -S engine -B build/engine -DCMAKE_BUILD_TYPE=Release ${{ matrix.cmake-args }} 2>&1 | tee ci-logs/1-configure.txt
 
       - name: Build engine
-        run: cmake --build build/engine --config Release --parallel
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p ci-logs
+          cmake --build build/engine --config Release --parallel 2>&1 | tee ci-logs/2-build-engine.txt
 
       - name: Test engine
-        run: ctest --test-dir build/engine -C Release --output-on-failure
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p ci-logs
+          ctest --test-dir build/engine -C Release --output-on-failure 2>&1 | tee ci-logs/3-test-engine.txt
 
-      - name: Stage engine library
+      - name: Stage engine
         run: cmake --install build/engine --config Release --component engine --prefix artifacts/native
 
       - name: Build app
-        run: dotnet build RECompose.slnx -c Release
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p ci-logs
+          dotnet build RECompose.slnx -c Release 2>&1 | tee ci-logs/4-build-app.txt
 
       - name: Test app
         shell: bash
         run: |
           set -o pipefail
-          dotnet test RECompose.slnx -c Release --no-build --logger trx --results-directory TestResults 2>&1 | tee test-output.txt
+          mkdir -p ci-logs
+          dotnet test --solution RECompose.slnx -c Release --no-build --results-directory TestResults --report-xunit-trx 2>&1 | tee ci-logs/5-test-app.txt
 
-      - name: Report test failures
+      - name: Report failures
         if: failure()
         shell: bash
-        run: python3 tools/ci/report-test-failures.py TestResults test-output.txt || python tools/ci/report-test-failures.py TestResults test-output.txt
+        run: |
+          PY=$(command -v python3 || command -v python)
+          "$PY" tools/ci/report-test-failures.py TestResults ci-logs
 
       - name: Publish app
         if: runner.os != 'Linux'

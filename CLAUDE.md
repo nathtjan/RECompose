@@ -16,5 +16,5 @@ Read `README.md` for the layout and build commands, `docs/adr/` for decisions, a
 ## Commands
 
 - Full build and tests: `./build.sh` (macOS/Linux) or `.\build.ps1` (Windows)
-- .NET only: `dotnet build RECompose.slnx`, `dotnet test RECompose.slnx`
+- .NET only: `dotnet build RECompose.slnx`, `dotnet test --solution RECompose.slnx`
 - Engine only: `cmake -S engine -B build/engine && cmake --build build/engine --config Release && ctest --test-dir build/engine -C Release`

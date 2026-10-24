@@ -13,7 +13,7 @@ ctest --test-dir "$ENGINE_BUILD" -C Release --output-on-failure
 cmake --install "$ENGINE_BUILD" --config Release --component engine --prefix "$ROOT/artifacts/native"
 
 dotnet build "$ROOT/RECompose.slnx" -c "$CONFIG"
-dotnet test "$ROOT/RECompose.slnx" -c "$CONFIG" --no-build
+dotnet test --solution "$ROOT/RECompose.slnx" -c "$CONFIG" --no-build
 
 echo
 echo "Done. Run the app with: dotnet run --project src/RECompose.App -c $CONFIG"
