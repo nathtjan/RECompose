@@ -11,6 +11,9 @@ public sealed record TrackMix
     public double GainDb { get; init; }
     public bool Mute { get; init; }
     public bool Solo { get; init; }
+
+    /// <summary>Whether the track follows the entry key (PB-80 "#"); null = the track's default by role (DM-12).</summary>
+    public bool? Transposes { get; init; }
 }
 
 /// <summary>A named mix (DM-13). Milestone 1 uses only "Default".</summary>
@@ -22,6 +25,9 @@ public sealed record MixPreset
     public Dictionary<string, TrackMix> Tracks { get; init; } = [];
 
     public TrackMix For(string trackId) => Tracks.TryGetValue(trackId, out var mix) ? mix : new TrackMix();
+
+    /// <summary>True when the track plays in the entry key: the preset's choice, else its role's default (DM-12, DM-13).</summary>
+    public bool Transposes(Track track) => For(track.Id).Transposes ?? track.TransposesByDefault;
 }
 
 /// <summary>Where the audio came from (DM-10).</summary>

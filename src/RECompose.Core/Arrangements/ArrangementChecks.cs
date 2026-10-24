@@ -111,11 +111,11 @@ public static class ArrangementSummary
         return text.ToString();
     }
 
-    /// <summary>"76 bars · 4:13", with a "+" when an open repeat or hold makes the length open-ended.</summary>
+    /// <summary>"76 bars · 4:13" at the entry tempo (ARR-13), with a "+" when an open repeat or hold makes the length open-ended.</summary>
     public static string Totals(SongPlan plan)
     {
         var plus = plan.HasOpenEnd ? "+" : string.Empty;
         var bars = plan.TotalBars == 1 ? "1 bar" : $"{plan.TotalBars.ToString(CultureInfo.InvariantCulture)} bars";
-        return $"{bars} · {Format.Clock(plan.DurationSec)}{plus}";
+        return $"{bars} · {Format.Clock(plan.HeardDurationSec)}{plus}";
     }
 }

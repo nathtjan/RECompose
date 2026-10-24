@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using RECompose.Core.Library;
+using RECompose.Core.Services;
 using RECompose.Core.Settings;
 
 namespace RECompose.Core.Persistence;
@@ -15,17 +16,19 @@ namespace RECompose.Core.Persistence;
     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
 [JsonSerializable(typeof(Song))]
 [JsonSerializable(typeof(LibraryIndex))]
+[JsonSerializable(typeof(Service))]
 [JsonSerializable(typeof(AppSettings))]
 public sealed partial class RecomposeJsonContext : JsonSerializerContext;
 
 /// <summary>
-/// The data folder (DM-90): library.json, songs/&lt;id&gt;.json, settings.json, cache/.
+/// The data folder (DM-90): library.json, songs/&lt;id&gt;.json, services/&lt;id&gt;.json, settings.json, cache/.
 /// Every write is atomic (temp file, then rename), so a crash never leaves half a file.
 /// </summary>
 public sealed class DataStore(string root)
 {
     public string Root { get; } = root;
     public string SongsFolder => Path.Combine(Root, "songs");
+    public string ServicesFolder => Path.Combine(Root, "services");
     public string PeaksFolder => Path.Combine(Root, "cache", "peaks");
 
     /// <summary>%APPDATA%\RECompose on Windows, ~/Library/Application Support/RECompose on macOS.</summary>
@@ -54,6 +57,28 @@ public sealed class DataStore(string root)
             File.Delete(SongPath(id));
     }
 
+    /// <summary>Every service in the data folder; damaged files are skipped.</summary>
+    public List<Service> LoadServices()
+    {
+        if (!Directory.Exists(ServicesFolder))
+            return [];
+        return Directory.EnumerateFiles(ServicesFolder, "*.json")
+            .Select(path => Read(path, RecomposeJsonContext.Default.Service))
+            .OfType<Service>()
+            .Select(s => s.Normalized())
+            .ToList();
+    }
+
+    public Service? LoadService(string id) => Read(ServicePath(id), RecomposeJsonContext.Default.Service)?.Normalized();
+
+    public void SaveService(Service service) => Write(ServicePath(service.Id), service, RecomposeJsonContext.Default.Service);
+
+    public void DeleteService(string id)
+    {
+        if (File.Exists(ServicePath(id)))
+            File.Delete(ServicePath(id));
+    }
+
     public AppSettings LoadSettings() =>
         Read(Path.Combine(Root, "settings.json"), RecomposeJsonContext.Default.AppSettings) ?? new AppSettings();
 
@@ -63,6 +88,8 @@ public sealed class DataStore(string root)
     public string PeaksPath(string songId, string trackId) => Path.Combine(PeaksFolder, songId, trackId + ".peaks");
 
     private string SongPath(string id) => Path.Combine(SongsFolder, id + ".json");
+
+    private string ServicePath(string id) => Path.Combine(ServicesFolder, id + ".json");
 
     private static T? Read<T>(string path, System.Text.Json.Serialization.Metadata.JsonTypeInfo<T> type) where T : class
     {

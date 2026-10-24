@@ -81,6 +81,9 @@ public sealed record Track
     /// <summary>Click, guide and spoken guide are never transposed (DM-12) and stay audible under solo (PB-82).</summary>
     public bool IsClickOrGuide => Role is TrackRole.Click or TrackRole.Guide or TrackRole.SpokenGuide;
 
+    /// <summary>DM-12: music tracks follow the entry key, click and guide never do.</summary>
+    public bool TransposesByDefault => !IsClickOrGuide;
+
     public double DurationSec => SampleRate > 0 ? Frames / SampleRate : 0;
 }
 

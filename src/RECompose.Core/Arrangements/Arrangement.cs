@@ -162,6 +162,9 @@ public sealed record Arrangement
     public List<ArrangementEntry> Entries { get; init; } = [];
     public ArrangementOrigin Origin { get; init; } = ArrangementOrigin.Manual;
 
+    /// <summary>For a custom arrangement of a service entry: the variant it was copied from (ARR-12, "Revert to …").</summary>
+    public string? CopiedFromId { get; init; }
+
     public static string NewId() => Guid.NewGuid().ToString("N")[..12];
 
     /// <summary>The arrangement with every list present (old or damaged files).</summary>

@@ -12,6 +12,9 @@ public enum PlanItemKind
     /// <summary>The whole file, for a song without sections.</summary>
     Song,
     LeadIn,
+
+    /// <summary>Generated click bars before the first section (SL-36).</summary>
+    CountIn,
     Section,
     Click,
     Pad,
@@ -53,7 +56,18 @@ public sealed record PlanItem
     /// <summary>Plays part of the section (ARR-31).</summary>
     public bool IsPartial { get; init; }
 
+    /// <summary>The key lift of the arrangement entry (ARR-33).</summary>
     public int Transpose { get; init; }
+
+    /// <summary>Semitones the transposing tracks play at: the entry key plus the lift (PB-41 step 3, keyTotal).</summary>
+    public int KeyTotal { get; init; }
+
+    /// <summary>The pitch class heard (original key + <see cref="KeyTotal"/>), for pads that follow the song (SL-44); null when the key is unknown.</summary>
+    public int? SongPitchClass { get; init; }
+
+    /// <summary>Pad bars: the pitch class of the pad (ARR-39); null when no key is known.</summary>
+    public int? PadPitchClass { get; init; }
+
     public IReadOnlyList<string> MutedTrackIds { get; init; } = [];
     public IReadOnlyList<string> MutedGroups { get; init; } = [];
     public double FadeInSec { get; init; }
@@ -64,12 +78,28 @@ public sealed record PlanItem
     public double Length => PlanEnd - PlanStart;
     public bool IsOpen => Passes == 0;
 
+    /// <summary>The click generator runs in this item: a count-in or click bars (PB-70).</summary>
+    public bool HasClick => Kind is PlanItemKind.CountIn or PlanItemKind.Click;
+
     /// <summary>"Chorus 1", "Chorus 1 · 1–8" (ARR-31).</summary>
     public string RangeLabel => IsPartial ? $"{Label} · {FromBar.ToString(CultureInfo.InvariantCulture)}–{ToBar.ToString(CultureInfo.InvariantCulture)}" : Label;
 }
 
 /// <summary>A piece of the plan as the engine plays it: contiguous in plan seconds, with an optional source start (null = silence).</summary>
-public sealed record PlanSegment(double Start, double End, double? Src, double FadeIn, double FadeOut, IReadOnlyList<string> Mute);
+public sealed record PlanSegment(double Start, double End, double? Src, double FadeIn, double FadeOut, IReadOnlyList<string> Mute)
+{
+    /// <summary>Semitones for the tracks that transpose (PB-58).</summary>
+    public int Key { get; init; }
+
+    /// <summary>The pitch class heard, for pads with Follow song (SL-44); null when unknown.</summary>
+    public int? SongKey { get; init; }
+
+    /// <summary>The click generator runs on the plan's grid (PB-70).</summary>
+    public bool Click { get; init; }
+
+    /// <summary>Pad bars: the pitch class the pad plays (ARR-39).</summary>
+    public int? Pad { get; init; }
+}
 
 /// <summary>What the header shows at a position (PB-30…35, LIVE-20 rule 4, LIVE-10).</summary>
 public sealed record PlanReadout(
@@ -95,8 +125,9 @@ public sealed class SongPlan
 {
     private const double ToleranceSec = 0.002;
 
-    public SongPlan(TempoGrid chartGrid, IReadOnlyList<SectionInfo> sections, IReadOnlyList<PlanItem> items, double sourceDurationSec, bool isAsWritten)
+    public SongPlan(TempoGrid chartGrid, IReadOnlyList<SectionInfo> sections, IReadOnlyList<PlanItem> items, double sourceDurationSec, bool isAsWritten, double tempoFactor = 1)
     {
+        TempoFactor = tempoFactor > 0 && double.IsFinite(tempoFactor) ? tempoFactor : 1;
         ChartGrid = chartGrid;
         Sections = sections;
         Items = items;
@@ -115,7 +146,20 @@ public sealed class SongPlan
             ? 0
             : Math.Max(1, (int)Math.Floor((lastBody.PlanEnd - P0) / SongGrid.BarLength + ToleranceSec / SongGrid.BarLength));
         HasOpenEnd = items.Any(i => i.IsOpen || i.Kind == PlanItemKind.Hold);
+
+        // SL-30: the transition starts where the last section ends and the tail begins.
+        var lastSection = items.LastOrDefault(i => i.Kind is PlanItemKind.Section or PlanItemKind.Song);
+        TransitionPointSec = lastSection is not null && items[^1].Kind == PlanItemKind.Tail ? lastSection.PlanEnd : DurationSec;
     }
+
+    /// <summary>The entry tempo as a factor (PB-30 tf). Plan times stay in source-second units; only clock times divide by it.</summary>
+    public double TempoFactor { get; }
+
+    /// <summary>The plan's length in seconds as heard at the entry tempo (PB-33, ARR-80).</summary>
+    public double HeardDurationSec => DurationSec / TempoFactor;
+
+    /// <summary>Plan time where the transition to the next entry starts: the start of the tail, or the end of the plan (SL-30).</summary>
+    public double TransitionPointSec { get; }
 
     public TempoGrid ChartGrid { get; }
 
@@ -202,7 +246,13 @@ public sealed class SongPlan
     /// <summary>The plan as the engine plays it. Holds have no length and are left out (they arrive in M5).</summary>
     public IReadOnlyList<PlanSegment> Segments() =>
         Items.Where(i => i.Length > 0)
-            .Select(i => new PlanSegment(i.PlanStart, i.PlanEnd, i.HasSource ? i.SrcStart : null, i.FadeInSec, i.FadeOutSec, i.MutedTrackIds))
+            .Select(i => new PlanSegment(i.PlanStart, i.PlanEnd, i.HasSource ? i.SrcStart : null, i.FadeInSec, i.FadeOutSec, i.MutedTrackIds)
+            {
+                Key = i.KeyTotal,
+                SongKey = i.SongPitchClass,
+                Click = i.HasClick,
+                Pad = i.Kind == PlanItemKind.Pad ? i.PadPitchClass : null,
+            })
             .ToList();
 
     // ---- Readouts ---------------------------------------------------------------------
@@ -215,8 +265,9 @@ public sealed class SongPlan
             : string.Empty;
 
         var open = Items.Any(i => i.PlanStart + i.Length > planSec && (i.IsOpen || i.Kind == PlanItemKind.Hold));
-        var elapsed = Format.Clock(planSec);
-        var remaining = "−" + Format.Clock(Math.Max(0, DurationSec - planSec)) + (open ? "+" : string.Empty);
+        // PB-33: clock times at the entry tempo.
+        var elapsed = Format.Clock(planSec / TempoFactor);
+        var remaining = "−" + Format.Clock(Math.Max(0, DurationSec - planSec) / TempoFactor) + (open ? "+" : string.Empty);
         var time = $"{elapsed} / {remaining}";
 
         var source = SourceAt(planSec);
@@ -233,7 +284,7 @@ public sealed class SongPlan
             return new PlanReadout(string.Empty, string.Empty, null, string.Empty, string.Empty, songBar, time, chartBar, progress);
 
         string nowDetail;
-        if (item.Kind == PlanItemKind.LeadIn)
+        if (item.Kind is PlanItemKind.LeadIn or PlanItemKind.CountIn)
         {
             // PB-31: before S0 a beat countdown instead of a bar.
             var beats = (int)Math.Ceiling((P0 - planSec) / ChartGrid.BeatLength - 0.05);
@@ -269,6 +320,7 @@ public sealed class SongPlan
     private static string NowLabelOf(PlanItem item) => item.Kind switch
     {
         PlanItemKind.LeadIn => "LEAD-IN",
+        PlanItemKind.CountIn => "COUNT-IN",
         PlanItemKind.Tail => "ENDING",
         PlanItemKind.Click => "CLICK",
         PlanItemKind.Pad => "PAD",

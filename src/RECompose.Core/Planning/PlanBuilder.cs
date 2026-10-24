@@ -1,19 +1,54 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 using RECompose.Core.Arrangements;
 using RECompose.Core.Library;
+using RECompose.Core.Music;
 using RECompose.Core.Sections;
+using RECompose.Core.Services;
 using RECompose.Core.Timing;
 
 namespace RECompose.Core.Planning;
 
-/// <summary>Settings of plan building (SET-20). Service entries add the count-in mode in M4.</summary>
+/// <summary>Settings of plan building (SET-20) and the service entry's own values (DM-41).</summary>
 public sealed record PlanOptions
 {
     /// <summary>Length of the ring-out after the last section (SET-20 "Ending tail length").</summary>
     public double TailBars { get; init; } = 2;
 
-    /// <summary>Use the stems' own lead-in before the first section (SL-36 "Track", the default).</summary>
-    public bool TrackLeadIn { get; init; } = true;
+    /// <summary>How the plan starts (SL-36): the stems' own lead-in (the default), generated click bars, or the first downbeat.</summary>
+    public CountInMode CountIn { get; init; } = CountInMode.Track;
+
+    /// <summary>Bars of a generated count-in, 1 or 2.</summary>
+    public int CountInBars { get; init; } = 1;
+
+    /// <summary>The entry's key offset in semitones (DM-41); key lifts add to it (PB-41 step 3).</summary>
+    public int KeyOffset { get; init; }
+
+    /// <summary>The entry's tempo as a factor, tempo% / 100 (PB-30 tf).</summary>
+    public double TempoFactor { get; init; } = 1;
+
+    /// <summary>The key of the stems, for the pitch a pad plays (SL-44, ARR-39); null when unknown.</summary>
+    public Key? OriginalKey { get; init; }
+
+    /// <summary>The options of a service entry: its count-in, key and tempo.</summary>
+    public static PlanOptions For(ServiceEntry entry, Song song, double tailBars = 2) => new()
+    {
+        TailBars = tailBars,
+        CountIn = entry.CountIn.Mode,
+        CountInBars = entry.CountIn.Bars,
+        KeyOffset = entry.KeyOffset,
+        TempoFactor = entry.TempoFactor,
+        OriginalKey = Key.TryParse(song.OriginalKey, out var key) ? key : null,
+    };
+
+    /// <summary>A library song outside a service: original key, 100 %, the stems' lead-in.</summary>
+    public static PlanOptions For(Song song, double tailBars = 2) => new()
+    {
+        TailBars = tailBars,
+        OriginalKey = Key.TryParse(song.OriginalKey, out var key) ? key : null,
+    };
+
+    /// <summary>The pitch class heard at <paramref name="semitones"/> from the original key, or null.</summary>
+    internal int? PitchClassAt(int semitones) => OriginalKey?.Transpose(semitones).PitchClass;
 }
 
 /// <summary>
@@ -53,31 +88,57 @@ public static class PlanBuilder
                     SrcEnd = durationSec,
                     PlanStart = 0,
                     PlanEnd = durationSec,
+                    KeyTotal = options.KeyOffset,
+                    SongPitchClass = options.PitchClassAt(options.KeyOffset),
                 });
             }
 
-            return new SongPlan(chartGrid, sections, items, durationSec, isAsWritten: arrangement is null);
+            return new SongPlan(chartGrid, sections, items, durationSec, isAsWritten: arrangement is null, options.TempoFactor);
         }
 
         var ordered = sections.OrderBy(s => s.StartSec).ToList();
         var s0 = ordered[0].StartSec;
         var barLen = chartGrid.BarLength;
 
-        // PB-41 step 2: the stems' own lead-in when it is at least half a beat, otherwise dropped.
-        if (options.TrackLeadIn && s0 >= chartGrid.BeatLength / 2)
+        // PB-41 step 2 (SL-36): the stems' own lead-in when it is at least half a beat, otherwise dropped;
+        // or whole bars of generated click that end on the first section's downbeat; or nothing.
+        switch (options.CountIn)
         {
-            items.Add(new PlanItem
+            case CountInMode.Track when s0 >= chartGrid.BeatLength / 2:
+                items.Add(new PlanItem
+                {
+                    Id = "lead-in",
+                    Kind = PlanItemKind.LeadIn,
+                    Label = "Lead-in",
+                    HasSource = true,
+                    SrcStart = 0,
+                    SrcEnd = s0,
+                    PlanStart = 0,
+                    PlanEnd = s0,
+                    KeyTotal = options.KeyOffset,
+                    SongPitchClass = options.PitchClassAt(options.KeyOffset),
+                });
+                cursor = s0;
+                break;
+
+            case CountInMode.Generated:
             {
-                Id = "lead-in",
-                Kind = PlanItemKind.LeadIn,
-                Label = "Lead-in",
-                HasSource = true,
-                SrcStart = 0,
-                SrcEnd = s0,
-                PlanStart = 0,
-                PlanEnd = s0,
-            });
-            cursor = s0;
+                var bars = Math.Clamp(options.CountInBars, 1, 2);
+                items.Add(new PlanItem
+                {
+                    Id = "count-in",
+                    Kind = PlanItemKind.CountIn,
+                    Label = "Count-in",
+                    PlanStart = 0,
+                    PlanEnd = bars * barLen,
+                    LengthBars = bars,
+                    ToBar = bars,
+                    KeyTotal = options.KeyOffset,
+                    SongPitchClass = options.PitchClassAt(options.KeyOffset),
+                });
+                cursor = bars * barLen;
+                break;
+            }
         }
 
         if (arrangement is null)
@@ -85,7 +146,7 @@ public static class PlanBuilder
             for (var i = 0; i < ordered.Count; i++)
             {
                 var s = ordered[i];
-                items.Add(SectionItem(s, $"{s.Id}:1", null, i, 1, 1, s.LengthBars, s.StartSec, s.EndSec, ref cursor, null));
+                items.Add(SectionItem(s, $"{s.Id}:1", null, i, 1, 1, s.LengthBars, s.StartSec, s.EndSec, ref cursor, null, options));
             }
         }
         else
@@ -100,7 +161,7 @@ public static class PlanBuilder
                         if (entry.SectionId is null || !byId.TryGetValue(entry.SectionId, out var section))
                             break; // the section was removed: skipped here, flagged by ArrangementValidator
 
-                        AddSection(items, entry, index, section, ref cursor, barLen, tracks);
+                        AddSection(items, entry, index, section, ref cursor, barLen, tracks, options);
                         break;
 
                     case EntryKind.Click:
@@ -121,6 +182,9 @@ public static class PlanBuilder
                             FromBar = 1,
                             ToBar = bars,
                             Note = entry.Note,
+                            KeyTotal = options.KeyOffset,
+                            SongPitchClass = options.PitchClassAt(options.KeyOffset),
+                            PadPitchClass = entry.Kind == EntryKind.Pad ? PadPitchClass(entry, options) : null,
                         });
                         cursor += length;
                         break;
@@ -137,6 +201,8 @@ public static class PlanBuilder
                             PlanStart = cursor,
                             PlanEnd = cursor,
                             Note = entry.Note,
+                            KeyTotal = options.KeyOffset,
+                            SongPitchClass = options.PitchClassAt(options.KeyOffset),
                         });
                         break;
                 }
@@ -144,10 +210,14 @@ public static class PlanBuilder
         }
 
         AddTail(items, options, chartGrid, durationSec);
-        return new SongPlan(chartGrid, sections, items, durationSec, isAsWritten: arrangement is null);
+        return new SongPlan(chartGrid, sections, items, durationSec, isAsWritten: arrangement is null, options.TempoFactor);
     }
 
-    private static void AddSection(List<PlanItem> items, ArrangementEntry entry, int index, SectionInfo section, ref double cursor, double barLen, IReadOnlyList<Track> tracks)
+    /// <summary>ARR-39: the pad key of pad bars, a chosen key or the entry key; null when neither is known.</summary>
+    private static int? PadPitchClass(ArrangementEntry entry, PlanOptions options) =>
+        Key.TryParse(entry.PadKey, out var key) ? key.PitchClass : options.PitchClassAt(options.KeyOffset);
+
+    private static void AddSection(List<PlanItem> items, ArrangementEntry entry, int index, SectionInfo section, ref double cursor, double barLen, IReadOnlyList<Track> tracks, PlanOptions options)
     {
         var sectionBars = Math.Max(1, section.LengthBars);
         var from = Math.Clamp(entry.Range.FromBar, 1, sectionBars);
@@ -167,7 +237,7 @@ public static class PlanBuilder
                 ? (IReadOnlyList<string>)[]
                 : MutedTracks(entry.Mutes, tracks);
             var groups = entry.Mutes.IsEmpty || (entry.Mutes.FirstPassOnly && !first) ? (IReadOnlyList<string>)[] : entry.Mutes.Groups;
-            var item = SectionItem(section, $"{entry.Id}:{pass}", entry, index, pass, open ? 0 : passes, to - from + 1, srcStart, srcEnd, ref cursor, muted) with
+            var item = SectionItem(section, $"{entry.Id}:{pass}", entry, index, pass, open ? 0 : passes, to - from + 1, srcStart, srcEnd, ref cursor, muted, options) with
             {
                 FromBar = from,
                 ToBar = to,
@@ -185,9 +255,10 @@ public static class PlanBuilder
 
     private static PlanItem SectionItem(
         SectionInfo section, string id, ArrangementEntry? entry, int index, int pass, int passes, int bars,
-        double srcStart, double srcEnd, ref double cursor, IReadOnlyList<string>? muted)
+        double srcStart, double srcEnd, ref double cursor, IReadOnlyList<string>? muted, PlanOptions options)
     {
         var length = srcEnd - srcStart;
+        var key = options.KeyOffset + (entry?.Transpose ?? 0);
         var item = new PlanItem
         {
             Id = id,
@@ -207,6 +278,8 @@ public static class PlanBuilder
             FromBar = 1,
             ToBar = bars,
             Transpose = entry?.Transpose ?? 0,
+            KeyTotal = key,
+            SongPitchClass = options.PitchClassAt(key),
             MutedTrackIds = muted ?? [],
             Note = entry?.Note,
             Ending = entry?.Ending ?? EndingMode.Continue,
@@ -263,6 +336,8 @@ public static class PlanBuilder
             PlanEnd = last.PlanEnd + length,
             LengthBars = Math.Max(1, (int)Math.Ceiling(length / grid.BarLength - Tolerance)),
             FadeOutSec = length,
+            KeyTotal = last.KeyTotal,
+            SongPitchClass = last.SongPitchClass,
         });
     }
 }
