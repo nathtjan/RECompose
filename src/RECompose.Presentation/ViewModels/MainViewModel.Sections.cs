@@ -301,7 +301,7 @@ public sealed partial class MainViewModel
         CommitSections(result.Sections, "Detect from guide", toast: null,
             guide: song.GuideAnalysis! with { Calls = result.Calls }, redetect: true);
         Sections.ResultText = summary;
-        SelectedTab = 0;
+        SelectedTab = SectionsTab;
         AppLog.Write("Sections", $"{song.Title}: {summary}");
     }
 
@@ -311,12 +311,12 @@ public sealed partial class MainViewModel
     private Song? CurrentSong(string songId) => _song?.Id == songId ? _song.Model : _store.LoadSong(songId);
 
     /// <summary>Changes a song on the UI thread, saves it at once and updates the library row.</summary>
-    internal void UpdateSong(string songId, Func<Song, Song> change)
+    internal void UpdateSong(string songId, Func<Song, Song> change, (string? Id, bool Set) active = default)
     {
         if (CurrentSong(songId) is not { } before)
             return;
         var after = change(before);
-        if (ReferenceEquals(after, before))
+        if (ReferenceEquals(after, before) && !active.Set)
             return;
 
         _store.SaveSong(after);
@@ -331,7 +331,7 @@ public sealed partial class MainViewModel
         if (_song?.Id == songId)
         {
             var gridChanged = before.Grid != after.Grid;
-            _song.Model = after;
+            _song.SetModel(after, active.Id, active.Set);
             if (gridChanged)
                 _song.ResetFields();
             Sections.Refresh();

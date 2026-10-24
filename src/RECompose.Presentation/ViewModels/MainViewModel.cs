@@ -2,8 +2,9 @@
 using System.Collections.ObjectModel;
 using System.Globalization;
 using RECompose.Core.Audio;
-using RECompose.Core.Commands;
 using RECompose.Core.Import;
+using RECompose.Core.Arrangements;
+using RECompose.Core.Commands;
 using RECompose.Core.Library;
 using RECompose.Core.Planning;
 using RECompose.Core.Music;
@@ -69,6 +70,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         _import = new ImportService(store, tools);
         _analysis = new AnalysisService(store, analysisTools ?? tools, speech ?? new SpeechModel(store.Root));
         Sections = new SectionsViewModel(this);
+        Entry = new EntryViewModel(this);
         _ui = ui;
         _dialogs = dialogs;
         _settings = store.LoadSettings();
@@ -125,6 +127,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                 foreach (var command in new[] { PlayPauseCommand, StopCommand, ToStartCommand, ApplySongEditsCommand, ReanalyseClickCommand, DetectDownbeatCommand, RetranscribeCommand, MarkCommand })
                     command.Refresh();
                 Sections.Refresh();
+                Entry.Refresh();
                 OnPropertyChanged(nameof(HasSections));
                 foreach (var item in _allSongs)
                     item.IsLoaded = value is not null && item.Id == value.Id;
@@ -251,6 +254,50 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     /// <summary>0 = SECTIONS, 1 = MIXER, 2 = SONG (UI-16 order).</summary>
     public int SelectedTab { get => _selectedTab; set => Set(ref _selectedTab, value); }
+
+    // The tabs under the timeline, in order (UI-30): ENTRY comes first.
+    public const int EntryTab = 0;
+    public const int SectionsTab = 1;
+    public const int MixerTab = 2;
+    public const int SongTab = 3;
+
+    /// <summary>The length of the plan the engine reports, in frames: how the app and the engine agree on the arrangement.</summary>
+    public long EnginePlanFrames { get => _enginePlanFrames; private set => Set(ref _enginePlanFrames, value); }
+
+    private long _enginePlanFrames;
+
+    /// <summary>The ENTRY tab: variants and the order of the active one (ARR-1…13).</summary>
+    public EntryViewModel Entry { get; }
+
+    /// <summary>Plays another variant, or the song as written (null). The playhead stays on the same moment of the song.</summary>
+    public void SelectVariant(string? id)
+    {
+        _song?.SelectVariant(id);
+        Entry.Refresh();
+    }
+
+    /// <summary>
+    /// Replaces the song's variants (and optionally the default and the one being played) as one undo step and
+    /// saves at once (ARR-10, DM-90).
+    /// </summary>
+    internal void CommitVariants(string description, List<Arrangement> variants, string? activeId, bool keepDefault, string? defaultId = null)
+    {
+        if (_song is null)
+            return;
+        var songId = _song.Id;
+        var beforeVariants = _song.Model.Arrangements;
+        var beforeDefault = _song.Model.DefaultArrangementId;
+        var beforeActive = _song.ActiveVariantId;
+        var afterDefault = keepDefault ? beforeDefault : defaultId;
+
+        void Apply(List<Arrangement> v, string? def, string? active) =>
+            UpdateSong(songId, s => s with { Arrangements = v, DefaultArrangementId = def, UpdatedAt = DateTimeOffset.UtcNow }, (active, true));
+
+        Apply(variants, afterDefault, activeId);
+        _undo.Push(new UndoableChange(description, () => Apply(beforeVariants, beforeDefault, beforeActive), () => Apply(variants, afterDefault, activeId)));
+        AppLog.Write("Arrangements", description);
+        Entry.ApplyPendingSelection();
+    }
 
     public AppSettings Settings => _settings;
 
@@ -664,6 +711,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         var position = SongPlan.Remap(previous, _planPosition, _song.Plan, sameArrangement);
         PlanPositionSec = position;
         Sections.Refresh();
+        Entry.Refresh();
         _ = SendPlanAsync(position);
     }
 
@@ -704,6 +752,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
         State = s.State;
         _lastFrame = s.Frame;
+        EnginePlanFrames = s.PlanFrames;
         if (_seekFrame is { } pending)
         {
             if (s.Frame == pending || s.State == TransportState.Playing || DateTime.UtcNow - _seekSentAt > TimeSpan.FromSeconds(2))

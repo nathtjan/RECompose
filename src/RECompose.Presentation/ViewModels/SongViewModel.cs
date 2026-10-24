@@ -117,23 +117,31 @@ public sealed class SongViewModel : ObservableObject
     public Song Model
     {
         get => _model;
-        set
-        {
-            _model = value;
-            var activeBefore = _activeVariantId;
-            OnPropertyChanged(nameof(Title));
-            OnPropertyChanged(nameof(HeaderLine));
-            OnPropertyChanged(nameof(Grid));
-            OnPropertyChanged(nameof(DurationSec));
-            OnPropertyChanged(nameof(SourceFolder));
-            if (_activeVariantId is not null && _model.Arrangements.All(a => a.Id != _activeVariantId))
-                _activeVariantId = null; // the variant was deleted: back to as written
-            OnPropertyChanged(nameof(ActiveVariantId));
-            OnPropertyChanged(nameof(Variants));
-            OnPropertyChanged(nameof(ActiveVariant));
-            RefreshSections(sameArrangement: _activeVariantId == activeBefore);
-            WaveformVersion++;
-        }
+        set => SetModel(value, null, setActive: false);
+    }
+
+    /// <summary>
+    /// Replaces the model and, when <paramref name="setActive"/>, the variant being played in the same step, so the engine
+    /// gets one plan rather than two.
+    /// </summary>
+    public void SetModel(Song value, string? activeVariantId, bool setActive)
+    {
+        _model = value;
+        var activeBefore = _activeVariantId;
+        if (setActive)
+            _activeVariantId = activeVariantId;
+        if (_activeVariantId is not null && _model.Arrangements.All(a => a.Id != _activeVariantId))
+            _activeVariantId = null; // the variant was deleted: back to as written
+        OnPropertyChanged(nameof(Title));
+        OnPropertyChanged(nameof(HeaderLine));
+        OnPropertyChanged(nameof(Grid));
+        OnPropertyChanged(nameof(DurationSec));
+        OnPropertyChanged(nameof(SourceFolder));
+        OnPropertyChanged(nameof(ActiveVariantId));
+        OnPropertyChanged(nameof(Variants));
+        OnPropertyChanged(nameof(ActiveVariant));
+        RefreshSections(sameArrangement: _activeVariantId == activeBefore);
+        WaveformVersion++;
     }
 
     /// <summary>The written sections with labels, lengths and chart bars (DM-20, SEC-41).</summary>

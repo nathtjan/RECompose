@@ -171,10 +171,10 @@ public sealed class WindowSmokeTests : IDisposable
             Assert.Equal("SECTION 1", vm.NextLabel);
             Assert.NotNull(window.CaptureRenderedFrame());
 
-            vm.SelectedTab = 1; // MIXER
+            vm.SelectedTab = MainViewModel.MixerTab;
             Dispatcher.UIThread.RunJobs();
             Assert.NotNull(window.CaptureRenderedFrame());
-            vm.SelectedTab = 2; // SONG
+            vm.SelectedTab = MainViewModel.SongTab;
             Dispatcher.UIThread.RunJobs();
             Assert.NotNull(window.CaptureRenderedFrame());
             window.Close();

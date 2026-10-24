@@ -116,6 +116,158 @@ public sealed class SectionsTests : IDisposable
         Assert.Equal(string.Empty, vm.NowLabel);
     }
 
+    // ---- Milestone 3: arrangements on the Prepare screen ---------------------------------------
+
+    private static long PlanFrames(MainViewModel vm) => (long)Math.Round(vm.Song!.Plan.DurationSec * 48000);
+
+    [Fact]
+    public async Task AT10_quick_order_makes_a_variant_that_the_engine_and_the_readouts_follow()
+    {
+        await using var vm = await ImportedAsync();
+        await vm.DetectSectionsAsync();
+        await Eventually(() => vm.EnginePlanFrames == PlanFrames(vm));
+        var asWrittenFrames = vm.EnginePlanFrames;
+        Assert.Equal("AS WRITTEN", vm.NextTag);
+
+        vm.Entry.QuickOrderText = "V1 C V2 C O E";
+        Assert.True(vm.Entry.CanApplyQuickOrder);
+        Assert.Equal("6 entries", vm.Entry.QuickOrderStatus);
+        vm.Entry.ApplyQuickOrderCommand.Execute(null);
+
+        Assert.Equal("Quick order", vm.Song!.ActiveVariant!.Name);
+        Assert.Equal("1. Verse 1 · 2. Chorus 1 · 3. Verse 2 · 4. Chorus 2 · 5. Outro · 6. Ending", vm.Entry.SummaryLabels);
+        Assert.Equal("39 bars · 2:13", vm.Entry.SummaryTotals);
+        Assert.Equal("ARRANGEMENT", vm.NextTag);
+        Assert.Equal("0:00 / −2:13", vm.TimeText);
+        await Eventually(() => vm.EnginePlanFrames == PlanFrames(vm) && vm.EnginePlanFrames != asWrittenFrames);
+
+        // One undo step puts the song back as written, on the engine too.
+        vm.UndoCommand.Execute(null);
+        Assert.Null(vm.Song.ActiveVariantId);
+        Assert.Empty(vm.Song.Model.Arrangements);
+        Assert.Equal("AS WRITTEN", vm.NextTag);
+        await Eventually(() => vm.EnginePlanFrames == asWrittenFrames);
+        vm.RedoCommand.Execute(null);
+        Assert.Equal("Quick order", vm.Song.ActiveVariant!.Name);
+        Assert.Single(new DataStore(Path.Combine(_root, "data")).LoadSong(vm.Song.Id)!.Arrangements);
+    }
+
+    [Fact]
+    public async Task ARR12_a_problem_in_the_quick_order_is_shown_and_nothing_is_applied()
+    {
+        await using var vm = await ImportedAsync();
+        await vm.DetectSectionsAsync();
+
+        vm.Entry.QuickOrderText = "V1 Brige C";
+        Assert.False(vm.Entry.CanApplyQuickOrder);
+        Assert.Equal("Brige: Did you mean B (Bridge)?", vm.Entry.QuickOrderStatus);
+        Assert.Equal(3, vm.Entry.QuickTokens.Count);
+        Assert.False(vm.Entry.QuickTokens[1].IsOk);
+        vm.Entry.ApplyQuickOrderCommand.Execute(null);
+        Assert.Null(vm.Song!.ActiveVariantId);
+    }
+
+    [Fact]
+    public async Task ARR11_editing_the_song_as_written_makes_a_variant_and_options_change_the_plan()
+    {
+        await using var vm = await ImportedAsync();
+        await vm.DetectSectionsAsync();
+
+        vm.Entry.AddClickCommand.Execute(null);
+        Assert.Equal("Variant", vm.Song!.ActiveVariant!.Name);
+        Assert.Equal(13, vm.Entry.Rows.Count);
+        Assert.Equal("Click 4", vm.Entry.Rows[^1].Text);
+
+        vm.Entry.Selected = vm.Entry.Rows[1]; // Chorus 1
+        Assert.Equal("Chorus 1", vm.Entry.Rows[1].Text);
+        vm.Entry.RepeatCount = 2;
+        vm.Entry.Lift = 2;
+        vm.Entry.Mute = MuteChoice.All[1];
+        vm.Entry.FirstPassOnly = true;
+
+        Assert.Equal("Chorus 1 ×2 (+2)", vm.Entry.Rows[1].Text);
+        var entry = vm.Song.ActiveVariant.Entries[1];
+        Assert.Equal(2, entry.Repeat.Count);
+        Assert.Equal(2, entry.Transpose);
+        Assert.True(entry.Mutes.FirstPassOnly);
+        Assert.Equal(["Drums"], entry.Mutes.Groups);
+        Assert.Equal(2, vm.Song.Plan.Items.Count(i => i.EntryId == entry.Id));
+        Assert.Equal(2, vm.Entry.Selected?.Index == 2 ? 2 : 0); // the selection stayed on the entry
+
+        // Each change is one undo step.
+        vm.UndoCommand.Execute(null);
+        Assert.False(vm.Song.ActiveVariant!.Entries[1].Mutes.FirstPassOnly);
+        vm.UndoCommand.Execute(null);
+        vm.UndoCommand.Execute(null);
+        vm.UndoCommand.Execute(null);
+        Assert.Equal(1, vm.Song.ActiveVariant!.Entries[1].Repeat.Count);
+
+        // Moving and removing.
+        vm.Entry.Selected = vm.Entry.Rows[2];
+        vm.Entry.MoveUpCommand.Execute(null);
+        Assert.Equal(["Verse 1", "Verse 2", "Chorus 1"], vm.Entry.Rows.Take(3).Select(r => r.Text));
+        vm.Entry.RemoveCommand.Execute(null);
+        Assert.Equal(12, vm.Entry.Rows.Count);
+    }
+
+    [Fact]
+    public async Task ARR3_the_default_variant_opens_with_the_song_and_deleting_it_goes_back_to_as_written()
+    {
+        await using var vm = await ImportedAsync();
+        await vm.DetectSectionsAsync();
+        var id = vm.Song!.Id;
+
+        vm.Entry.VariantName = "Short";
+        vm.Entry.NewFromWrittenCommand.Execute(null);
+        vm.Entry.SetDefaultCommand.Execute(null);
+        Assert.Equal("Short", vm.Song.ActiveVariant!.Name);
+        Assert.Equal(vm.Song.ActiveVariantId, vm.Song.Model.DefaultArrangementId);
+        Assert.Contains(vm.Entry.Variants, v => v.Name == "Short" && v.IsDefault);
+
+        await vm.LoadSongAsync(id, force: true);
+        Assert.Equal("Short", vm.Song!.ActiveVariant?.Name);
+        Assert.Equal("ARRANGEMENT", vm.NextTag);
+
+        // Review and the call button play the written song only.
+        Assert.False(vm.Sections.CanPlayRanges);
+        Assert.False(vm.Sections.ReviewCommand.CanExecute(null));
+        Assert.Equal("Switch to As written to review sections", vm.Sections.PlayRangesBlockedReason);
+        vm.Entry.SelectedVariant = vm.Entry.Variants[0];
+        Assert.True(vm.Sections.CanPlayRanges);
+        Assert.True(vm.Sections.ReviewCommand.CanExecute(null));
+
+        vm.Entry.SelectedVariant = vm.Entry.Variants[1];
+        vm.Entry.DeleteVariantCommand.Execute(null);
+        Assert.Null(vm.Song.ActiveVariantId);
+        Assert.Null(vm.Song.Model.DefaultArrangementId);
+        Assert.Empty(vm.Song.Model.Arrangements);
+        vm.UndoCommand.Execute(null);
+        Assert.Equal("Short", vm.Song.ActiveVariant?.Name);
+        Assert.Equal(vm.Song.ActiveVariantId, vm.Song.Model.DefaultArrangementId);
+    }
+
+    [Fact]
+    public async Task SEC54_merging_sections_keeps_the_variants_entries_on_the_section_that_stays()
+    {
+        await using var vm = await ImportedAsync();
+        await vm.DetectSectionsAsync();
+        vm.Entry.QuickOrderText = "V1 C T O E";
+        vm.Entry.ApplyQuickOrderCommand.Execute(null);
+        Assert.Equal("1. Verse 1 · 2. Chorus 1 · 3. Tag · 4. Outro · 5. Ending", vm.Entry.SummaryLabels);
+
+        var tag = vm.Sections.Rows.First(r => r.Label == "Tag");
+        vm.Sections.MergeWithNext(tag.Id); // the Outro merges into Tag
+        Assert.Equal("1. Verse 1 · 2. Chorus 1 · 3. Tag · 4. Tag · 5. Ending", vm.Entry.SummaryLabels);
+
+        // Deleting a section leaves its entry flagged until a replacement is chosen (ARR-50).
+        var chorus = vm.Sections.Rows.First(r => r.Label == "Chorus 1");
+        chorus.DeleteCommand.Execute(null);
+        Assert.Contains(vm.Entry.Issues, i => i == "Section removed — choose a replacement");
+        Assert.Equal("⚠ Section removed", vm.Entry.Rows[1].Text);
+        vm.UndoCommand.Execute(null);
+        Assert.DoesNotContain(vm.Entry.Issues, i => i == "Section removed — choose a replacement");
+    }
+
     [Fact]
     public async Task AT35_detect_from_guide_fills_the_table_the_result_box_and_the_readouts()
     {
