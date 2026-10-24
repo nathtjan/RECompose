@@ -6,6 +6,21 @@
 
 **Spec references:** 04-playback-engine (PB), 09 SL-50…56 (import, library), SL-60 (SONG tab), 03 DM-10/12/13/90, 02 UI-10…16, 12 REL-24/34/50, 13 PLAT-10, 14 SET-10 and KEY-1.
 
+## Status (24 Oct 2026)
+
+Ready for the demo on the product owner's PC (see `docs/testing/M1-test-guide.md`). CI is green on Windows, macOS and Linux, including headless window tests.
+
+| Package | Done | Still open |
+|---|---|---|
+| WP1 Devices | JUCE message loop in the engine (CFRunLoop on macOS), device list and selection, device-change events, ASIO from the GPLv3 SDK, MMCSS via JUCE's WASAPI | Hands-on check with the real interface; null-device CI smoke test |
+| WP2 Engine core | Disk streaming with 4 s read-ahead, r8brain resampling (−150 dB THD+N), transport fades, sample-exact seeks, gain/mute/solo with solo-safe, routing rules, meters, clock, starvation and xrun counts, offline render | General segment scheduler (M1 plays the file as written; seeks splice), debug allocation checker, 20× offline speed test |
+| WP3 Protocol 2 | All messages, reattach with `getState`, engine-crash restart | Round-trip latency measurement |
+| WP4 Core | Model, persistence, import rules, readouts, undo with merged fader drags | PlanCompiler as a separate type (arrives with M3), the log tab's categories |
+| WP5 Import | Probe and peaks as separate jobs, review dialog, duplicates, library with search | Import timing check on the reference machine |
+| WP6 Design system | Token and icon generators with CI checks, Fluent mapped onto tokens, type styles | Component gallery window, Martian Mono width axis, theme switch |
+| WP7 Prepare shell | Top bar, library, header, transport, readouts, timeline, MIXER and SONG tabs, Settings › Audio, banners, toasts, shortcuts, single instance | Splitter sizes persisted, zoom buttons |
+| WP8 Hardening | App log, headless smoke tests | Performance pass, 30-minute soak, macOS hands-on |
+
 ## Definition of done: the demo
 
 Run it on the product owner's Windows PC with the audio interface, and from the CI build on a Mac if one is available. Every step must work in one sitting.

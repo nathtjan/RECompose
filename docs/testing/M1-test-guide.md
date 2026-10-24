@@ -4,7 +4,7 @@ This build plays a multitrack folder through your audio interface: import, mixer
 
 ## 1. Get the build
 
-**Download (no tools needed).** On GitHub, open the repository → **Actions** → the latest green **CI** run on branch `m1/engine-and-import` → **Artifacts** → `RECompose-win-x64`. Unzip it anywhere (for example `C:\RECompose`) and run `RECompose.exe`. Keep `recompose-engine.exe` in the same folder.
+**Download (no tools needed).** On GitHub, open the repository → **Actions** → the latest green **CI** run on `main` → **Artifacts** → `RECompose-win-x64`. Unzip it anywhere (for example `C:\RECompose`) and run `RECompose.exe`. Keep `recompose-engine.exe` in the same folder.
 
 Windows SmartScreen warns about unsigned apps ("Windows protected your PC"): choose **More info → Run anyway**. Signing arrives with packaging in milestone 10.
 

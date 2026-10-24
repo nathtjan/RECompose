@@ -2,7 +2,7 @@
 
 Live multitrack stem playback for a church music director, on Windows and macOS. The MD shapes each song's arrangement for this week's service, rehearses it with the band, and runs it live, hands-free, by voice or foot pedal.
 
-**Status:** milestone 0, a walking skeleton. The app starts, loads the bundled fonts, starts the audio engine process (or reattaches to a running one) and says hello to it over the engine protocol. Milestone 1 (engine and import) is planned in [docs/milestones/M1-engine-and-import.md](docs/milestones/M1-engine-and-import.md).
+**Status:** milestone 1 (engine and import) is ready to test: import a stems folder, play it through the audio interface with a mixer, Main and Cue routing, transport, timeline and readouts. The engine runs as its own process, so the music keeps playing if the app closes. How to try it: [docs/testing/M1-test-guide.md](docs/testing/M1-test-guide.md). Plan and status: [docs/milestones/M1-engine-and-import.md](docs/milestones/M1-engine-and-import.md).
 
 ## Stack
 
@@ -18,8 +18,10 @@ Why this split, and what is still open, is recorded in [docs/adr/0001-stack-and-
 engine/            the engine process (CMake); docs/engine-protocol.md is the only interface
 src/RECompose.Core     domain model, plan building, readouts, import rules (pure, unit-tested)
 src/RECompose.Engine   engine client: starts or reattaches to the engine, speaks the protocol
+src/RECompose.Presentation  view models and app services (no UI framework, tested against the engine)
 src/RECompose.App      Avalonia desktop app
-tests/             xUnit v3 tests
+tests/             xUnit v3 tests, including headless window tests (RECompose.App.Tests)
+tools/             generators for design resources (tokens, icons) and CI helpers
 design/            tokens.json, fonts, icons, design-system notes
 docs/              decisions, the engine protocol, milestone plans
 ```
