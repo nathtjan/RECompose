@@ -15,5 +15,6 @@
 
   <ItemGroup>
     <ProjectReference Include="../../src/RECompose.Engine/RECompose.Engine.csproj" />
+    <ProjectReference Include="../../src/RECompose.Core/RECompose.Core.csproj" />
   </ItemGroup>
 </Project>

@@ -20,6 +20,7 @@ public sealed class EngineConnection : IAsyncDisposable
     private readonly CancellationTokenSource _closing = new();
     private readonly Task _reader;
     private int _nextId;
+    private int _disposed;
 
     private EngineConnection(Socket socket)
     {
@@ -149,6 +150,9 @@ public sealed class EngineConnection : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        if (Interlocked.Exchange(ref _disposed, 1) == 1)
+            return;
+
         _closing.Cancel();
         try
         {
