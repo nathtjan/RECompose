@@ -1,0 +1,14 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="RECompose.App.App"
+             RequestedThemeVariant="Dark">
+  <Application.Resources>
+    <!-- Milestone 1 replaces these with resources generated from design/tokens.json. -->
+    <FontFamily x:Key="FontSans">avares://RECompose/Assets/Fonts#Hanken Grotesk</FontFamily>
+    <FontFamily x:Key="FontMono">avares://RECompose/Assets/Fonts#Martian Mono</FontFamily>
+  </Application.Resources>
+
+  <Application.Styles>
+    <FluentTheme />
+  </Application.Styles>
+</Application>

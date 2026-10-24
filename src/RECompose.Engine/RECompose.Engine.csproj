@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Client side of the engine process: starts or reattaches to recompose-engine and
+       speaks the engine protocol (docs/engine-protocol.md) over a local socket. -->
+  <PropertyGroup>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <!-- Copy the engine executable (built by CMake, see README) next to every app and test
+       that references this project. -->
+  <ItemGroup Condition="Exists('$(RecEngineNativeDir)')">
+    <None Include="$(RecEngineNativeDir)recompose-engine*"
+          Link="%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest"
+          Visible="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="RECompose.Engine.Tests" />
+  </ItemGroup>
+</Project>

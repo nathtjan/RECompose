@@ -1,0 +1,23 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="RECompose.App.MainWindow"
+        Title="RECompose"
+        Width="1280" Height="760"
+        MinWidth="1280" MinHeight="760"
+        WindowStartupLocation="CenterScreen"
+        FontFamily="{StaticResource FontSans}">
+  <!-- Milestone 0 walking skeleton: proves the app starts, loads the bundled fonts and
+       starts or reattaches to the engine process. The Prepare layout (UI-10) arrives in milestone 1. -->
+  <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12">
+    <TextBlock FontSize="40" HorizontalAlignment="Center">
+      <Run Text="REC" FontWeight="ExtraBold" /><Run Text="ompose" FontWeight="Medium" />
+    </TextBlock>
+    <TextBlock x:Name="EngineStatus"
+               FontFamily="{StaticResource FontMono}"
+               FontSize="13"
+               HorizontalAlignment="Center"
+               TextWrapping="Wrap"
+               MaxWidth="720"
+               TextAlignment="Center" />
+  </StackPanel>
+</Window>

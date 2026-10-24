@@ -1,0 +1,82 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows
+            os: windows-latest
+            rid: win-x64
+            cmake-args: ""
+          - name: macOS
+            os: macos-latest
+            rid: osx-arm64
+            cmake-args: '"-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64"'
+          - name: Linux (tests only)
+            os: ubuntu-latest
+            rid: linux-x64
+            cmake-args: -G Ninja
+
+    env:
+      DOTNET_NOLOGO: "1"
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      REC_REQUIRE_NATIVE: "1"
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Linux packages
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libasound2-dev ninja-build
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - name: Configure engine
+        shell: bash
+        run: cmake -S engine -B build/engine -DCMAKE_BUILD_TYPE=Release ${{ matrix.cmake-args }}
+
+      - name: Build engine
+        run: cmake --build build/engine --config Release --parallel
+
+      - name: Test engine
+        run: ctest --test-dir build/engine -C Release --output-on-failure
+
+      - name: Stage engine library
+        run: cmake --install build/engine --config Release --component engine --prefix artifacts/native
+
+      - name: Build app
+        run: dotnet build RECompose.slnx -c Release
+
+      - name: Test app
+        run: dotnet test RECompose.slnx -c Release --no-build
+
+      - name: Publish app
+        if: runner.os != 'Linux'
+        run: dotnet publish src/RECompose.App/RECompose.App.csproj -c Release -r ${{ matrix.rid }} --self-contained -o publish/${{ matrix.rid }}
+
+      - name: Upload app
+        if: runner.os != 'Linux'
+        uses: actions/upload-artifact@v7
+        with:
+          name: RECompose-${{ matrix.rid }}
+          path: publish/${{ matrix.rid }}
+          retention-days: 14

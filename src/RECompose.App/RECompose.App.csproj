@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <AssemblyName>RECompose</AssemblyName>
+    <RootNamespace>RECompose.App</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" />
+    <PackageReference Include="Avalonia.Desktop" />
+    <PackageReference Include="Avalonia.Themes.Fluent" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Fonts come from design/fonts (the design system's bundled copies), not a second copy. -->
+    <AvaloniaResource Include="$(RepoRoot)design/fonts/*.ttf" Link="Assets/Fonts/%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../RECompose.Core/RECompose.Core.csproj" />
+    <ProjectReference Include="../RECompose.Engine/RECompose.Engine.csproj" />
+  </ItemGroup>
+</Project>
