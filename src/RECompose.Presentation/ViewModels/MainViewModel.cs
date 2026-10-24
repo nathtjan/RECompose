@@ -54,6 +54,8 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private int _dropouts;
     private DeviceInfo? _device;
     private int _selectedTab;
+    private long? _seekFrame;          // a seek the engine hasn't confirmed yet
+    private DateTime _seekSentAt;
 
     public MainViewModel(DataStore store, EngineHostOptions engineOptions, EngineTools tools, IUiDispatcher ui, IDialogs dialogs)
     {
@@ -75,7 +77,11 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         LoadSelectedCommand = new RelayCommand(() => _selected is { } s ? LoadSongAsync(s.Id) : Task.CompletedTask);
         ApplySongEditsCommand = new RelayCommand(ApplySongEdits, () => _song is not null);
         DismissBannerCommand = new RelayCommand(() => Banner = null);
-        RelayCommand.Failed = ex => _ui.Post(() => Banner = ex.Message);
+        RelayCommand.Failed = ex =>
+        {
+            AppLog.Error("Command", ex);
+            _ui.Post(() => Banner = ex.Message);
+        };
     }
 
     // ---- Bindable state -------------------------------------------------------------
@@ -244,11 +250,14 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         }
         catch (EngineUnavailableException ex)
         {
+            AppLog.Error("Engine", ex);
             AudioStatus = "No audio engine";
             AudioOk = false;
             Banner = ex.Message;
             return;
         }
+
+        AppLog.Write("Engine", $"{(session.Attached ? "Reattached to" : "Started")} engine {session.DisplayVersion}, process {session.ProcessId}");
 
         var engine = new EngineClient(session);
         engine.SnapshotReceived += s => _ui.Post(() => ApplySnapshot(s));
@@ -292,6 +301,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     {
         if (_shuttingDown || _restarting)
             return;
+        AppLog.Write("Errors", "Audio engine connection lost; restarting it");
         _restarting = true;
         _engine = null;
         State = TransportState.Stopped;
@@ -342,6 +352,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
     private void ShowNoDevice(string message)
     {
+        AppLog.Write("Audio", $"No device: {message}");
         _device = null;
         AudioOk = false;
         AudioStatus = "No audio device";
@@ -350,6 +361,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
     private void ShowDevice(DeviceInfo? device)
     {
+        var previous = _device;
         _device = device;
         if (device is null)
         {
@@ -358,6 +370,8 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             return;
         }
 
+        if (previous?.StatusLabel != device.StatusLabel)
+            AppLog.Write("Audio", $"Device {device.StatusLabel}, buffer {device.BufferSize}, latency {device.OutputLatency} frames");
         AudioOk = true;
         AudioStatus = device.StatusLabel + (_dropouts > 0 ? $" · {_dropouts} dropouts" : string.Empty);
     }
@@ -423,6 +437,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                 RefreshLibrary();
                 SelectedSong = item;
                 ShowToast($"Imported {song.Title} · {song.Tracks.Count} tracks");
+                AppLog.Write("Library", $"Imported {song.Title} from {folder}: {song.Tracks.Count} tracks");
                 _ = ComputePeaksAsync(song);
                 return;
             }
@@ -476,6 +491,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         }
 
         BindSong(model, loaded);
+        AppLog.Write("Transport", $"Loaded {model.Title}");
         _settings = _settings with { LastSongId = id };
         _store.SaveSettings(_settings);
 
@@ -540,10 +556,16 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         if (_song is null)
             return;
         seconds = Math.Clamp(seconds, 0, _song.DurationSec);
+        var frame = (long)Math.Round(seconds * _song.SampleRate);
         if (!IsPlaying)
             PositionSec = seconds; // show it at once; the engine confirms
         if (_engine is not null)
-            await _engine.SeekAsync((long)Math.Round(seconds * _song.SampleRate));
+        {
+            // Until the engine reports this frame, older snapshots must not move the playhead back.
+            _seekFrame = IsPlaying ? null : frame;
+            _seekSentAt = DateTime.UtcNow;
+            await _engine.SeekAsync(frame);
+        }
     }
 
     /// <summary>← and → when stopped: one bar back or forward (KEY-1).</summary>
@@ -570,7 +592,12 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
         State = s.State;
         _lastFrame = s.Frame;
-        if (s.SampleRate > 0)
+        if (_seekFrame is { } pending)
+        {
+            if (s.Frame == pending || s.State == TransportState.Playing || DateTime.UtcNow - _seekSentAt > TimeSpan.FromSeconds(2))
+                _seekFrame = null;
+        }
+        if (_seekFrame is null && s.SampleRate > 0)
             PositionSec = s.HeardFrame / s.SampleRate;
 
         Status = s.State == TransportState.Playing

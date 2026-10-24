@@ -119,6 +119,9 @@ endif()
 
 add_executable(recompose_engine src/main.cpp)
 target_link_libraries(recompose_engine PRIVATE recompose_engine_core)
+if(APPLE)
+    target_link_libraries(recompose_engine PRIVATE "-framework CoreFoundation")
+endif()
 set_target_properties(recompose_engine PROPERTIES
     OUTPUT_NAME recompose-engine
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)

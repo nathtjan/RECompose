@@ -15,6 +15,7 @@
 
 #include <juce_events/juce_events.h>
 
+#include <atomic>
 #include <csignal>
 #include <cstdio>
 #include <cstdlib>
@@ -26,6 +27,10 @@
   #include <process.h>
 #else
   #include <unistd.h>
+#endif
+
+#if defined(__APPLE__)
+  #include <CoreFoundation/CoreFoundation.h>
 #endif
 
 namespace
@@ -146,13 +151,32 @@ int main (int argc, char* argv[])
     std::signal (SIGPIPE, SIG_IGN); // a vanished app must never kill the engine (REL-34)
    #endif
 
-    std::thread control ([&server]
+    std::atomic<bool> finished { false };
+
+   #if defined(__APPLE__)
+    // JUCE's message queue is a CFRunLoop source on the main run loop. A non-standalone
+    // JUCE process has no NSApplication, so runDispatchLoop() would return at once; run the
+    // main run loop directly instead.
+    auto* mainLoop = CFRunLoopGetCurrent();
+    std::thread control ([&server, &finished, mainLoop]
     {
         server.run();
+        finished.store (true);
+        CFRunLoopWakeUp (mainLoop);
+    });
+
+    while (! finished.load())
+        CFRunLoopRunInMode (kCFRunLoopDefaultMode, 0.25, false);
+   #else
+    std::thread control ([&server, &finished]
+    {
+        server.run();
+        finished.store (true);
         juce::MessageManager::getInstance()->stopDispatchLoop();
     });
 
     juce::MessageManager::getInstance()->runDispatchLoop();
+   #endif
 
     server.stop();
     control.join();

@@ -9,6 +9,7 @@ using RECompose.App.Theme;
 using RECompose.Core.Persistence;
 using RECompose.Engine;
 using RECompose.Presentation.Mvvm;
+using RECompose.Presentation.Services;
 using RECompose.Presentation.ViewModels;
 
 namespace RECompose.App;
@@ -34,6 +35,14 @@ public partial class App : Application
             var window = new MainWindow();
             var dialogs = new AvaloniaDialogs(window);
             var store = DataStore.Default();
+            AppLog.Start(store.Root);
+            AppLog.Write("App", $"RECompose {typeof(App).Assembly.GetName().Version?.ToString(3)} started on {System.Runtime.InteropServices.RuntimeInformation.OSDescription}");
+            AppDomain.CurrentDomain.UnhandledException += (_, e) => AppLog.Write("Errors", $"Unhandled: {e.ExceptionObject}");
+            TaskScheduler.UnobservedTaskException += (_, e) =>
+            {
+                AppLog.Error("Unobserved task", e.Exception);
+                e.SetObserved();
+            };
             var engine = EngineHostOptions.Default();
             _viewModel = new MainViewModel(store, engine, new EngineTools(engine.ExecutablePath), new AvaloniaDispatcher(), dialogs);
             window.DataContext = _viewModel;
