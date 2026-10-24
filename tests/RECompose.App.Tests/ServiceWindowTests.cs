@@ -125,6 +125,13 @@ public sealed class ServiceWindowTests : IDisposable
             Assert.Equal("Default", (window.FindControl<ComboBox>("MixPresetSelect")!.SelectedItem as MixPresetChoice)?.Name); // the select shows it too
             Assert.NotNull(window.CaptureRenderedFrame());
 
+            // Library › Pads (SL-47): the switch and the empty list render.
+            vm.PadsKey = true;
+            Dispatcher.UIThread.RunJobs();
+            Assert.True(window.FindControl<ItemsControl>("PadSetList")!.IsEffectivelyVisible);
+            Assert.NotNull(window.CaptureRenderedFrame());
+            vm.SongsKey = true;
+
             var transition = new TransitionWindow
             {
                 DataContext = new TransitionViewModel(new Transition { Type = TransitionType.Pad }, "Champion", "Goodness", RECompose.Core.Music.Key.Parse("Db"), 68),

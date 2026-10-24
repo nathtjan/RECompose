@@ -2,7 +2,7 @@
 
 **Goal:** the MD builds this Sunday's service and runs it from song to song. A service ("Sunday 26 Oct · 9:00") is an ordered list of entries; each entry plays a song with its own arrangement (a variant, a custom arrangement for this service only, or as written), key, tempo, mix preset, count-in and transition into the next song. Play runs the service: the music is in the entry's key and tempo, a generated count-in clicks the band in, a pad fades in under the transition, and the next song starts by itself or on Play.
 
-**Status:** in progress (25 Oct 2026). Done: WP1–WP3 (Core: services, entry plans, pad sets) and WP7–WP8 (app: services in the sidebar and the top bar, the selected entry's settings, the ARR-12 question, KEY and TEMPO, transitions, mix presets), with key, tempo, count-in clicks and transitions stored and counted but not yet audible. Next: the engine packages WP4–WP6, which need the C++ toolchain on the development machine, then WP10, WP9 and WP11.
+**Status:** in progress (25 Oct 2026). Done: WP1–WP3 (Core: services, entry plans, pad sets) and WP7–WP8 (app: services in the sidebar and the top bar, the selected entry's settings, the ARR-12 question, KEY and TEMPO, transitions, mix presets), with key, tempo, count-in clicks and transitions stored and counted but not yet audible; and the first part of WP9 (pad folders import into Library › Pads). Next: the engine packages WP4–WP6, which need the C++ toolchain on the development machine, then WP10, WP9 and WP11.
 
 **Starting point:** milestone 3. Songs carry variants and the song itself picks the one that plays (`DefaultArrangementId`); there are no services; key lift, click bars and pad bars are stored but silent; the engine holds one song and plays only its stems.
 

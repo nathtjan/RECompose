@@ -242,13 +242,33 @@
               </Button>
               <TextBlock Classes="label" Text="LIBRARY" VerticalAlignment="Center" />
             </DockPanel>
-            <TextBox x:Name="Search" PlaceholderText="Search title or key" Text="{Binding SearchText}" />
+            <!-- Songs | Pads (UI-12, SL-47) -->
+            <StackPanel Orientation="Horizontal" Spacing="2">
+              <ToggleButton Content="Songs" IsChecked="{Binding SongsKey}" />
+              <ToggleButton Content="Pads" IsChecked="{Binding PadsKey}" />
+            </StackPanel>
+            <TextBox x:Name="Search" PlaceholderText="Search title or key" Text="{Binding SearchText}" IsVisible="{Binding ShowSongs}" />
+          </StackPanel>
+
+          <StackPanel DockPanel.Dock="Top" Margin="16" Spacing="4" IsVisible="{Binding ShowPads}">
+            <TextBlock Classes="meta" TextWrapping="Wrap" IsVisible="{Binding PadsEmpty}"
+                       Text="No pad sets yet. Import a folder of twelve pad files named by key (C, D♭ … B)." />
+            <ItemsControl x:Name="PadSetList" ItemsSource="{Binding PadSets}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:PadSetItem">
+                  <StackPanel Spacing="2" Margin="0,4">
+                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Classes="meta" Text="{Binding MetaLine}" />
+                  </StackPanel>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
           </StackPanel>
 
           <TextBlock DockPanel.Dock="Top" Margin="16" TextWrapping="Wrap" Classes="meta" IsVisible="{Binding LibraryEmpty}"
                      Text="No songs yet. Drag a folder of stems onto this window, or press Import." />
 
-          <ListBox x:Name="Library" ItemsSource="{Binding Songs}" SelectedItem="{Binding SelectedSong}" Background="Transparent"
+          <ListBox x:Name="Library" ItemsSource="{Binding Songs}" SelectedItem="{Binding SelectedSong}" Background="Transparent" IsVisible="{Binding ShowSongs}"
                    ToolTip.Tip="Double-click to load; drag onto the service to add it">
             <ListBox.ItemTemplate>
               <DataTemplate x:DataType="vm:SongItemViewModel">

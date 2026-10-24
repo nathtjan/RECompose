@@ -486,3 +486,54 @@ internal sealed class ServiceDialogs : IDialogs
 
     public Task<bool> EditTransitionAsync(TransitionViewModel transition) => Task.FromResult(EditTransition?.Invoke(transition) ?? false);
 }
+
+// SL-47, AT-34 in the app: a pad folder imports as a pad set under Library › Pads, not as a song.
+public sealed class PadImportTests : IDisposable
+{
+    private readonly string _root = Path.Combine(Path.GetTempPath(), "rec-pads-vm-" + Guid.NewGuid().ToString("N"));
+
+    public void Dispose()
+    {
+        try
+        {
+            Directory.Delete(_root, true);
+        }
+        catch (IOException)
+        {
+        }
+    }
+
+    [Fact]
+    public async Task AT34_a_folder_of_twelve_key_named_pads_is_a_pad_set_not_a_song()
+    {
+        var folder = Path.Combine(_root, "OB Pads");
+        Directory.CreateDirectory(folder);
+        foreach (var key in new[] { "C", "Db", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B" })
+            File.WriteAllBytes(Path.Combine(folder, $"OB Pad {key}.wav"), [0]);
+
+        var store = new DataStore(Path.Combine(_root, "data"));
+        var missing = Path.Combine(_root, "no-engine", EnginePaths.ExecutableFileName);
+        await using var vm = new MainViewModel(store, new EngineHostOptions(missing, Path.Combine(_root, "e.sock")), new EngineTools(missing), new LockedDispatcher(),
+            new ServiceDialogs(), new SpeechModel(store.Root, allowDownload: false));
+        await vm.InitializeAsync();
+        Assert.True(vm.PadsEmpty);
+
+        await vm.ImportFolderAsync(folder);
+        Assert.Empty(vm.Songs);
+        Assert.Equal(["OB Pad"], vm.PadSets.Select(p => p.Name));
+        Assert.Equal("12 keys", vm.PadSets[0].MetaLine);
+        Assert.True(vm.ShowPads);
+        Assert.Equal("Imported the pad set OB Pad · 12 keys", vm.Toast);
+        Assert.Single(store.LoadPads().PadSets);
+
+        // Importing it again doesn't add a second one.
+        await vm.ImportFolderAsync(folder);
+        Assert.Single(vm.PadSets);
+
+        // The switch: pressing the selected key changes nothing.
+        vm.SongsKey = true;
+        Assert.True(vm.ShowSongs);
+        vm.SongsKey = false;
+        Assert.True(vm.ShowSongs);
+    }
+}

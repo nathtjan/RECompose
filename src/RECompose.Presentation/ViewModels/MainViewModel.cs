@@ -415,6 +415,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             _allSongs.Add(new SongItemViewModel(summary));
         RefreshLibrary();
         LoadServices();
+        LoadPads();
         await ConnectEngineAsync(afterCrash: false);
     }
 
@@ -615,11 +616,15 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             return;
         }
 
-        if (ImportService.FindAudioFiles(folder).Count == 0)
+        var audioFiles = ImportService.FindAudioFiles(folder);
+        if (audioFiles.Count == 0)
         {
             ShowToast($"No audio files in {Path.GetFileName(folder)}.");
             return;
         }
+
+        if (TryImportPadSet(folder, audioFiles))
+            return; // SL-47: twelve key-named files are a pad set, not a song
 
         ShowToast($"Reading {Path.GetFileName(folder)}…");
         var scan = await _import.ScanAsync(folder, _allSongs.Select(s => s.Summary));
