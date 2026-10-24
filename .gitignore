@@ -27,3 +27,6 @@ coverage*/
 Thumbs.db
 desktop.ini
 ci-logs/
+
+# Product spec: kept local, never committed
+/specs/
