@@ -1,0 +1,28 @@
+# Build output
+build/
+artifacts/
+publish/
+bin/
+obj/
+out/
+*.user
+*.suo
+
+# IDEs
+.vs/
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.DotSettings.user
+CMakeUserPresets.json
+.cache/
+
+# Test results
+TestResults/
+*.trx
+coverage*/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini

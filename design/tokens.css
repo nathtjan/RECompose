@@ -1,0 +1,225 @@
+/* RECompose — generated from tokens.json */
+:root, [data-theme="dark"] {
+  --bg-app: #141414;
+  --bg-surface: #1a1a1a;
+  --bg-raised: #242424;
+  --bg-inset: #0e0e0e;
+  --border: #2b2b2b;
+  --divider: #222222;
+  --control-border: #6e6e6e;
+  --key: #333333;
+  --key-hover: #3a3a3a;
+  --key-pressed: #2c2c2c;
+  --key-edge: #0b0b0b;
+  --text-primary: #f2f2f2;
+  --text-secondary: #b3b3b3;
+  --text-label: #999999;
+  --text-key-hint: #adadad;
+  --text-dim: #8c8c8c;
+  --text-disabled: #6b6b6b;
+  --text-on-accent: #2a2a2a;
+  --text-on-section: #2a2a2a;
+  --accent: #fcd937;
+  --accent-hover: #ffe15c;
+  --accent-edge: #6e5d0e;
+  --accent-subtle: #2e2a14;
+  --accent-text: #fcd937;
+  --state-playing: #5edc8c;
+  --state-ready: #b3b3b3;
+  --state-hold: var(--accent-text);
+  --state-pending: #7cc4ff;
+  --state-pending-subtle: #1e2329;
+  --state-pending-track: #2b3542;
+  --state-warning: #ffb547;
+  --state-error: #ff7a73;
+  --state-success: var(--state-playing);
+  --state-warning-subtle: #2a2112;
+  --state-error-subtle: #2b1716;
+  --scrim: #000000a6;
+  --led-off: #4a4a4a;
+  --focus-ring: #fcd937;
+  --section-intro: #27d9c9;
+  --section-verse: #8ac3fe;
+  --section-pre-chorus: #28d3f4;
+  --section-chorus: #fea47b;
+  --section-post-chorus: #f5ad53;
+  --section-bridge: #d0a9fe;
+  --section-interlude: #79d68f;
+  --section-vamp: #ee9de7;
+  --section-tag: #aacd67;
+  --section-outro: #b1b7fe;
+  --section-ending: #fe9db3;
+  --section-other: #999999;
+  --section-click: #cccccc;
+  --section-pad: #9fbfbc;
+  --section-hold: var(--accent);
+  --waveform: #8c8c8c;
+  --waveform-muted: #3a3a3a;
+  --meter-low: #5edc8c;
+  --meter-mid: #ffb547;
+  --meter-high: #ff7a73;
+  --playhead: var(--accent);
+  --loop: #f2f2f226;
+  --loop-edge: var(--text-secondary);
+  --pending-marker: var(--state-pending);
+  --shadow-key: inset 0 1px 0 rgba(255,255,255,0.07), 0 1px 0 #0b0b0b, 0 2px 4px rgba(0,0,0,0.45);
+  --shadow-key-pressed: inset 0 2px 3px rgba(0,0,0,0.5);
+  --shadow-accent-key: inset 0 1px 0 rgba(255,255,255,0.4), 0 1px 0 #6e5d0e, 0 2px 4px rgba(0,0,0,0.45);
+  --elevation-popover: 0 8px 24px rgba(0,0,0,0.55);
+  --elevation-dialog: 0 16px 48px rgba(0,0,0,0.6);
+}
+[data-theme="light"] {
+  --bg-app: #ecece8;
+  --bg-surface: #f5f5f2;
+  --bg-raised: #ffffff;
+  --bg-inset: #dededa;
+  --border: #c4c4c0;
+  --divider: #dcdcd8;
+  --control-border: #6e6e6a;
+  --key: #ffffff;
+  --key-hover: #fafaf8;
+  --key-pressed: #efefec;
+  --key-edge: #82827e;
+  --text-primary: #2a2a2a;
+  --text-secondary: #555555;
+  --text-label: #5e5e5e;
+  --text-key-hint: #5e5e5e;
+  --text-dim: #636363;
+  --text-disabled: #a6a6a2;
+  --text-on-accent: #2a2a2a;
+  --accent: #fcd937;
+  --accent-hover: #ffe15c;
+  --accent-edge: #6e5d0e;
+  --accent-subtle: #fbf3cc;
+  --accent-text: #7a6400;
+  --state-playing: #13733a;
+  --state-ready: #555555;
+  --state-hold: var(--accent-text);
+  --state-pending: #1a62b0;
+  --state-pending-subtle: #edf3fa;
+  --state-pending-track: #c9d8ec;
+  --state-warning: #8a5500;
+  --state-error: #c62e28;
+  --state-success: var(--state-playing);
+  --state-warning-subtle: #faf0de;
+  --state-error-subtle: #fbe7e5;
+  --scrim: #2a2a2a66;
+  --led-off: #c4c4c0;
+  --focus-ring: #2a2a2a;
+  --section-hold: var(--accent);
+  --waveform: #6b6b6b;
+  --waveform-muted: #cfcfcb;
+  --meter-low: #13733a;
+  --meter-mid: #8f5e00;
+  --meter-high: #c62e28;
+  --playhead: var(--text-primary);
+  --loop: #2a2a2a1f;
+  --loop-edge: var(--text-secondary);
+  --pending-marker: var(--state-pending);
+  --shadow-key: inset 0 1px 0 rgba(255,255,255,0.9), 0 1px 0 #82827e, 0 1px 3px rgba(0,0,0,0.16);
+  --shadow-key-pressed: inset 0 1px 2px rgba(0,0,0,0.18);
+  --shadow-accent-key: inset 0 1px 0 rgba(255,255,255,0.5), 0 1px 0 #6e5d0e, 0 1px 3px rgba(0,0,0,0.18);
+  --elevation-popover: 0 8px 24px rgba(0,0,0,0.16);
+  --elevation-dialog: 0 16px 48px rgba(0,0,0,0.2);
+}
+[data-theme="contrast"] {
+  --bg-app: #000000;
+  --bg-surface: #000000;
+  --bg-raised: #141414;
+  --bg-inset: #000000;
+  --border: #8a8a8a;
+  --divider: #5c5c5c;
+  --control-border: #bdbdbd;
+  --key: #1f1f1f;
+  --key-hover: #2a2a2a;
+  --key-pressed: #000000;
+  --key-edge: #bdbdbd;
+  --text-primary: #ffffff;
+  --text-secondary: #e6e6e6;
+  --text-label: #d0d0d0;
+  --text-key-hint: #d0d0d0;
+  --text-dim: #bdbdbd;
+  --text-disabled: #8a8a8a;
+  --text-on-accent: #000000;
+  --text-on-section: #000000;
+  --accent: #ffe14d;
+  --accent-hover: #ffea80;
+  --accent-edge: #ffffff;
+  --accent-subtle: #2e2a14;
+  --accent-text: #ffe14d;
+  --state-playing: #7df0a6;
+  --state-ready: #e6e6e6;
+  --state-hold: var(--accent-text);
+  --state-pending: #a8d8ff;
+  --state-pending-subtle: #0a1a2a;
+  --state-pending-track: #2b4a6a;
+  --state-warning: #ffc56b;
+  --state-error: #ff9a94;
+  --state-success: var(--state-playing);
+  --state-warning-subtle: #2a2112;
+  --state-error-subtle: #2b1716;
+  --scrim: #000000cc;
+  --led-off: #6e6e6e;
+  --focus-ring: #ffe14d;
+  --section-hold: var(--accent);
+  --waveform: #d0d0d0;
+  --waveform-muted: #4a4a4a;
+  --meter-low: #7df0a6;
+  --meter-mid: #ffc56b;
+  --meter-high: #ff9a94;
+  --playhead: var(--accent);
+  --loop: #ffffff33;
+  --loop-edge: var(--text-secondary);
+  --pending-marker: var(--state-pending);
+  --shadow-key: 0 1px 0 #bdbdbd;
+  --shadow-key-pressed: none;
+  --shadow-accent-key: 0 1px 0 #ffffff;
+  --elevation-popover: none;
+  --elevation-dialog: none;
+}
+:root {
+  --space-1: 2px;
+  --space-2: 4px;
+  --space-3: 6px;
+  --space-4: 8px;
+  --space-5: 12px;
+  --space-6: 16px;
+  --space-7: 24px;
+  --space-8: 32px;
+  --radius-s: 4px;
+  --radius-m: 7px;
+  --radius-l: 10px;
+  --size-target: 44px;
+  --size-key: 56px;
+  --size-key-compact: 32px;
+  --size-row: 56px;
+  --size-tile: 76px;
+  --size-status-bar: 60px;
+  --motion-fast: 120ms;
+  --motion-normal: 200ms;
+  --motion-hold: 600ms;
+  --motion-reduced: 0ms;
+  --ease-out: cubic-bezier(0.2, 0, 0, 1);
+  --ease-linear: linear;
+  --font-sans: "Hanken Grotesk", "REC Accidentals", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "Martian Mono", "REC Accidentals", Consolas, "SF Mono", monospace;
+}
+.now { font-family: var(--font-sans); font-size: 96px; line-height: 0.9; font-weight: 700; letter-spacing: -0.035em; }
+.next { font-family: var(--font-sans); font-size: 56px; line-height: 0.95; font-weight: 700; letter-spacing: -0.03em; }
+.body-perform { font-family: var(--font-sans); font-size: 16px; line-height: 22px; font-weight: 500; }
+.title { font-family: var(--font-sans); font-size: 20px; line-height: 26px; font-weight: 700; letter-spacing: -0.01em; }
+.heading { font-family: var(--font-sans); font-size: 16px; line-height: 22px; font-weight: 700; }
+.body { font-family: var(--font-sans); font-size: 14px; line-height: 20px; font-weight: 400; }
+.body-strong { font-family: var(--font-sans); font-size: 14px; line-height: 20px; font-weight: 600; }
+.key-label { font-family: var(--font-sans); font-size: 14px; line-height: 16px; font-weight: 700; }
+.meta { font-family: var(--font-sans); font-size: 12px; line-height: 16px; font-weight: 500; }
+.label { font-family: var(--font-sans); font-size: 12px; line-height: 16px; font-weight: 700; letter-spacing: 0.08em; }
+.key-hint { font-family: var(--font-sans); font-size: 11px; line-height: 12px; font-weight: 600; }
+.readout-xl { font-family: var(--font-mono); font-size: 32px; line-height: 36px; font-weight: 500; }
+.readout { font-family: var(--font-mono); font-size: 26px; line-height: 30px; font-weight: 500; }
+.value { font-family: var(--font-mono); font-size: 17px; line-height: 20px; font-weight: 500; }
+.mono { font-family: var(--font-mono); font-size: 13px; line-height: 18px; font-weight: 400; }
+.mono-small { font-family: var(--font-mono); font-size: 12px; line-height: 16px; font-weight: 500; }
+@font-face { font-family: "Hanken Grotesk"; src: url("fonts/HankenGrotesk-Variable.ttf"); font-weight: 100 900; font-style: normal; font-display: swap; }
+@font-face { font-family: "Martian Mono"; src: url("fonts/MartianMono-Variable.ttf"); font-weight: 100 800; font-style: normal; font-display: swap; }
+@font-face { font-family: "REC Accidentals"; src: url("fonts/RECAccidentals.ttf"); font-weight: 400; font-style: normal; font-display: swap; }

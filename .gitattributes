@@ -1,0 +1,14 @@
+# Normalise text to LF in the repository; scripts that Windows tools expect with CRLF keep it.
+* text=auto eol=lf
+*.ps1 text eol=crlf
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+*.ttf binary
+*.otf binary
+*.png binary
+*.wav binary
+*.flac binary
+*.aif binary
+*.aiff binary
+*.mp3 binary
