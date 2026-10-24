@@ -2,7 +2,8 @@ add_executable(recompose_engine_tests
     test_main.cpp
     test_frame.cpp
     test_message_handler.cpp
-    test_engine_server.cpp)
+    test_engine_server.cpp
+    test_player.cpp)
 
 target_link_libraries(recompose_engine_tests PRIVATE recompose_engine_core)
 

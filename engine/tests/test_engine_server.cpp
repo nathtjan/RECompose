@@ -65,13 +65,22 @@ rec::ipc::LocalSocket connectWithRetry (const std::string& endpoint)
     return {};
 }
 
+rec::EngineServer::Options options (const std::string& endpoint, double idleExitSeconds)
+{
+    rec::EngineServer::Options o;
+    o.endpoint = endpoint;
+    o.idleExitSeconds = idleExitSeconds;
+    o.pollIntervalMs = 20;
+    return o;
+}
+
 const std::string hello = R"({"type":"hello","id":1,"protocol":)" + std::to_string (rec::REC_PROTOCOL_VERSION) + "}";
 } // namespace
 
 TEST ("server: hello and shutdown over a real socket")
 {
     const auto endpoint = tempEndpoint ("roundtrip");
-    rec::EngineServer server ({ endpoint, 30.0, 20 }, identity());
+    rec::EngineServer server (options (endpoint, 30.0), identity());
     std::string error;
     CHECK (server.start (error));
 
@@ -90,7 +99,7 @@ TEST ("server: hello and shutdown over a real socket")
 TEST ("server: keeps running when the app disconnects, and a new app can attach")
 {
     const auto endpoint = tempEndpoint ("reattach");
-    rec::EngineServer server ({ endpoint, 30.0, 20 }, identity());
+    rec::EngineServer server (options (endpoint, 30.0), identity());
     std::string error;
     CHECK (server.start (error));
     std::thread loop ([&] { server.run(); });
@@ -111,7 +120,7 @@ TEST ("server: keeps running when the app disconnects, and a new app can attach"
 TEST ("server: exits by itself when no app is connected")
 {
     const auto endpoint = tempEndpoint ("idle");
-    rec::EngineServer server ({ endpoint, 0.2, 20 }, identity());
+    rec::EngineServer server (options (endpoint, 0.2), identity());
     std::string error;
     CHECK (server.start (error));
 
@@ -130,7 +139,7 @@ TEST ("server: replaces a stale socket file")
         juce::File (juce::String (endpoint)).replaceWithText ("left behind");
     }
 
-    rec::EngineServer server ({ endpoint, 30.0, 20 }, identity());
+    rec::EngineServer server (options (endpoint, 30.0), identity());
     std::string error;
     CHECK (server.start (error));
     if (! error.empty())

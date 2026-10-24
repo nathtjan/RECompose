@@ -14,7 +14,9 @@
 #include "message_handler.h"
 
 #include <atomic>
+#include <functional>
 #include <string>
+#include <vector>
 
 namespace rec
 {
@@ -26,6 +28,11 @@ public:
         std::string endpoint;
         double idleExitSeconds = 10.0;
         int pollIntervalMs = 100;
+
+        // Optional hooks to the engine (absent in protocol-only tests).
+        RequestDelegate requests;                                   // other request types
+        std::function<std::vector<std::string> (bool connected)> outgoing; // snapshots, events
+        std::function<bool()> busy;                                 // playing: don't exit when idle
     };
 
     enum class ExitReason

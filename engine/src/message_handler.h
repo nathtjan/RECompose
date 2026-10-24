@@ -7,6 +7,7 @@
 
 #include <juce_core/juce_core.h>
 
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -27,10 +28,14 @@ struct HandlerResult
     bool shutdownRequested = false;   // after sending the replies
 };
 
+// Handles every request type except hello, ping and shutdown. Returns the reply object
+// (with "type"); the handler adds "re".
+using RequestDelegate = std::function<juce::var (const juce::String& type, const juce::var& message)>;
+
 class MessageHandler
 {
 public:
-    explicit MessageHandler (EngineIdentity identity);
+    explicit MessageHandler (EngineIdentity identity, RequestDelegate delegate = {});
 
     HandlerResult handle (const std::string& payload);
 
@@ -38,6 +43,7 @@ private:
     juce::var hello (const juce::var& message, const juce::var& id, HandlerResult& result);
 
     EngineIdentity identity_;
+    RequestDelegate delegate_;
     bool helloDone_ = false;
 };
 

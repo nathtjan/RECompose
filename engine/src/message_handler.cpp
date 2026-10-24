@@ -33,7 +33,10 @@ juce::var makeError (const juce::var& requestId, const char* code, const juce::S
     return error;
 }
 
-MessageHandler::MessageHandler (EngineIdentity identity) : identity_ (std::move (identity)) {}
+MessageHandler::MessageHandler (EngineIdentity identity, RequestDelegate delegate)
+    : identity_ (std::move (identity)), delegate_ (std::move (delegate))
+{
+}
 
 HandlerResult MessageHandler::handle (const std::string& payload)
 {
@@ -81,6 +84,15 @@ HandlerResult MessageHandler::handle (const std::string& payload)
     if (type == "ping")
     {
         result.replies.push_back (toJson (reply ("pong", id)));
+    }
+    else if (delegate_)
+    {
+        auto answer = delegate_ (type, message);
+        if (! answer.isObject())
+            answer = makeError (id, errors::unknownType, "Unknown message type: " + type);
+        if (! id.isVoid())
+            answer.getDynamicObject()->setProperty ("re", id);
+        result.replies.push_back (toJson (answer));
     }
     else
     {

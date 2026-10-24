@@ -2,21 +2,25 @@
 //
 // recompose-engine: the audio engine process. The app starts it with
 //   recompose-engine --endpoint <socket path> [--idle-exit-seconds N]
-// and talks to it over that socket (docs/engine-protocol.md).
+// and talks to it over that socket (docs/engine-protocol.md). The import jobs use the
+// one-shot modes in tools.h.
 //
-// Milestone 0: the control loop and the handshake. Milestone 1 (WP1) runs JUCE's message
-// loop on the main thread for the AudioDeviceManager and moves this loop to its own thread.
+// Threads: the main thread runs JUCE's message loop (the device manager, the engine
+// state); the server thread moves bytes; the disk and audio threads stream and play.
+#include "engine.h"
 #include "engine_server.h"
 #include "ipc/local_socket.h"
 #include "protocol.h"
+#include "tools.h"
 
-#include <juce_core/juce_core.h>
+#include <juce_events/juce_events.h>
 
 #include <csignal>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <string>
+#include <thread>
 
 #if defined(_WIN32)
   #include <process.h>
@@ -47,16 +51,39 @@ void printUsage()
 {
     std::fprintf (stderr,
                   "Usage: recompose-engine --endpoint <socket path> [--idle-exit-seconds N]\n"
+                  "       recompose-engine probe <file>\n"
+                  "       recompose-engine peaks <file> <out> [framesPerBucket]\n"
                   "       recompose-engine --version\n");
 }
 } // namespace
 
 int main (int argc, char* argv[])
 {
-    rec::EngineServer::Options options;
     const rec::EngineIdentity identity { RECOMPOSE_ENGINE_VERSION,
                                          juce::SystemStats::getJUCEVersion().toStdString(),
                                          currentPid() };
+
+    if (argc >= 2 && std::strcmp (argv[1], "probe") == 0)
+    {
+        if (argc != 3)
+        {
+            printUsage();
+            return 64;
+        }
+        return rec::tools::probe (argv[2]);
+    }
+
+    if (argc >= 2 && std::strcmp (argv[1], "peaks") == 0)
+    {
+        if (argc < 4 || argc > 5)
+        {
+            printUsage();
+            return 64;
+        }
+        return rec::tools::peaks (argv[2], argv[3], argc == 5 ? std::atoi (argv[4]) : 480);
+    }
+
+    rec::EngineServer::Options options;
 
     for (int i = 1; i < argc; ++i)
     {
@@ -93,6 +120,17 @@ int main (int argc, char* argv[])
         return 70;
     }
 
+    juce::ScopedJuceInitialiser_GUI juceRuntime; // this thread becomes the message thread
+    auto engine = std::make_unique<rec::Engine>();
+
+    options.requests = [&engine] (const juce::String& type, const juce::var& message) -> juce::var
+    {
+        auto reply = juce::MessageManager::callSync ([&] { return engine->handle (type, message); });
+        return reply.has_value() ? *reply : juce::var();
+    };
+    options.outgoing = [&engine] (bool connected) { return engine->takeOutgoing (connected); };
+    options.busy = [&engine] { return engine->isPlaying(); };
+
     rec::EngineServer server (options, identity);
     std::string error;
     if (! server.start (error))
@@ -108,8 +146,17 @@ int main (int argc, char* argv[])
     std::signal (SIGPIPE, SIG_IGN); // a vanished app must never kill the engine (REL-34)
    #endif
 
-    server.run();
+    std::thread control ([&server]
+    {
+        server.run();
+        juce::MessageManager::getInstance()->stopDispatchLoop();
+    });
 
+    juce::MessageManager::getInstance()->runDispatchLoop();
+
+    server.stop();
+    control.join();
     runningServer = nullptr;
+    engine.reset();
     return 0;
 }

@@ -30,6 +30,29 @@ FetchContent_Declare(JUCE
     GIT_PROGRESS TRUE)
 FetchContent_MakeAvailable(JUCE)
 
+# r8brain-free (MIT): high-quality resampling when a stem's rate differs from the device's (PB-2).
+FetchContent_Declare(r8brain
+    GIT_REPOSITORY https://github.com/avaneev/r8brain-free-src.git
+    GIT_TAG version-6.5
+    GIT_SHALLOW TRUE)
+FetchContent_MakeAvailable(r8brain) # no CMakeLists of its own: this only downloads it
+add_library(r8brain STATIC ${r8brain_SOURCE_DIR}/r8bbase.cpp)
+target_include_directories(r8brain SYSTEM PUBLIC ${r8brain_SOURCE_DIR})
+set_target_properties(r8brain PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+# Steinberg ASIO SDK (GPLv3 option, compatible with this project's AGPLv3) for ASIO on
+# Windows (PLAT-10). Downloaded at configure time; turn off with -DRECOMPOSE_ASIO=OFF.
+option(RECOMPOSE_ASIO "Build with ASIO support on Windows" ON)
+set(RECOMPOSE_ASIO_ENABLED 0)
+if(WIN32 AND RECOMPOSE_ASIO)
+    FetchContent_Declare(asiosdk
+        URL https://download.steinberg.net/sdk_downloads/ASIO-SDK_2.3.4_2025-10-15.zip
+        URL_HASH SHA256=d5ebf0c20dd2c5f43771fd0c1418f4b361bf52434ee670097cfa6b3a335e2eca
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+    FetchContent_MakeAvailable(asiosdk)
+    set(RECOMPOSE_ASIO_ENABLED 1)
+endif()
+
 # JUCE modules compiled once into a static library that the engine and the tests share
 # (JUCE's own "shared code" pattern: module sources are added only to this target).
 add_library(recompose_juce STATIC)
@@ -57,8 +80,11 @@ target_compile_definitions(recompose_juce
         # both platforms read the same formats (PLAT-1).
         JUCE_USE_OPUS=0
         JUCE_USE_WINDOWS_MEDIA_FORMAT=0
-        # ASIO is switched on in milestone 1 together with the Steinberg ASIO SDK (GPLv3 option).
-        JUCE_ASIO=0)
+        JUCE_ASIO=${RECOMPOSE_ASIO_ENABLED})
+
+if(RECOMPOSE_ASIO_ENABLED)
+    target_include_directories(recompose_juce PRIVATE ${asiosdk_SOURCE_DIR}/common)
+endif()
 
 # Consumers see the module headers and the module-availability definitions too.
 target_include_directories(recompose_juce
@@ -66,16 +92,21 @@ target_include_directories(recompose_juce
 target_compile_definitions(recompose_juce
     INTERFACE $<TARGET_PROPERTY:recompose_juce,COMPILE_DEFINITIONS>)
 
-# Everything except main(): protocol, sockets, control loop (and from M1 the audio graph).
+# Everything except main(): protocol, sockets, control loop, audio graph, tools.
 add_library(recompose_engine_core STATIC
     src/ipc/frame.cpp
     src/ipc/local_socket.cpp
     src/engine_server.cpp
-    src/message_handler.cpp)
+    src/message_handler.cpp
+    src/engine.cpp
+    src/tools.cpp
+    src/audio/song.cpp
+    src/audio/disk_streamer.cpp
+    src/audio/player.cpp)
 
 target_include_directories(recompose_engine_core PUBLIC src)
 target_compile_definitions(recompose_engine_core PUBLIC RECOMPOSE_ENGINE_VERSION="${PROJECT_VERSION}")
-target_link_libraries(recompose_engine_core PUBLIC recompose_juce)
+target_link_libraries(recompose_engine_core PUBLIC recompose_juce r8brain)
 if(WIN32)
     target_link_libraries(recompose_engine_core PUBLIC ws2_32)
 endif()

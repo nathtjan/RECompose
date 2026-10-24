@@ -16,8 +16,8 @@ namespace
 
     struct Connection
     {
-        explicit Connection (ipc::LocalSocket s, const EngineIdentity& identity)
-            : socket (std::move (s)), decoder (kMaxFrameBytes), handler (identity)
+        Connection (ipc::LocalSocket s, const EngineIdentity& identity, const RequestDelegate& requests)
+            : socket (std::move (s)), decoder (kMaxFrameBytes), handler (identity, requests)
         {
         }
 
@@ -56,19 +56,27 @@ EngineServer::ExitReason EngineServer::run()
         // A new connection (an app that restarted, or a second app) replaces the current one.
         const int acceptWait = connection ? 0 : options_.pollIntervalMs;
         if (auto incoming = listener_.accept (acceptWait); incoming.isOpen())
-            connection = std::make_unique<Connection> (std::move (incoming), identity_);
+            connection = std::make_unique<Connection> (std::move (incoming), identity_, options_.requests);
+
+        // Snapshots and events from the engine; dropped while no app is connected.
+        if (options_.outgoing)
+            for (const auto& message : options_.outgoing (connection != nullptr))
+                if (connection != nullptr && ! send (connection->socket, message))
+                    connection.reset();
 
         if (! connection)
         {
-            // M1: also require "not playing" before exiting.
-            if (Clock::now() - lastConnected >= idleLimit)
+            if (options_.busy && options_.busy())
+                lastConnected = Clock::now(); // still playing: the band needs the music (REL-34)
+            else if (Clock::now() - lastConnected >= idleLimit)
                 return ExitReason::idle;
             continue;
         }
 
         lastConnected = Clock::now();
 
-        const auto wait = connection->socket.waitReadable (options_.pollIntervalMs);
+        // Short waits while connected so snapshots go out at display rate.
+        const auto wait = connection->socket.waitReadable (options_.outgoing ? 10 : options_.pollIntervalMs);
         if (wait == ipc::Wait::timeout)
             continue;
 
