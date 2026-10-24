@@ -61,6 +61,21 @@ public sealed class WindowSmokeTests : IDisposable
         }
     }
 
+    /// <summary>
+    /// Errors, and binding warnings other than "Value is null": bindings such as Song.Title
+    /// legitimately see a null Song while no song is loaded.
+    /// </summary>
+    private static List<string> Problems(CollectingSink sink)
+    {
+        lock (sink.Messages)
+        {
+            return sink.Messages
+                .Where(m => m.StartsWith("Error", StringComparison.Ordinal)
+                         || (m.Contains("Binding", StringComparison.Ordinal) && !m.EndsWith("Value is null.", StringComparison.Ordinal)))
+                .ToList();
+        }
+    }
+
     private static string Executable()
     {
         var executable = Path.Combine(AppContext.BaseDirectory, EnginePaths.ExecutableFileName);
@@ -144,7 +159,7 @@ public sealed class WindowSmokeTests : IDisposable
             window.Close();
         }, TestContext.Current.CancellationToken);
 
-        var problems = sink.Messages.Where(m => m.StartsWith("Error", StringComparison.Ordinal) || m.Contains("Binding", StringComparison.Ordinal)).ToList();
+        var problems = Problems(sink);
         Assert.True(problems.Count == 0, "Avalonia reported:\n" + string.Join("\n", problems.Take(30)));
     }
 
@@ -179,7 +194,7 @@ public sealed class WindowSmokeTests : IDisposable
             audio.Close();
         }, TestContext.Current.CancellationToken);
 
-        var problems = sink.Messages.Where(m => m.StartsWith("Error", StringComparison.Ordinal) || m.Contains("Binding", StringComparison.Ordinal)).ToList();
+        var problems = Problems(sink);
         Assert.True(problems.Count == 0, "Avalonia reported:\n" + string.Join("\n", problems.Take(30)));
     }
 }

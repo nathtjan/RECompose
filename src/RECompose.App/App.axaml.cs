@@ -28,10 +28,19 @@ public partial class App : Application
         }
     }
 
+    private static FileStream? _instanceLock;
+
     public override void OnFrameworkInitializationCompleted()
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
+            if (!TryTakeInstanceLock())
+            {
+                desktop.MainWindow = AlreadyRunningWindow();
+                base.OnFrameworkInitializationCompleted();
+                return;
+            }
+
             var window = new MainWindow();
             var dialogs = new AvaloniaDialogs(window);
             var store = DataStore.Default();
@@ -52,6 +61,54 @@ public partial class App : Application
         }
 
         base.OnFrameworkInitializationCompleted();
+    }
+
+    /// <summary>
+    /// One RECompose per user: two windows would take the engine from each other. The lock is
+    /// a file held open exclusively; the OS releases it if the app crashes.
+    /// </summary>
+    private static bool TryTakeInstanceLock()
+    {
+        var path = Path.Combine(Path.GetDirectoryName(EnginePaths.DefaultEndpoint())!, "app.lock");
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            _instanceLock = new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+            return true;
+        }
+        catch (IOException)
+        {
+            return false;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return true; // can't tell; don't block the app
+        }
+    }
+
+    private static Window AlreadyRunningWindow()
+    {
+        var close = new Button { Content = "Close", HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right, IsDefault = true };
+        var window = new Window
+        {
+            Title = "RECompose",
+            Width = 420,
+            SizeToContent = SizeToContent.Height,
+            CanResize = false,
+            WindowStartupLocation = WindowStartupLocation.CenterScreen,
+            Content = new StackPanel
+            {
+                Margin = new Thickness(20),
+                Spacing = 16,
+                Children =
+                {
+                    new TextBlock { Text = "RECompose is already open. Switch to its window to continue.", TextWrapping = Avalonia.Media.TextWrapping.Wrap },
+                    close,
+                },
+            },
+        };
+        close.Click += (_, _) => window.Close();
+        return window;
     }
 
     // On a normal quit the engine stops too. If the app crashes instead, the engine keeps
