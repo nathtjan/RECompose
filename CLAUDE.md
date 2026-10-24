@@ -13,6 +13,15 @@ Read `README.md` for the layout and build commands, `docs/adr/` for decisions, a
 - UI styling comes from `design/tokens.json` through generated resources. Don't hand-code colours, sizes or fonts; use the design system's components as the behavioural reference (`design/reference/`).
 - Copy follows the design system's voice: band words (Verse 2, Chorus 3), real accidentals (B♭), no emoji, no exclamation marks.
 
+## Where things stand
+
+Milestones 0–3 are on `main`; the next one is M4 (services). Start from `docs/milestones/M3-arrangements.md` (status, known gaps) and the handoff doc in the Claude project.
+
+- Two clocks: *plan time* is the engine position and the as-heard timeline; *source time* is stems, sections, M and review. Convert only through `SongPlan` (`SourceAt`, `PlanAt`, `Remap`).
+- `MainViewModel` owns the playhead (`PlanPositionSec`, `PositionSec`, `TimelinePosition`); never mix them.
+- The engine plays a plan sent with `setPlan` (protocol 3); plan building lives in `RECompose.Core.Planning`.
+- Key lift, click/pad bars, holds and until-cued repeats are stored but not audible until M4–M6.
+
 ## Commands
 
 - Full build and tests: `./build.sh` (macOS/Linux) or `.\build.ps1` (Windows)
