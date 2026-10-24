@@ -341,7 +341,7 @@ public class ServiceTests
         Assert.Equal("Stop", ServiceText.Chip(Transition.Stop, db, 72));
         Assert.Equal("Segue", ServiceText.Chip(new Transition { Type = TransitionType.Segue }, db, 72));
         Assert.Equal("Segue · 2 beats", ServiceText.Chip(new Transition { Type = TransitionType.Segue, SegueGapBeats = 2 }, db, 72));
-        Assert.Equal("Crossfade 6s", ServiceText.Chip(new Transition { Type = TransitionType.Crossfade }, db, 72));
+        Assert.Equal("Crossfade 6 s", ServiceText.Chip(new Transition { Type = TransitionType.Crossfade }, db, 72));
         Assert.Equal("Pad in D♭ · click 72", ServiceText.Chip(new Transition { Type = TransitionType.Pad }, db, 72)); // AT-30 defaults
         Assert.Equal("Pad in E", ServiceText.Chip(new Transition { Type = TransitionType.Pad, PadKey = "E", ClickDuring = false }, db, 72));
         Assert.Equal("Carry pad over", ServiceText.Chip(new Transition { Type = TransitionType.CarryOver }, db, 72));

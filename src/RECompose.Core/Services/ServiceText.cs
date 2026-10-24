@@ -107,12 +107,12 @@ public static class ServiceText
     /// <summary>The click tempo of a Pad transition: its own, else the next song's BPM, else 120.</summary>
     public static double ClickBpm(Transition transition, double? nextBpm) => transition.ClickBpm ?? nextBpm ?? 120;
 
-    /// <summary>The chip between two rows (SL-20): "Stop", "Segue", "Crossfade 6s", "Pad in D♭ · click 72", "Carry pad over".</summary>
+    /// <summary>The chip between two rows (SL-20): "Stop", "Segue", "Crossfade 6 s", "Pad in D♭ · click 72", "Carry pad over".</summary>
     public static string Chip(Transition transition, Key? nextKey, double? nextBpm) => transition.Type switch
     {
         TransitionType.Segue when transition.SegueGapBeats > 0 => $"Segue · {Beats(transition.SegueGapBeats)}",
         TransitionType.Segue => "Segue",
-        TransitionType.Crossfade => $"Crossfade {Seconds(transition.CrossfadeSec)}s",
+        TransitionType.Crossfade => $"Crossfade {Seconds(transition.CrossfadeSec)} s",
         TransitionType.Pad => transition.ClickDuring
             ? $"Pad in {PadKey(transition, nextKey).ToDisplayString()} · click {Format.Bpm(ClickBpm(transition, nextBpm))}"
             : $"Pad in {PadKey(transition, nextKey).ToDisplayString()}",

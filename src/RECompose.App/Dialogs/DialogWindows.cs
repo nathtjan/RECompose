@@ -1,4 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+using System.Globalization;
+using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Markup.Xaml;
@@ -15,6 +18,17 @@ public partial class ImportReviewWindow : Window
         AvaloniaXamlLoader.Load(this);
         this.FindControl<Button>("CancelButton")!.Click += (_, _) => Close(false);
         this.FindControl<Button>("ImportButton")!.Click += (_, _) => Close(true);
+    }
+}
+
+public partial class TransitionWindow : Window
+{
+    public TransitionWindow()
+    {
+        AvaloniaXamlLoader.Load(this);
+        this.FindControl<Button>("CancelButton")!.Click += (_, _) => Close(false);
+        this.FindControl<Button>("SaveButton")!.Click += (_, _) => Close(true);
+        this.FindControl<Button>("ClearButton")!.Click += (_, _) => (DataContext as TransitionViewModel)?.Clear();
     }
 }
 
@@ -92,6 +106,186 @@ public sealed class AvaloniaDialogs(Window owner) : IDialogs
         };
 
         return await window.ShowDialog<bool>(owner);
+    }
+
+    public async Task<bool> EditTransitionAsync(TransitionViewModel transition)
+    {
+        var window = new TransitionWindow { DataContext = transition };
+        return await window.ShowDialog<bool>(owner);
+    }
+
+    /// <summary>SL-2: name, date and time of a service. An empty date makes an undated service.</summary>
+    public async Task<ServiceDetails?> AskServiceDetailsAsync(string title, string confirmLabel, ServiceDetails initial)
+    {
+        var window = Dialog(title);
+        var name = new TextBox { Text = initial.Name, PlaceholderText = "Sunday 26 Oct" };
+        AutomationProperties.SetName(name, "Service name");
+        var date = new CalendarDatePicker { SelectedDate = initial.Date?.Date, PlaceholderText = "No date", HorizontalAlignment = HorizontalAlignment.Stretch };
+        AutomationProperties.SetName(date, "Date");
+        var time = new TextBox { Text = initial.Date?.ToString("H:mm", CultureInfo.InvariantCulture) ?? "9:00", Width = 100, HorizontalAlignment = HorizontalAlignment.Left };
+        AutomationProperties.SetName(time, "Time");
+        var problem = new TextBlock { IsVisible = false };
+        problem.Classes.Add("meta");
+        if (Application.Current?.FindResource("state-warning") is Avalonia.Media.IBrush warning)
+            problem.Foreground = warning;
+
+        var ok = new Button { Content = confirmLabel, Classes = { "primary" }, IsDefault = true };
+        var cancel = new Button { Content = "Cancel", IsCancel = true };
+        ServiceDetails? result = null;
+        ok.Click += (_, _) =>
+        {
+            if (string.IsNullOrWhiteSpace(name.Text))
+            {
+                name.Focus();
+                return;
+            }
+
+            DateTime? when = null;
+            if (date.SelectedDate is { } day)
+            {
+                var t = TimeSpan.FromHours(9);
+                if (!string.IsNullOrWhiteSpace(time.Text) && !TimeSpan.TryParseExact(time.Text.Trim(), ["h\\:mm", "hh\\:mm"], CultureInfo.InvariantCulture, out t))
+                {
+                    problem.Text = "Write the time as 9:00 or 18:30.";
+                    problem.IsVisible = true;
+                    return;
+                }
+
+                when = day.Date + t;
+            }
+
+            result = new ServiceDetails(name.Text.Trim(), when);
+            window.Close();
+        };
+        cancel.Click += (_, _) => window.Close();
+
+        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("100,*"), RowDefinitions = new RowDefinitions("Auto,Auto,Auto"), RowSpacing = 10 };
+        grid.Children.Add(Label("NAME", 0));
+        grid.Children.Add(Cell(name, 0));
+        grid.Children.Add(Label("DATE", 1));
+        grid.Children.Add(Cell(date, 1));
+        grid.Children.Add(Label("TIME", 2));
+        grid.Children.Add(Cell(time, 2));
+
+        window.Content = Body(title, null, [grid, problem], cancel, ok);
+        window.Opened += (_, _) =>
+        {
+            name.Focus();
+            name.SelectAll();
+        };
+        await window.ShowDialog(owner);
+        return result;
+    }
+
+    /// <summary>ARR-12: "Change the Short variant for every service, or only for this one?"</summary>
+    public async Task<VariantScopeAnswer?> AskVariantScopeAsync(string variantName, int otherEntries)
+    {
+        var window = Dialog("Change a variant");
+        var others = otherEntries switch
+        {
+            0 => "No other service entry plays it yet.",
+            1 => "1 other service entry plays it.",
+            _ => $"{otherEntries} other service entries play it.",
+        };
+        var remember = new CheckBox { Content = $"Remember this choice for {variantName}" };
+        var service = new Button { Content = "This service only", Classes = { "primary" }, IsDefault = true };
+        var all = new Button { Content = "All services" };
+        var cancel = new Button { Content = "Cancel", IsCancel = true };
+        VariantScopeAnswer? result = null;
+        service.Click += (_, _) => { result = new VariantScopeAnswer(VariantScope.ThisService, remember.IsChecked == true); window.Close(); };
+        all.Click += (_, _) => { result = new VariantScopeAnswer(VariantScope.AllServices, remember.IsChecked == true); window.Close(); };
+        cancel.Click += (_, _) => window.Close();
+
+        window.Content = Body("Change a variant",
+            $"Change the {variantName} variant for every service, or only for this service? {others}",
+            [remember], cancel, all, service);
+        await window.ShowDialog(owner);
+        return result;
+    }
+
+    public async Task<string?> AskNameAsync(string title, string label, string initial, string confirmLabel)
+    {
+        var window = Dialog(title);
+        var box = new TextBox { Text = initial };
+        AutomationProperties.SetName(box, label);
+        var ok = new Button { Content = confirmLabel, Classes = { "primary" }, IsDefault = true };
+        var cancel = new Button { Content = "Cancel", IsCancel = true };
+        string? result = null;
+        ok.Click += (_, _) =>
+        {
+            if (string.IsNullOrWhiteSpace(box.Text))
+                return;
+            result = box.Text.Trim();
+            window.Close();
+        };
+        cancel.Click += (_, _) => window.Close();
+
+        window.Content = Body(title, null, [box], cancel, ok);
+        window.Opened += (_, _) =>
+        {
+            box.Focus();
+            box.SelectAll();
+        };
+        await window.ShowDialog(owner);
+        return result;
+    }
+
+    public async Task<int?> ChooseAsync(string title, string message, IReadOnlyList<string> choices, string confirmLabel)
+    {
+        var window = Dialog(title);
+        var list = new ComboBox { ItemsSource = choices, SelectedIndex = 0, HorizontalAlignment = HorizontalAlignment.Stretch };
+        AutomationProperties.SetName(list, title);
+        var ok = new Button { Content = confirmLabel, Classes = { "primary" }, IsDefault = true };
+        var cancel = new Button { Content = "Cancel", IsCancel = true };
+        int? result = null;
+        ok.Click += (_, _) => { result = list.SelectedIndex; window.Close(); };
+        cancel.Click += (_, _) => window.Close();
+
+        window.Content = Body(title, message, [list], cancel, ok);
+        await window.ShowDialog(owner);
+        return result;
+    }
+
+    private static Window Dialog(string title) => new()
+    {
+        Title = title,
+        Width = 460,
+        SizeToContent = SizeToContent.Height,
+        CanResize = false,
+        ShowInTaskbar = false,
+        WindowStartupLocation = WindowStartupLocation.CenterOwner,
+    };
+
+    private static StackPanel Body(string title, string? message, IEnumerable<Control> content, params Button[] buttons)
+    {
+        var heading = new TextBlock { Text = title };
+        heading.Classes.Add("title");
+        var panel = new StackPanel { Margin = new Avalonia.Thickness(20), Spacing = 12 };
+        panel.Children.Add(heading);
+        if (message is not null)
+            panel.Children.Add(new TextBlock { Text = message, TextWrapping = Avalonia.Media.TextWrapping.Wrap });
+        foreach (var control in content)
+            panel.Children.Add(control);
+        var row = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Spacing = 8, Margin = new Avalonia.Thickness(0, 8, 0, 0) };
+        foreach (var button in buttons)
+            row.Children.Add(button);
+        panel.Children.Add(row);
+        return panel;
+    }
+
+    private static TextBlock Label(string text, int row)
+    {
+        var label = new TextBlock { Text = text, VerticalAlignment = VerticalAlignment.Center };
+        label.Classes.Add("label");
+        Grid.SetRow(label, row);
+        return label;
+    }
+
+    private static Control Cell(Control control, int row)
+    {
+        Grid.SetRow(control, row);
+        Grid.SetColumn(control, 1);
+        return control;
     }
 
     /// <summary>SL-55: "Already in the library as {title}." Open it · Import anyway · Cancel.</summary>

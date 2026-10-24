@@ -10,6 +10,21 @@ public enum DuplicateChoice
     Cancel,
 }
 
+/// <summary>Name and date of a service (SL-2).</summary>
+public sealed record ServiceDetails(string Name, DateTime? Date);
+
+/// <summary>Where an edit of a variant made from a service goes (ARR-12).</summary>
+public enum VariantScope
+{
+    /// <summary>Only this service: the entry gets a custom copy.</summary>
+    ThisService,
+
+    /// <summary>The variant itself, for every service that plays it.</summary>
+    AllServices,
+}
+
+public sealed record VariantScopeAnswer(VariantScope Scope, bool Remember);
+
 /// <summary>Windows and pickers the view models need; the app implements them with Avalonia.</summary>
 public interface IDialogs
 {
@@ -26,4 +41,19 @@ public interface IDialogs
 
     /// <summary>Settings › Audio. True = Apply.</summary>
     Task<bool> EditAudioSettingsAsync(AudioSettingsViewModel settings);
+
+    /// <summary>New service, Duplicate service and Rename (SL-2): a name and an optional date and time. Null = Cancel.</summary>
+    Task<ServiceDetails?> AskServiceDetailsAsync(string title, string confirmLabel, ServiceDetails initial);
+
+    /// <summary>ARR-12: change the variant for every service, or only for this one. Null = Cancel.</summary>
+    Task<VariantScopeAnswer?> AskVariantScopeAsync(string variantName, int otherEntries);
+
+    /// <summary>A short name ("Save as variant…", a mix preset name). Null = Cancel.</summary>
+    Task<string?> AskNameAsync(string title, string label, string initial, string confirmLabel);
+
+    /// <summary>One of several choices (the replacement for a deleted variant, ARR-11). Null = Cancel.</summary>
+    Task<int?> ChooseAsync(string title, string message, IReadOnlyList<string> choices, string confirmLabel);
+
+    /// <summary>The transition popover (SL-21). True = Save.</summary>
+    Task<bool> EditTransitionAsync(TransitionViewModel transition);
 }

@@ -1,0 +1,78 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<!-- The transition popover (SL-21): After {This} / Into {Next}, the type, its fields, the explanation, Clear and Save. -->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:RECompose.Presentation.ViewModels"
+        x:Class="RECompose.App.Dialogs.TransitionWindow"
+        x:DataType="vm:TransitionViewModel"
+        Title="Transition"
+        Width="520" SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        CanResize="False"
+        ShowInTaskbar="False">
+  <StackPanel Margin="20" Spacing="12">
+    <StackPanel Spacing="2">
+      <TextBlock Classes="label" Text="{Binding AfterText}" />
+      <TextBlock Classes="title" Text="{Binding IntoText}" />
+    </StackPanel>
+
+    <ListBox x:Name="Types" ItemsSource="{Binding Types}" SelectedItem="{Binding Type}" AutomationProperties.Name="Transition type">
+      <ListBox.ItemsPanel>
+        <ItemsPanelTemplate>
+          <StackPanel Orientation="Horizontal" Spacing="2" />
+        </ItemsPanelTemplate>
+      </ListBox.ItemsPanel>
+      <ListBox.ItemTemplate>
+        <DataTemplate x:DataType="vm:TransitionTypeChoice">
+          <TextBlock Text="{Binding Name}" />
+        </DataTemplate>
+      </ListBox.ItemTemplate>
+    </ListBox>
+
+    <!-- Segue: a gap of 0–8 beats -->
+    <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding IsSegue}">
+      <TextBlock Text="Gap" VerticalAlignment="Center" />
+      <NumericUpDown Value="{Binding GapBeats}" Minimum="0" Maximum="8" Increment="1" FormatString="0" Width="120" AutomationProperties.Name="Gap in beats" />
+      <TextBlock Text="beats" VerticalAlignment="Center" />
+    </StackPanel>
+
+    <!-- Crossfade: 1–30 s -->
+    <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding IsCrossfade}">
+      <TextBlock Text="Length" VerticalAlignment="Center" />
+      <NumericUpDown Value="{Binding CrossfadeSeconds}" Minimum="1" Maximum="30" Increment="1" FormatString="0" Width="120" AutomationProperties.Name="Crossfade length in seconds" />
+      <TextBlock Text="s" VerticalAlignment="Center" />
+    </StackPanel>
+
+    <!-- Pad: key, click during, tempo, start by itself, fade out -->
+    <Grid ColumnDefinitions="140,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto" RowSpacing="8" IsVisible="{Binding IsPad}">
+      <TextBlock Grid.Row="0" Text="Pad key" VerticalAlignment="Center" />
+      <ComboBox Grid.Row="0" Grid.Column="1" ItemsSource="{Binding PadKeys}" SelectedItem="{Binding PadKey}" HorizontalAlignment="Stretch" AutomationProperties.Name="Pad key" />
+      <CheckBox Grid.Row="1" Grid.Column="1" Content="Click during the transition" IsChecked="{Binding ClickDuring}" />
+      <TextBlock Grid.Row="2" Text="Tempo (BPM)" VerticalAlignment="Center" IsEnabled="{Binding ClickDuring}" />
+      <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding ClickBpmText}" PlaceholderText="{Binding ClickBpmPlaceholder}" Width="160" HorizontalAlignment="Left"
+               IsEnabled="{Binding ClickDuring}" AutomationProperties.Name="Click tempo" />
+      <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal" Spacing="8">
+        <CheckBox Content="Start the next song by itself, after" IsChecked="{Binding AutoStartNext}" />
+        <NumericUpDown Value="{Binding AutoStartBars}" Minimum="1" Maximum="32" Increment="1" FormatString="0" Width="110" IsEnabled="{Binding AutoStartNext}"
+                       AutomationProperties.Name="Bars before the next song starts" />
+        <TextBlock Text="bars" VerticalAlignment="Center" />
+      </StackPanel>
+      <CheckBox Grid.Row="4" Grid.Column="1" Content="Fade the pad out when the next song starts" IsChecked="{Binding FadePadOut}" />
+    </Grid>
+
+    <!-- Carry over: retune -->
+    <CheckBox Content="Retune to the next song's key" IsChecked="{Binding RetuneToNextKey}" IsVisible="{Binding IsCarryOver}" />
+
+    <Border Classes="inset" Padding="12,10">
+      <TextBlock x:Name="Explanation" Text="{Binding Explanation}" TextWrapping="Wrap" />
+    </Border>
+
+    <DockPanel Margin="0,8,0,0">
+      <Button x:Name="ClearButton" DockPanel.Dock="Left" Content="Clear" ToolTip.Tip="Back to Stop" />
+      <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+        <Button x:Name="CancelButton" Content="Cancel" IsCancel="True" />
+        <Button x:Name="SaveButton" Classes="primary" Content="Save" IsDefault="True" />
+      </StackPanel>
+    </DockPanel>
+  </StackPanel>
+</Window>

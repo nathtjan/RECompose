@@ -4,12 +4,19 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using Avalonia.VisualTree;
+using RECompose.Core.Services;
 using RECompose.Presentation.ViewModels;
 
 namespace RECompose.App;
 
 public partial class MainWindow : Window
 {
+    // Drags inside the app: a library song onto the service (SL-5), a service row to a new place (SL-4).
+    private static readonly DataFormat<string> SongFormat = DataFormat.CreateInProcessFormat<string>("recompose-song");
+    private static readonly DataFormat<string> EntryFormat = DataFormat.CreateInProcessFormat<string>("recompose-entry");
+
+    private (PointerPressedEventArgs Args, Avalonia.Point At, DataFormat<string> Format, string Id)? _dragStart;
+
     public MainWindow()
     {
         InitializeComponent();
@@ -24,6 +31,36 @@ public partial class MainWindow : Window
         AddHandler(DragDrop.DropEvent, OnDrop);
 
         Library.DoubleTapped += (_, _) => ViewModel?.LoadSelectedCommand.Execute(null);
+        Library.ContextRequested += OpenLibraryMenu;
+        WatchDragStart(Library, SongFormat, item => (item as SongItemViewModel)?.Id);
+
+        // The service (SL-4): double-click or Enter loads, right-click for the menu, drag to reorder, drop songs in.
+        ServiceRows.DoubleTapped += (_, _) => ViewModel?.Setlist.LoadSelectedCommand.Execute(null);
+        ServiceRows.KeyDown += (_, e) =>
+        {
+            if (ViewModel is not { } vm)
+                return;
+            switch (e.Key)
+            {
+                case Key.Enter:
+                    vm.Setlist.LoadSelectedCommand.Execute(null);
+                    break;
+                case Key.Up when e.KeyModifiers.HasFlag(KeyModifiers.Alt):
+                    vm.Setlist.MoveUpCommand.Execute(null);
+                    break;
+                case Key.Down when e.KeyModifiers.HasFlag(KeyModifiers.Alt):
+                    vm.Setlist.MoveDownCommand.Execute(null);
+                    break;
+                default:
+                    return;
+            }
+
+            e.Handled = true;
+        };
+        ServiceRows.ContextRequested += OpenServiceRowMenu;
+        WatchDragStart(ServiceRows, EntryFormat, item => (item as SetlistRowViewModel)?.Id);
+        ServiceRows.AddHandler(DragDrop.DragOverEvent, OnServiceDragOver);
+        ServiceRows.AddHandler(DragDrop.DropEvent, OnServiceDrop);
         Library.KeyDown += (_, e) =>
         {
             if (e.Key == Key.Enter)
@@ -210,6 +247,151 @@ public partial class MainWindow : Window
 
     private MainViewModel? ViewModel => DataContext as MainViewModel;
 
+    /// <summary>A transition chip between two service rows: the popover (SL-21).</summary>
+    private void OnTransitionChipClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: string entryId } && ViewModel is { } vm)
+            _ = vm.EditTransitionAsync(entryId);
+    }
+
+    // ---- Menus (SL-4, SL-56) ------------------------------------------------------------------------------------
+
+    private static MenuItem Item(string header, Action action, bool enabled = true)
+    {
+        var item = new MenuItem { Header = header, IsEnabled = enabled };
+        item.Click += (_, _) => action();
+        return item;
+    }
+
+    /// <summary>Right-click on a service row: Load, Edit for this service only, Variant, Key, Transition, Move, Remove (SL-4).</summary>
+    private void OpenServiceRowMenu(object? sender, ContextRequestedEventArgs e)
+    {
+        if (ViewModel is not { } vm || (e.Source as Control)?.FindAncestorOfType<ListBoxItem>()?.DataContext is not SetlistRowViewModel row)
+            return;
+        e.Handled = true;
+        vm.Setlist.Selected = row;
+        var entry = row.Entry;
+        var song = vm.SongOf(entry.SongId);
+
+        var variants = new MenuItem { Header = "Variant" };
+        variants.Items.Add(Item("As written", () => vm.SetEntryArrangement(row.Id, ArrangementChoice.AsWritten, "As written")));
+        foreach (var variant in song?.Arrangements ?? [])
+            variants.Items.Add(Item(variant.Name, () => vm.SetEntryArrangement(row.Id, ArrangementChoice.OfVariant(variant.Id), variant.Name)));
+
+        var keys = new MenuItem { Header = "Key", IsEnabled = song is not null };
+        if (song is not null)
+        {
+            for (var offset = -6; offset <= 6; offset++)
+            {
+                var o = offset;
+                var item = Item(ServiceText.KeyText(song, o), () => vm.SetKeyOffset(row.Id, o));
+                if (o == entry.KeyOffset)
+                    item.FontWeight = Avalonia.Media.FontWeight.Bold;
+                keys.Items.Add(item);
+            }
+        }
+
+        var menu = new ContextMenu();
+        menu.Items.Add(Item("Load", () => _ = vm.LoadEntryAsync(row.Id)));
+        menu.Items.Add(Item("Edit for this service only", () => vm.MakeEntryCustom(row.Id), entry.Arrangement.Type == ArrangementChoiceType.Variant));
+        menu.Items.Add(variants);
+        menu.Items.Add(keys);
+        menu.Items.Add(Item("Transition…", () => _ = vm.EditTransitionAsync(row.Id), row.HasChip));
+        menu.Items.Add(new Separator());
+        menu.Items.Add(Item("Move earlier", () => vm.MoveServiceEntry(row.Id, row.Index - 2), row.Index > 1));
+        menu.Items.Add(Item("Move later", () => vm.MoveServiceEntry(row.Id, row.Index), row.Index < vm.Setlist.Rows.Count));
+        menu.Items.Add(new Separator());
+        menu.Items.Add(Item("Remove", () => vm.RemoveEntry(row.Id)));
+        menu.Open(ServiceRows);
+    }
+
+    /// <summary>Right-click on a library song: Load, Add to {service} (SL-5, SL-56).</summary>
+    private void OpenLibraryMenu(object? sender, ContextRequestedEventArgs e)
+    {
+        if (ViewModel is not { } vm || (e.Source as Control)?.FindAncestorOfType<ListBoxItem>()?.DataContext is not SongItemViewModel song)
+            return;
+        e.Handled = true;
+        vm.SelectedSong = song;
+        var menu = new ContextMenu();
+        menu.Items.Add(Item("Load", () => _ = vm.LoadSongAsync(song.Id)));
+        var service = vm.CurrentService;
+        menu.Items.Add(Item(service is null ? "Add to a service" : $"Add to {service.Name}", () => vm.AddSongToService(song.Id), service is not null));
+        menu.Open(Library);
+    }
+
+    // ---- Drag and drop between the library and the service (SL-4, SL-5) -----------------------------------------
+
+    /// <summary>Starts a drag of the item under the pointer once it has moved a few pixels.</summary>
+    private void WatchDragStart(ListBox list, DataFormat<string> format, Func<object?, string?> idOf)
+    {
+        list.AddHandler(PointerPressedEvent, (_, e) =>
+        {
+            _dragStart = null;
+            if (!e.GetCurrentPoint(list).Properties.IsLeftButtonPressed)
+                return;
+            if ((e.Source as Control)?.FindAncestorOfType<Button>() is not null)
+                return; // a chip or a button in the row, not a drag
+            if (idOf((e.Source as Control)?.FindAncestorOfType<ListBoxItem>()?.DataContext) is { } id)
+                _dragStart = (e, e.GetPosition(this), format, id);
+        }, RoutingStrategies.Tunnel, handledEventsToo: true);
+
+        list.AddHandler(PointerMovedEvent, async (_, e) =>
+        {
+            if (_dragStart is not { } start || start.Format != format)
+                return;
+            var delta = e.GetPosition(this) - start.At;
+            if (Math.Abs(delta.X) + Math.Abs(delta.Y) < 6)
+                return;
+            _dragStart = null;
+            var data = new DataTransfer();
+            data.Add(DataTransferItem.Create(format, start.Id));
+            await DragDrop.DoDragDropAsync(start.Args, data, format == SongFormat ? DragDropEffects.Copy : DragDropEffects.Move);
+        }, RoutingStrategies.Tunnel, handledEventsToo: true);
+
+        list.AddHandler(PointerReleasedEvent, (_, _) => _dragStart = null, RoutingStrategies.Tunnel, handledEventsToo: true);
+    }
+
+    private void OnServiceDragOver(object? sender, DragEventArgs e)
+    {
+        if (ViewModel?.CurrentService is null)
+            return;
+        if (e.DataTransfer.Contains(SongFormat))
+            e.DragEffects = DragDropEffects.Copy;
+        else if (e.DataTransfer.Contains(EntryFormat))
+            e.DragEffects = DragDropEffects.Move;
+        else
+            return; // files: the window imports them
+        e.Handled = true;
+    }
+
+    private void OnServiceDrop(object? sender, DragEventArgs e)
+    {
+        if (ViewModel is not { } vm || vm.CurrentService is null)
+            return;
+        var index = DropIndex(e);
+        if (e.DataTransfer.TryGetValue(SongFormat) is { } songId)
+        {
+            vm.AddSongToService(songId, index);
+            e.Handled = true;
+        }
+        else if (e.DataTransfer.TryGetValue(EntryFormat) is { } entryId)
+        {
+            var from = vm.CurrentService.IndexOf(entryId);
+            var to = index ?? vm.Setlist.Rows.Count;
+            vm.MoveServiceEntry(entryId, from >= 0 && to > from ? to - 1 : to);
+            e.Handled = true;
+        }
+    }
+
+    /// <summary>The 0-based position a drop lands at: before the row under the pointer, or after it on its lower half.</summary>
+    private int? DropIndex(DragEventArgs e)
+    {
+        if ((e.Source as Control)?.FindAncestorOfType<ListBoxItem>(includeSelf: true) is not { DataContext: SetlistRowViewModel row } item)
+            return null;
+        var lower = e.GetPosition(item).Y > item.Bounds.Height / 2;
+        return row.Index - 1 + (lower ? 1 : 0);
+    }
+
     /// <summary>A section button in the ENTRY palette: add that section to the variant (ARR-20).</summary>
     private void OnPaletteClick(object? sender, RoutedEventArgs e)
     {
@@ -254,6 +436,14 @@ public partial class MainWindow : Window
                     vm.Entry.DuplicateCommand.Execute(null);
                     e.Handled = true;
                     return;
+                case Key.Up or Key.Down when FocusManager?.GetFocusedElement() is not TextBox:
+                    vm.StepKey(e.Key == Key.Up ? 1 : -1);
+                    e.Handled = true;
+                    return;
+                case Key.Left or Key.Right when FocusManager?.GetFocusedElement() is not TextBox:
+                    vm.StepTempo((e.Key == Key.Right ? 1 : -1) * (shift ? 5 : 1));
+                    e.Handled = true;
+                    return;
             }
             return;
         }
@@ -295,6 +485,9 @@ public partial class MainWindow : Window
                 break;
             case Key.S:
                 vm.Sections.SplitAtPlayhead();
+                break;
+            case Key.Delete when ServiceRows.IsKeyboardFocusWithin && vm.Setlist.Selected is not null:
+                vm.Setlist.RemoveSelectedCommand.Execute(null);
                 break;
             case Key.Delete when vm.SelectedTab == MainViewModel.EntryTab && vm.Entry.Selected is not null:
                 vm.Entry.RemoveCommand.Execute(null);

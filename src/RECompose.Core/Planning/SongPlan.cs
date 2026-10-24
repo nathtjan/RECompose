@@ -377,11 +377,12 @@ public sealed class SongPlan
     /// Where to continue in <paramref name="next"/> when the plan changed while at
     /// <paramref name="planSec"/> of <paramref name="previous"/>. After an edit of the same arrangement:
     /// the same entry and pass at the same offset, or the first entry after it when that is gone. After a
-    /// switch to another arrangement (or as written): the same source time, or the start.
+    /// switch to another arrangement (or as written): the same source time, or the start. A playhead at the start
+    /// stays at the start, so a new count-in or lead-in is heard (SL-36).
     /// </summary>
     public static double Remap(SongPlan previous, double planSec, SongPlan next, bool sameArrangement)
     {
-        if (next.Items.Count == 0 || previous.Items.Count == 0)
+        if (next.Items.Count == 0 || previous.Items.Count == 0 || planSec <= ToleranceSec)
             return 0;
 
         var old = previous.Items[previous.ItemIndexAt(planSec)];

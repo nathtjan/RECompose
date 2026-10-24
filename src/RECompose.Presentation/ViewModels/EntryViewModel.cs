@@ -4,16 +4,21 @@ using System.Globalization;
 using RECompose.Core.Arrangements;
 using RECompose.Core.Planning;
 using RECompose.Core.Sections;
+using RECompose.Core.Services;
 using RECompose.Presentation.Mvvm;
+using RECompose.Presentation.Services;
 
 namespace RECompose.Presentation.ViewModels;
 
-/// <summary>One choice in the variant list: "As written" (no id) or a variant (ARR-1).</summary>
-public sealed class VariantChoice(string? id, string name, bool isDefault)
+/// <summary>One choice in the variant list: "As written" (no id), a variant, or a service entry's custom arrangement (ARR-1).</summary>
+public sealed class VariantChoice(string? id, string name, bool isDefault, bool isCustom = false)
 {
     public string? Id { get; } = id;
     public string Name { get; } = name;
     public bool IsDefault { get; } = isDefault;
+
+    /// <summary>The entry's arrangement for this service only (ARR-12).</summary>
+    public bool IsCustom { get; } = isCustom;
 
     /// <summary>"Short" or "Short · default".</summary>
     public string Display => IsDefault ? $"{Name} · default" : Name;
@@ -87,9 +92,11 @@ public sealed record EndingChoice(EndingMode Mode, string Name)
 }
 
 /// <summary>
-/// The ENTRY tab: the variants of the loaded song and the order of the active one (ARR-1…13, ARR-20…22,
-/// ARR-50, ARR-60). Every edit is one undo step and is saved at once. Editing the song as written makes a
-/// variant first, as the spec's "New variant from as written" would.
+/// The ENTRY tab: the variants of the loaded song and the order of the one that plays (ARR-1…13, ARR-20…22,
+/// ARR-50, ARR-60). Every edit is one undo step and is saved at once. For a library song, editing the song as
+/// written makes a variant first. For a service entry, an edit of its custom arrangement stays in the service, an
+/// edit of its variant asks whether it is for this service only (ARR-12), and editing as written makes a custom
+/// arrangement for this service.
 /// </summary>
 public sealed class EntryViewModel : ObservableObject
 {
@@ -128,9 +135,9 @@ public sealed class EntryViewModel : ObservableObject
         NewFromWrittenCommand = new RelayCommand(() => NewVariant(VariantStart.AsWritten), () => HasSong);
         NewFromCurrentCommand = new RelayCommand(() => NewVariant(VariantStart.Current), () => HasSong && !IsAsWritten);
         NewEmptyCommand = new RelayCommand(() => NewVariant(VariantStart.Empty), () => HasSong);
-        RenameVariantCommand = new RelayCommand(RenameVariant, () => !IsAsWritten);
-        DeleteVariantCommand = new RelayCommand(DeleteVariant, () => !IsAsWritten);
-        SetDefaultCommand = new RelayCommand(SetDefault, () => HasSong);
+        RenameVariantCommand = new RelayCommand(RenameVariant, () => Song?.ActiveVariant is not null);
+        DeleteVariantCommand = new RelayCommand(DeleteVariant, () => Song?.ActiveVariant is not null);
+        SetDefaultCommand = new RelayCommand(SetDefault, () => HasSong && Song?.IsCustom != true);
         ApplyQuickOrderCommand = new RelayCommand(ApplyQuickOrder, () => CanApplyQuickOrder);
     }
 
@@ -140,6 +147,22 @@ public sealed class EntryViewModel : ObservableObject
     public bool HasSong => Song is not null;
     public bool IsAsWritten => Song?.IsAsWritten ?? true;
     public bool IsVariant => !IsAsWritten;
+
+    /// <summary>The loaded song plays a service entry (its arrangement belongs to the service, ARR-1).</summary>
+    public bool IsEntry => Song?.IsEntry ?? false;
+
+    /// <summary>"Editing: Champion · service entry 1" for the loaded entry (UI-16).</summary>
+    public string EditingText
+    {
+        get
+        {
+            if (Song is not { } song)
+                return string.Empty;
+            if (song.Entry is { } entry && _main.LoadedService is { } service)
+                return $"Editing: {song.Title} · service entry {(service.IndexOf(entry.Id) + 1).ToString(CultureInfo.InvariantCulture)}";
+            return $"Editing: {song.Title} · library";
+        }
+    }
 
     /// <summary>"As written" and the variants (ARR-1).</summary>
     public ObservableCollection<VariantChoice> Variants { get; } = [];
@@ -151,6 +174,13 @@ public sealed class EntryViewModel : ObservableObject
         {
             if (_loading || value is null || !Set(ref _selectedVariant, value))
                 return;
+            if (Song?.Entry is { } entry)
+            {
+                if (!value.IsCustom)
+                    _main.SetEntryArrangement(entry.Id, value.Id is { } id ? ArrangementChoice.OfVariant(id) : ArrangementChoice.AsWritten, value.Name);
+                return;
+            }
+
             _main.SelectVariant(value.Id);
         }
     }
@@ -222,7 +252,9 @@ public sealed class EntryViewModel : ObservableObject
     public string SummaryTotals { get; private set; } = string.Empty;
 
     /// <summary>Shown over the list while As written plays.</summary>
-    public string AsWrittenNote => "This is the song as written. Add or change something and a variant is made for you.";
+    public string AsWrittenNote => IsEntry
+        ? "This is the song as written. Add or change something and a custom arrangement for this service is made for you."
+        : "This is the song as written. Add or change something and a variant is made for you.";
 
     // ---- Commands -------------------------------------------------------------------------
 
@@ -279,13 +311,17 @@ public sealed class EntryViewModel : ObservableObject
                 Variants.Add(new VariantChoice(null, "As written", defaultId is null));
                 foreach (var v in song.Model.Arrangements)
                     Variants.Add(new VariantChoice(v.Id, v.Name, v.Id == defaultId));
-                _selectedVariant = Variants.FirstOrDefault(v => v.Id == song.ActiveVariantId) ?? Variants[0];
+                if (song.Custom is { } custom)
+                    Variants.Add(new VariantChoice(custom.Id, EntryArrangement.CustomName, false, isCustom: true));
+                _selectedVariant = song.IsCustom
+                    ? Variants[^1]
+                    : Variants.FirstOrDefault(v => !v.IsCustom && v.Id == song.ActiveVariantId) ?? Variants[0];
 
                 foreach (var s in song.Sections)
                     Palette.Add(new PaletteItem(s.Id, s.Label, s.Badge, s.ColorToken));
 
                 var byId = song.Sections.ToDictionary(s => s.Id);
-                var active = song.ActiveVariant;
+                var active = song.Playing;
                 var issues = active is null ? [] : ArrangementValidator.Validate(active, song.Sections);
                 if (active is null)
                 {
@@ -329,6 +365,7 @@ public sealed class EntryViewModel : ObservableObject
                  {
                      nameof(HasSong), nameof(IsAsWritten), nameof(IsVariant), nameof(SelectedVariant), nameof(Selected), nameof(HasSelection),
                      nameof(SelectedIsSection), nameof(SelectedIsGenerated), nameof(SummaryLabels), nameof(SummaryTotals), nameof(HasIssues),
+                     nameof(IsEntry), nameof(EditingText), nameof(AsWrittenNote),
                  })
             OnPropertyChanged(name);
         UpdateQuickOrder();
@@ -349,10 +386,12 @@ public sealed class EntryViewModel : ObservableObject
         var variant = start switch
         {
             VariantStart.AsWritten => ArrangementEdit.FromAsWritten(song.Sections, name, ExistingNames),
-            VariantStart.Current when song.ActiveVariant is { } active => ArrangementEdit.Copy(active, name, ExistingNames),
+            VariantStart.Current when song.Playing is { } playing => ArrangementEdit.Copy(playing, name, ExistingNames),
             _ => ArrangementEdit.Empty(name, ExistingNames),
         };
-        _main.CommitVariants($"New variant {variant.Name}", [.. song.Model.Arrangements, variant], variant.Id, keepDefault: true);
+        // A service entry plays the new variant (ARR-11 "New variant…" from the entry).
+        _main.CommitVariants($"New variant {variant.Name}", [.. song.Model.Arrangements, variant], variant.Id, keepDefault: true,
+            entryChoice: song.IsEntry ? ArrangementChoice.OfVariant(variant.Id) : null);
         VariantName = string.Empty;
     }
 
@@ -366,14 +405,9 @@ public sealed class EntryViewModel : ObservableObject
         VariantName = string.Empty;
     }
 
-    private void DeleteVariant()
-    {
-        if (Song is not { ActiveVariant: { } active } song)
-            return;
-        var variants = song.Model.Arrangements.Where(a => a.Id != active.Id).ToList();
-        var clearDefault = song.Model.DefaultArrangementId == active.Id;
-        _main.CommitVariants($"Deleted {active.Name}", variants, null, keepDefault: !clearDefault, defaultId: null);
-    }
+    /// <summary>ARR-11: service entries that play the variant get a replacement.</summary>
+    private Task DeleteVariant() =>
+        Song is { ActiveVariant: { } active } ? _main.DeleteVariantAsync(active) : Task.CompletedTask;
 
     private void SetDefault()
     {
@@ -396,6 +430,14 @@ public sealed class EntryViewModel : ObservableObject
     {
         if (Song is not { } song)
             return;
+        if (song.IsEntry)
+        {
+            if (selectEntryId is not null)
+                _pendingSelect = selectEntryId;
+            _ = EditEntryAsync(song, description, change);
+            return;
+        }
+
         var variants = song.Model.Arrangements;
         Arrangement basis;
         List<Arrangement> next;
@@ -415,6 +457,50 @@ public sealed class EntryViewModel : ObservableObject
         if (selectEntryId is not null)
             _pendingSelect = selectEntryId;
         _main.CommitVariants(description, next, changed.Id, keepDefault: true);
+    }
+
+    /// <summary>
+    /// An edit of the loaded service entry's arrangement (ARR-12): its custom arrangement changes in place; its variant
+    /// changes for every service or becomes a custom copy, as the MD answers; as written becomes a custom arrangement.
+    /// </summary>
+    private async Task EditEntryAsync(SongViewModel song, string description, Func<Arrangement, Arrangement> change)
+    {
+        try
+        {
+            if (song.Custom is { } custom)
+            {
+                _main.CommitCustom(description, change(custom));
+                return;
+            }
+
+            if (song.ActiveVariant is { } variant)
+            {
+                var scope = await _main.VariantScopeAsync(variant);
+                if (!ReferenceEquals(Song, song))
+                    return; // another song was loaded meanwhile
+                switch (scope)
+                {
+                    case VariantScope.AllServices:
+                        _main.CommitVariants(description, ArrangementEdit.ReplaceVariant(song.Model.Arrangements, change(variant)), variant.Id, keepDefault: true);
+                        return;
+                    case VariantScope.ThisService:
+                        _main.CommitCustomFromVariant(description, change);
+                        return;
+                    default:
+                        _pendingSelect = null;
+                        Refresh(); // cancelled: the fields go back to what the variant says
+                        return;
+                }
+            }
+
+            var basis = ArrangementEdit.FromAsWritten(song.Sections, EntryArrangement.CustomName, []);
+            _main.CommitCustom(description, change(basis));
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error("Arrangements", ex);
+            _main.Banner = ex.Message;
+        }
     }
 
     private string? _pendingSelect;
@@ -641,7 +727,12 @@ public sealed class EntryViewModel : ObservableObject
         if (_quickResult is not { HasProblems: false, Entries.Count: > 0 } result || Song is not { } song)
             return;
         var entries = result.Entries.ToList();
-        if (song.ActiveVariant is null)
+        if (song.IsEntry && song.Playing is null)
+        {
+            // A service entry playing as written: the order becomes its custom arrangement (ARR-12).
+            _main.CommitCustom("Applied the quick order", ArrangementEdit.Empty(EntryArrangement.CustomName, []) with { Entries = entries });
+        }
+        else if (song.Playing is null)
         {
             var variant = ArrangementEdit.Empty("Quick order", ExistingNames) with { Entries = entries };
             _main.CommitVariants("Applied the quick order", [.. song.Model.Arrangements, variant], variant.Id, keepDefault: true);

@@ -104,6 +104,22 @@ public sealed class TrackViewModel : ObservableObject
         }
     }
 
+    private bool _transposes;
+
+    /// <summary>The track plays in the entry key (PB-80 "#", DM-12): music tracks by default, never click or guide.</summary>
+    public bool Transposes
+    {
+        get => _transposes;
+        set
+        {
+            if (Set(ref _transposes, value))
+                Changed?.Invoke(this, "transposes");
+        }
+    }
+
+    /// <summary>Sets the "#" state from a mix preset without raising <see cref="Changed"/>.</summary>
+    public void ApplyTransposes(bool value) => Set(ref _transposes, value, nameof(Transposes));
+
     /// <summary>Post-fader level, 0…1 on a −60…+6 dB scale (PB-84).</summary>
     public double Meter
     {

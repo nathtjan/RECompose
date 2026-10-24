@@ -10,6 +10,7 @@ using RECompose.Core.Planning;
 using RECompose.Core.Music;
 using RECompose.Core.Persistence;
 using RECompose.Core.Sections;
+using RECompose.Core.Services;
 using RECompose.Core.Settings;
 using RECompose.Core.Timing;
 using RECompose.Engine;
@@ -71,6 +72,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         _analysis = new AnalysisService(store, analysisTools ?? tools, speech ?? new SpeechModel(store.Root));
         Sections = new SectionsViewModel(this);
         Entry = new EntryViewModel(this);
+        Setlist = new SetlistViewModel(this);
         _ui = ui;
         _dialogs = dialogs;
         _settings = store.LoadSettings();
@@ -82,6 +84,10 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         ToStartCommand = new RelayCommand(() => SeekAsync(0), () => _song is not null);
         OpenSettingsCommand = new RelayCommand(OpenAudioSettingsAsync);
         UndoCommand = new RelayCommand(Undo);
+        KeyDownCommand = new RelayCommand(() => StepKey(-1, LoadedEntry?.Id), () => LoadedEntry is not null);
+        KeyUpCommand = new RelayCommand(() => StepKey(1, LoadedEntry?.Id), () => LoadedEntry is not null);
+        TempoDownCommand = new RelayCommand(() => StepTempo(-1, LoadedEntry?.Id), () => LoadedEntry is not null);
+        TempoUpCommand = new RelayCommand(() => StepTempo(1, LoadedEntry?.Id), () => LoadedEntry is not null);
         RedoCommand = new RelayCommand(Redo);
         LoadSelectedCommand = new RelayCommand(() => _selected is { } s ? LoadSongAsync(s.Id) : Task.CompletedTask);
         ApplySongEditsCommand = new RelayCommand(ApplySongEdits, () => _song is not null);
@@ -126,8 +132,13 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                 OnPropertyChanged(nameof(HasSong));
                 foreach (var command in new[] { PlayPauseCommand, StopCommand, ToStartCommand, ApplySongEditsCommand, ReanalyseClickCommand, DetectDownbeatCommand, RetranscribeCommand, MarkCommand })
                     command.Refresh();
+                RefreshEntryCommands();
+                RefreshMixPresets();
+                SaveMixAsNewCommand.Refresh();
+                RenameMixCommand.Refresh();
                 Sections.Refresh();
                 Entry.Refresh();
+                Setlist.Refresh();
                 OnPropertyChanged(nameof(HasSections));
                 foreach (var item in _allSongs)
                     item.IsLoaded = value is not null && item.Id == value.Id;
@@ -159,6 +170,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             {
                 OnPropertyChanged(nameof(IsPlaying));
                 OnPropertyChanged(nameof(PlayLabel));
+                Setlist.UpdatePlaying();
             }
         }
     }
@@ -322,21 +334,22 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     /// Replaces the song's variants (and optionally the default and the one being played) as one undo step and
     /// saves at once (ARR-10, DM-90).
     /// </summary>
-    internal void CommitVariants(string description, List<Arrangement> variants, string? activeId, bool keepDefault, string? defaultId = null)
+    /// <remarks>
+    /// With a service entry loaded, <paramref name="entryChoice"/> points the entry at what it should now play (a new
+    /// variant, say) in the same undo step; without one the entry keeps what it plays.
+    /// </remarks>
+    internal void CommitVariants(string description, List<Arrangement> variants, string? activeId, bool keepDefault, string? defaultId = null,
+        ArrangementChoice? entryChoice = null)
     {
         if (_song is null)
             return;
-        var songId = _song.Id;
-        var beforeVariants = _song.Model.Arrangements;
-        var beforeDefault = _song.Model.DefaultArrangementId;
-        var beforeActive = _song.ActiveVariantId;
-        var afterDefault = keepDefault ? beforeDefault : defaultId;
-
-        void Apply(List<Arrangement> v, string? def, string? active) =>
-            UpdateSong(songId, s => s with { Arrangements = v, DefaultArrangementId = def, UpdatedAt = DateTimeOffset.UtcNow }, (active, true));
-
-        Apply(variants, afterDefault, activeId);
-        _undo.Push(new UndoableChange(description, () => Apply(beforeVariants, beforeDefault, beforeActive), () => Apply(variants, afterDefault, activeId)));
+        var model = _song.Model;
+        var afterDefault = keepDefault ? model.DefaultArrangementId : defaultId;
+        var songAfter = model with { Arrangements = variants, DefaultArrangementId = afterDefault, UpdatedAt = DateTimeOffset.UtcNow };
+        var servicesAfter = entryChoice is not null && LoadedEntry is { } entry && LoadedService is { } service
+            ? [ServiceEdit.Update(service, entry.Id, e => e with { Arrangement = entryChoice })]
+            : new List<Service>();
+        Commit(description, songAfter, servicesAfter, (activeId, true));
         AppLog.Write("Arrangements", description);
         Entry.ApplyPendingSelection();
     }
@@ -358,6 +371,42 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public RelayCommand RetranscribeCommand { get; }
     public RelayCommand MarkCommand { get; }
 
+    /// <summary>KEY −/+ and TEMPO −/+ in the song header (UI-13, PB-60): the loaded service entry.</summary>
+    public RelayCommand KeyDownCommand { get; }
+    public RelayCommand KeyUpCommand { get; }
+    public RelayCommand TempoDownCommand { get; }
+    public RelayCommand TempoUpCommand { get; }
+
+    /// <summary>True when the loaded song plays a service entry: KEY and TEMPO apply to it.</summary>
+    public bool HasLoadedEntry => LoadedEntry is not null;
+
+    /// <summary>"A (−1)" for the loaded entry (UI-13).</summary>
+    public string EntryKeyText => _song is { Entry: { } e } song ? ServiceText.KeyText(song.Model, e.KeyOffset) : string.Empty;
+
+    /// <summary>"100%".</summary>
+    public string EntryTempoText => _song?.Entry is { } e ? $"{e.TempoPercent.ToString(CultureInfo.InvariantCulture)}%" : string.Empty;
+
+    /// <summary>PB-62: shifts beyond ±5 semitones get the warning style and a tooltip.</summary>
+    public bool EntryKeyWarning => _song?.Entry is { KeyOffset: > 5 or < -5 };
+
+    /// <summary>
+    /// PB-5, PB-61: the badge shown while the entry plays in another key or tempo. Live processing arrives with the
+    /// engine part of milestone 4; until then key and tempo are stored and counted but the audio plays as recorded.
+    /// </summary>
+    public string? LiveKeyBadge => _song is { Entry: { } e } song && (e.KeyOffset != 0 || e.TempoPercent != 100 || song.Plan.Items.Any(i => i.Transpose != 0))
+        ? "Live key — not audible yet"
+        : null;
+
+    public bool HasLiveKeyBadge => LiveKeyBadge is not null;
+
+    private void RefreshEntryCommands()
+    {
+        foreach (var command in new[] { KeyDownCommand, KeyUpCommand, TempoDownCommand, TempoUpCommand })
+            command.Refresh();
+        foreach (var name in new[] { nameof(HasLoadedEntry), nameof(EntryKeyText), nameof(EntryTempoText), nameof(EntryKeyWarning), nameof(LiveKeyBadge), nameof(HasLiveKeyBadge) })
+            OnPropertyChanged(name);
+    }
+
     // ---- Start-up and the engine connection (REL-34) --------------------------------
 
     public async Task InitializeAsync()
@@ -365,6 +414,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         foreach (var summary in _store.LoadLibrary().Songs.OrderBy(s => s.Title, NaturalComparer.Instance))
             _allSongs.Add(new SongItemViewModel(summary));
         RefreshLibrary();
+        LoadServices();
         await ConnectEngineAsync(afterCrash: false);
     }
 
@@ -422,8 +472,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     {
         if (session.Attached && loaded is not null && _store.LoadSong(loaded.SongId) is { } model)
         {
-            // The app restarted while the engine kept the song: pick it up as it is.
-            BindSong(model, loaded);
+            // The app restarted while the engine kept the song: pick it up as it is, with the entry it was playing.
+            var (entry, serviceId) = LastEntry(model.Id);
+            BindSong(model, loaded, entry, serviceId);
             ApplySnapshot(snapshot);
             await SendPlanAsync(null); // the engine may hold another variant's plan: send this one, keep the frame
             if (snapshot.State == TransportState.Playing)
@@ -432,15 +483,32 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         else if (afterCrash && _song is not null)
         {
             var frame = _lastFrame;
-            await LoadSongAsync(_song.Id, force: true, startFrame: frame);
+            await LoadSongAsync(_song.Id, force: true, startFrame: frame, entry: _song.Entry, serviceId: _loadedServiceId);
             Banner = null;
             ShowToast("The audio engine was restarted. The song is ready at the same position.");
         }
         else if (!session.Attached && _settings.LastSongId is { } last && _allSongs.Any(s => s.Id == last))
         {
             SelectedSong = _allSongs.First(s => s.Id == last);
-            await LoadSongAsync(last);
+            var (entry, serviceId) = LastEntry(last);
+            if (entry is not null && serviceId == _service?.Id)
+                _selectedEntryId = entry.Id;
+            await LoadSongAsync(last, entry: entry, serviceId: serviceId);
         }
+    }
+
+    /// <summary>The service entry that was loaded last, when it still plays <paramref name="songId"/>.</summary>
+    private (ServiceEntry? Entry, string? ServiceId) LastEntry(string songId)
+    {
+        if (_settings.LastEntryId is not { } id)
+            return (null, null);
+        foreach (var service in _services)
+        {
+            if (service.Entry(id) is { } entry && entry.SongId == songId)
+                return (entry, service.Id);
+        }
+
+        return (null, null);
     }
 
     private async Task OnEngineLostAsync()
@@ -612,9 +680,13 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     // ---- Loading (PB-10) ------------------------------------------------------------
 
-    public async Task LoadSongAsync(string id, bool force = false, long startFrame = 0)
+    /// <summary>
+    /// Loads a song (PB-10): from the library it plays its default variant; with <paramref name="entry"/> it plays that
+    /// service entry with its arrangement, key, tempo, count-in and mix preset.
+    /// </summary>
+    public async Task LoadSongAsync(string id, bool force = false, long startFrame = 0, ServiceEntry? entry = null, string? serviceId = null)
     {
-        if (!force && _song?.Id == id)
+        if (!force && _song?.Id == id && entry is null && _song.Entry is null)
             return;
         if (_store.LoadSong(id) is not { } model)
         {
@@ -626,7 +698,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         LoadedSong? loaded = null;
         if (_engine is { } engine)
         {
-            var mix = model.DefaultMix;
+            var mix = model.MixPresets.FirstOrDefault(p => p.Id == entry?.MixPresetId) ?? model.DefaultMix;
             var tracks = model.Tracks.Where(t => !t.Hidden).Select(t =>
             {
                 var (channel, width) = _settings.Audio.Resolve(t.Output);
@@ -636,22 +708,23 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             loaded = await engine.LoadSongAsync(model.Id, tracks, mix.MasterGainDb, startFrame);
         }
 
-        BindSong(model, loaded);
+        BindSong(model, loaded, entry, serviceId);
         var resumeSec = startFrame > 0 ? startFrame / (loaded?.SampleRate ?? 48000.0) : 0.0;
         if (resumeSec > 0)
             PlanPositionSec = resumeSec; // after an engine restart the plan clock continues where it was
         await SendPlanAsync(resumeSec);
-        AppLog.Write("Transport", $"Loaded {model.Title}");
-        _settings = _settings with { LastSongId = id };
+        AppLog.Write("Transport", entry is null ? $"Loaded {model.Title}" : $"Loaded {model.Title} ({EntryArrangement.Resolve(entry, model).Name}, {ServiceText.KeyText(model, entry.KeyOffset)})");
+        _settings = _settings with { LastSongId = id, LastEntryId = entry?.Id };
         _store.SaveSettings(_settings);
 
         foreach (var missing in _song!.Tracks.Where(t => t.Missing))
             AddToastLine($"File missing: {missing.Name}");
     }
 
-    private void BindSong(Song model, LoadedSong? loaded)
+    private void BindSong(Song model, LoadedSong? loaded, ServiceEntry? entry = null, string? serviceId = null)
     {
-        var vm = new SongViewModel(model, loaded, Outputs);
+        _loadedServiceId = entry is null ? null : serviceId;
+        var vm = new SongViewModel(model, loaded, Outputs, entry);
         foreach (var track in vm.Tracks)
         {
             track.Changed += OnTrackChanged;
@@ -757,6 +830,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         PlanPositionSec = position;
         Sections.Refresh();
         Entry.Refresh();
+        RefreshEntryCommands();
+        RefreshMixPresets();
         _ = SendPlanAsync(position);
     }
 
@@ -867,6 +942,28 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         if (_applyingUndo)
             return;
 
+        if (what == "transposes")
+        {
+            var value = track.Transposes;
+            void Toggle(bool v)
+            {
+                _applyingUndo = true;
+                try
+                {
+                    track.Transposes = v;
+                    ScheduleSave();
+                }
+                finally
+                {
+                    _applyingUndo = false;
+                }
+            }
+
+            _undo.Push(new UndoableChange($"{track.Name} {(value ? "follows" : "stays out of")} the key", () => Toggle(!value), () => Toggle(value)));
+            ScheduleSave();
+            return;
+        }
+
         var before = _committed.TryGetValue(track.Id, out var c) ? c : (0.0, false, false);
         var after = (track.GainDb, track.Mute, track.Solo);
         _committed[track.Id] = after;
@@ -903,6 +1000,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         if (_engine is not { } engine)
             return;
 
+        if (what == "transposes")
+            return; // the engine takes it with live key processing (protocol 4)
         Task request = track.IsMaster
             ? engine.SetMasterAsync(track.EngineGainDb)
             : what switch
@@ -942,16 +1041,26 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     {
         if (_song is null)
             return;
+        // The preset in use takes the fader moves (DM-13): the entry's, or the song's default.
         var model = _song.Model;
-        var mix = model.DefaultMix with
+        var mix = _song.Mix with
         {
             MasterGainDb = _song.Master.GainDb,
-            Tracks = _song.Tracks.ToDictionary(t => t.Id, t => new TrackMix { GainDb = t.GainDb, Mute = t.Mute, Solo = t.Solo }),
+            Tracks = _song.Tracks.ToDictionary(t => t.Id, t => new TrackMix
+            {
+                GainDb = t.GainDb,
+                Mute = t.Mute,
+                Solo = t.Solo,
+                Transposes = t.Transposes == t.Track.TransposesByDefault ? null : t.Transposes,
+            }),
         };
+        var presets = model.MixPresets.Any(p => p.Id == mix.Id)
+            ? model.MixPresets.Select(p => p.Id == mix.Id ? mix : p).ToList()
+            : [mix, .. model.MixPresets];
         model = model with
         {
-            MixPresets = [mix, .. model.MixPresets.Where(p => p.Id != mix.Id)],
-            DefaultMixPresetId = mix.Id,
+            MixPresets = presets,
+            DefaultMixPresetId = model.DefaultMixPresetId ?? mix.Id,
             UpdatedAt = DateTimeOffset.UtcNow,
         };
         _song.Model = model;

@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
-<!-- Prepare (UI-10): top bar, library sidebar, song header with transport, readouts and the
-     NOW and NEXT blocks, timeline with the sections lane, editor tabs ENTRY, SECTIONS, MIXER and SONG.
-     Perform arrives in milestone 5. -->
+<!-- Prepare (UI-10): top bar with the service picker, sidebar with the service and the library, song header with
+     transport, key, tempo, readouts and the NOW and NEXT blocks, timeline with the sections lane, editor tabs ENTRY,
+     SECTIONS, MIXER and SONG. Perform arrives in milestone 5. -->
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:RECompose.Presentation.ViewModels"
@@ -38,6 +38,45 @@
       <Setter Property="FontSize" Value="{DynamicResource type-meta-size}" />
       <Setter Property="HorizontalAlignment" Value="Center" />
     </Style>
+    <Style Selector="Button.chip">
+      <Setter Property="MinHeight" Value="26" />
+      <Setter Property="Height" Value="26" />
+      <Setter Property="Padding" Value="8,0" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="BorderBrush" Value="{DynamicResource border}" />
+      <Setter Property="CornerRadius" Value="{DynamicResource radius-s-corner}" />
+      <Setter Property="Background" Value="{DynamicResource bg-inset}" />
+      <Setter Property="Foreground" Value="{DynamicResource text-secondary}" />
+      <Setter Property="FontSize" Value="{DynamicResource type-meta-size}" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style Selector="Button.chip:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource bg-inset}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource control-border}" />
+      <Setter Property="Foreground" Value="{DynamicResource text-primary}" />
+    </Style>
+    <Style Selector="Border.tag">
+      <Setter Property="CornerRadius" Value="{DynamicResource radius-s-corner}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="BorderBrush" Value="{DynamicResource border}" />
+      <Setter Property="Background" Value="{DynamicResource bg-inset}" />
+      <Setter Property="Padding" Value="6,1" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Border.tag TextBlock">
+      <Setter Property="FontSize" Value="{DynamicResource type-meta-size}" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Foreground" Value="{DynamicResource text-secondary}" />
+    </Style>
+    <Style Selector="Border.tag.warning">
+      <Setter Property="BorderBrush" Value="{DynamicResource state-warning}" />
+    </Style>
+    <Style Selector="ListBox#ServiceRows ListBoxItem">
+      <Setter Property="Padding" Value="12,6" />
+    </Style>
+    <Style Selector="TextBlock.warning">
+      <Setter Property="Foreground" Value="{DynamicResource state-warning}" />
+    </Style>
     <Style Selector="ListBox#SectionRows ListBoxItem">
       <Setter Property="Padding" Value="8,2" />
     </Style>
@@ -71,6 +110,15 @@
           <ToggleButton Content="Prepare" IsChecked="True" IsHitTestVisible="False" />
           <ToggleButton Content="Perform" IsEnabled="False" ToolTip.Tip="The Perform view arrives in milestone 5." />
         </StackPanel>
+        <ComboBox x:Name="ServicePicker" DockPanel.Dock="Left" Margin="24,0,0,0" VerticalAlignment="Center" MinWidth="240"
+                  ItemsSource="{Binding Setlist.Services}" SelectedItem="{Binding Setlist.CurrentChoice}" PlaceholderText="No service"
+                  IsVisible="{Binding Setlist.HasService}" AutomationProperties.Name="Service" ToolTip.Tip="The service to prepare">
+          <ComboBox.ItemTemplate>
+            <DataTemplate x:DataType="vm:ServiceChoice">
+              <TextBlock Text="{Binding Title}" />
+            </DataTemplate>
+          </ComboBox.ItemTemplate>
+        </ComboBox>
 
         <Button DockPanel.Dock="Right" Command="{Binding OpenSettingsCommand}" ToolTip.Tip="Settings (Ctrl+,)" Margin="12,0,0,0" VerticalAlignment="Center">
           <StackPanel Orientation="Horizontal" Spacing="6">
@@ -108,9 +156,82 @@
 
     <Grid Grid.Row="2" ColumnDefinitions="300,*">
 
-      <!-- Library sidebar (UI-12, SL-56) -->
+      <!-- Sidebar (UI-12): the service (SL-1…7) over the library (SL-56) -->
       <Border Grid.Column="0" Classes="panel" BorderThickness="0,0,1,0">
-        <DockPanel>
+        <Grid RowDefinitions="3*,4,2*">
+        <DockPanel Grid.Row="0" x:Name="ServiceBlock" DataContext="{Binding Setlist}" x:DataType="vm:SetlistViewModel">
+          <StackPanel DockPanel.Dock="Top" Margin="16,16,16,8" Spacing="4">
+            <DockPanel>
+              <Button x:Name="ServiceMenuButton" DockPanel.Dock="Right" Classes="ghost cell" ToolTip.Tip="New, duplicate, rename or delete the service"
+                      AutomationProperties.Name="Service menu" Padding="4,0" MinHeight="24" Height="24">
+                <c:Icon Glyph="more" IconSize="16" />
+                <Button.Flyout>
+                  <MenuFlyout>
+                    <MenuItem Header="New service…" Command="{Binding NewServiceCommand}" />
+                    <MenuItem Header="Duplicate service…" Command="{Binding DuplicateServiceCommand}" />
+                    <MenuItem Header="Rename…" Command="{Binding RenameServiceCommand}" />
+                    <Separator />
+                    <MenuItem Header="Delete" Command="{Binding DeleteServiceCommand}" />
+                  </MenuFlyout>
+                </Button.Flyout>
+              </Button>
+              <TextBlock Classes="label" Text="SERVICE" VerticalAlignment="Center" />
+            </DockPanel>
+            <TextBlock Classes="heading" Text="{Binding Title}" TextTrimming="CharacterEllipsis" IsVisible="{Binding HasService}" />
+            <TextBlock Classes="mono" x:Name="ServiceSummary" Foreground="{DynamicResource text-secondary}" Text="{Binding Summary}" IsVisible="{Binding HasService}" />
+          </StackPanel>
+
+          <!-- UI-80: no service, and an empty one -->
+          <StackPanel DockPanel.Dock="Top" Margin="16,4,16,8" Spacing="8" IsVisible="{Binding HasNoService}">
+            <TextBlock Text="Create a service for this Sunday" TextWrapping="Wrap" />
+            <Button Classes="primary" Content="New service" Command="{Binding NewServiceCommand}" HorizontalAlignment="Left" />
+          </StackPanel>
+          <Border DockPanel.Dock="Top" Classes="inset" Margin="16,4,16,8" Padding="12,10" IsVisible="{Binding IsEmpty}">
+            <TextBlock Classes="meta" TextWrapping="Wrap" Text="Add songs from the library (drag them here)" />
+          </Border>
+
+          <ListBox x:Name="ServiceRows" ItemsSource="{Binding Rows}" SelectedItem="{Binding Selected}" Background="Transparent"
+                   DragDrop.AllowDrop="True" AutomationProperties.Name="Service entries">
+            <ListBox.ItemTemplate>
+              <DataTemplate x:DataType="vm:SetlistRowViewModel">
+                <StackPanel Spacing="6" AutomationProperties.Name="{Binding AccessibleName}">
+                  <Grid ColumnDefinitions="22,*,Auto">
+                    <TextBlock Grid.Column="0" Classes="mono" Text="{Binding Index}" Foreground="{DynamicResource text-secondary}" VerticalAlignment="Top" Margin="0,2,0,0" />
+                    <StackPanel Grid.Column="1" Spacing="2">
+                      <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                      <StackPanel Orientation="Horizontal" Spacing="6">
+                        <TextBlock Classes="meta" Text="{Binding VariantText}" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Classes="meta" Text="·" IsVisible="{Binding LengthText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                        <TextBlock Classes="meta" Text="{Binding LengthText}" />
+                      </StackPanel>
+                      <TextBlock Classes="meta warning" Text="{Binding Problem}" IsVisible="{Binding HasProblem}" TextWrapping="Wrap" />
+                      <TextBlock Classes="meta" Text="{Binding Notes}" IsVisible="{Binding Notes, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                 TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Top" Margin="8,2,0,0">
+                      <c:Icon Glyph="warning" IconSize="14" IsVisible="{Binding HasProblem}" TextElement.Foreground="{DynamicResource state-warning}" ToolTip.Tip="{Binding Problem}" />
+                      <c:Icon Glyph="play" IconSize="12" IsVisible="{Binding IsPlaying}" TextElement.Foreground="{DynamicResource state-playing}" ToolTip.Tip="Playing" />
+                      <Ellipse Classes="led ok" IsVisible="{Binding IsLoaded}" VerticalAlignment="Center" ToolTip.Tip="Loaded" />
+                      <TextBlock Classes="mono" Text="{Binding KeyText}" />
+                    </StackPanel>
+                  </Grid>
+                  <!-- The transition into the next song (SL-20): click for the popover (SL-21) -->
+                  <Button Classes="chip" Tag="{Binding Id}" Click="OnTransitionChipClick" IsVisible="{Binding HasChip}" Margin="22,0,0,0"
+                          ToolTip.Tip="Transition into the next song" AutomationProperties.Name="{Binding ChipText}">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                      <c:Icon Glyph="transition" IconSize="12" VerticalAlignment="Center" />
+                      <TextBlock Text="{Binding ChipText}" VerticalAlignment="Center" />
+                    </StackPanel>
+                  </Button>
+                </StackPanel>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+        </DockPanel>
+
+        <GridSplitter Grid.Row="1" Height="4" Background="{DynamicResource border}" ResizeDirection="Rows" />
+
+        <DockPanel Grid.Row="2">
           <StackPanel DockPanel.Dock="Top" Margin="16,16,16,8" Spacing="8">
             <DockPanel>
               <Button DockPanel.Dock="Right" Command="{Binding ImportCommand}" ToolTip.Tip="Import a stems folder (Ctrl+I)">
@@ -127,7 +248,8 @@
           <TextBlock DockPanel.Dock="Top" Margin="16" TextWrapping="Wrap" Classes="meta" IsVisible="{Binding LibraryEmpty}"
                      Text="No songs yet. Drag a folder of stems onto this window, or press Import." />
 
-          <ListBox x:Name="Library" ItemsSource="{Binding Songs}" SelectedItem="{Binding SelectedSong}" Background="Transparent">
+          <ListBox x:Name="Library" ItemsSource="{Binding Songs}" SelectedItem="{Binding SelectedSong}" Background="Transparent"
+                   ToolTip.Tip="Double-click to load; drag onto the service to add it">
             <ListBox.ItemTemplate>
               <DataTemplate x:DataType="vm:SongItemViewModel">
                 <DockPanel>
@@ -144,6 +266,7 @@
             </ListBox.ItemTemplate>
           </ListBox>
         </DockPanel>
+        </Grid>
       </Border>
 
       <!-- Song area -->
@@ -151,9 +274,10 @@
 
         <!-- Empty state (UI-80) -->
         <StackPanel Grid.Row="0" Grid.RowSpan="2" IsVisible="{Binding !HasSong}" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12">
-          <TextBlock Classes="title" Text="Import a song to begin" HorizontalAlignment="Center" />
+          <TextBlock Classes="title" Text="Import a song to begin" HorizontalAlignment="Center" IsVisible="{Binding LibraryEmpty}" />
+          <TextBlock Classes="title" Text="Load a song" HorizontalAlignment="Center" IsVisible="{Binding !LibraryEmpty}" />
           <TextBlock Classes="meta" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" MaxWidth="460"
-                     Text="Drag a folder of stems onto this window, or press Ctrl+I. Double-click a song in the library to load it." />
+                     Text="Drag a folder of stems onto this window, or press Ctrl+I. Double-click a song in the service or the library to load it." />
           <Button HorizontalAlignment="Center" Command="{Binding ImportCommand}" Content="Import a stems folder" />
         </StackPanel>
 
@@ -162,11 +286,11 @@
           <Grid ColumnDefinitions="*,Auto,Auto" RowDefinitions="Auto,Auto">
             <StackPanel Grid.Column="0" Spacing="2" VerticalAlignment="Center">
               <TextBlock Classes="title" Text="{Binding Song.Title}" TextTrimming="CharacterEllipsis" />
-              <TextBlock Classes="meta" Text="{Binding Song.HeaderLine}" />
+              <TextBlock x:Name="HeaderLine" Classes="meta" Text="{Binding Song.HeaderLine}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Song.HeaderLine}" />
               <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
                 <TextBlock Classes="label" Text="PLAYING" VerticalAlignment="Center" />
                 <ComboBox x:Name="VariantSelect" ItemsSource="{Binding Entry.Variants}" SelectedItem="{Binding Entry.SelectedVariant}"
-                          MinWidth="200" AutomationProperties.Name="Variant"
+                          MinWidth="160" MaxWidth="260" AutomationProperties.Name="Variant"
                           ToolTip.Tip="The arrangement that plays: the song as written, or one of its variants">
                   <ComboBox.ItemTemplate>
                     <DataTemplate x:DataType="vm:VariantChoice">
@@ -211,7 +335,7 @@
             </StackPanel>
 
             <!-- NOW and NEXT for the song as written (PB-30, PB-31, PB-35, LIVE-20 rule 4) -->
-            <Grid Grid.Row="1" Grid.ColumnSpan="3" ColumnDefinitions="*,*" Margin="0,12,0,0" IsVisible="{Binding HasSections}">
+            <Grid Grid.Row="1" Grid.ColumnSpan="3" ColumnDefinitions="*,*,Auto" Margin="0,12,0,0" IsVisible="{Binding HasSections}">
               <Border Grid.Column="0" Classes="inset" Padding="12,8" Margin="0,0,6,0">
                 <StackPanel Spacing="4">
                   <TextBlock Classes="label" Text="NOW" />
@@ -240,6 +364,30 @@
                   <TextBlock Classes="meta" Text="{Binding NextNoteText}" TextTrimming="CharacterEllipsis"
                              IsVisible="{Binding NextNoteText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
                 </StackPanel>
+              </Border>
+              <!-- KEY and TEMPO of the loaded service entry (UI-13, PB-60), with the live key badge (PB-61) -->
+              <Border Grid.Column="2" Classes="inset" Padding="12,8" Margin="12,0,0,0" IsVisible="{Binding HasLoadedEntry}">
+                <Grid ColumnDefinitions="Auto,Auto,Auto,Auto" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="4" RowSpacing="4">
+                  <TextBlock Grid.Row="0" Classes="label" Text="KEY" VerticalAlignment="Center" Margin="0,0,6,0" />
+                  <Button Grid.Row="0" Grid.Column="1" Classes="cell" Command="{Binding KeyDownCommand}" ToolTip.Tip="Key down (Ctrl+↓)" AutomationProperties.Name="Key down">
+                    <c:Icon Glyph="minus" IconSize="14" />
+                  </Button>
+                  <TextBlock Grid.Row="0" Grid.Column="2" x:Name="HeaderKey" Classes="mono" Classes.warning="{Binding EntryKeyWarning}" Text="{Binding EntryKeyText}"
+                             MinWidth="64" TextAlignment="Center" VerticalAlignment="Center" />
+                  <Button Grid.Row="0" Grid.Column="3" Classes="cell" Command="{Binding KeyUpCommand}" ToolTip.Tip="Key up (Ctrl+↑)" AutomationProperties.Name="Key up">
+                    <c:Icon Glyph="plus" IconSize="14" />
+                  </Button>
+                  <TextBlock Grid.Row="1" Classes="label" Text="TEMPO" VerticalAlignment="Center" Margin="0,0,6,0" />
+                  <Button Grid.Row="1" Grid.Column="1" Classes="cell" Command="{Binding TempoDownCommand}" ToolTip.Tip="Tempo −1% (Ctrl+←, Shift for 5%)" AutomationProperties.Name="Tempo down">
+                    <c:Icon Glyph="minus" IconSize="14" />
+                  </Button>
+                  <TextBlock Grid.Row="1" Grid.Column="2" Classes="mono" Text="{Binding EntryTempoText}" MinWidth="64" TextAlignment="Center" VerticalAlignment="Center" />
+                  <Button Grid.Row="1" Grid.Column="3" Classes="cell" Command="{Binding TempoUpCommand}" ToolTip.Tip="Tempo +1% (Ctrl+→, Shift for 5%)" AutomationProperties.Name="Tempo up">
+                    <c:Icon Glyph="plus" IconSize="14" />
+                  </Button>
+                  <TextBlock Grid.Row="2" Grid.ColumnSpan="4" Classes="meta warning" Text="{Binding LiveKeyBadge}" IsVisible="{Binding HasLiveKeyBadge}"
+                             ToolTip.Tip="Key and tempo are stored and counted; the audio changes once live key processing is in the engine" />
+                </Grid>
               </Border>
             </Grid>
 
@@ -325,7 +473,66 @@
         <!-- Editor tabs (UI-16): SECTIONS, MIXER and SONG -->
         <TabControl Grid.Row="3" IsVisible="{Binding HasSong}" SelectedIndex="{Binding SelectedTab}" Padding="0" Background="{DynamicResource bg-surface}">
           <TabItem Header="ENTRY">
-            <DockPanel DataContext="{Binding Entry}" x:DataType="vm:EntryViewModel" Margin="16,12,16,0">
+            <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+            <DockPanel Margin="16,12,16,0">
+            <Border DockPanel.Dock="Top" Classes="inset" Padding="12,8" Margin="0,0,0,8" DataContext="{Binding Setlist}" x:DataType="vm:SetlistViewModel"
+                    IsVisible="{Binding HasSelection}">
+              <StackPanel Spacing="8">
+                <DockPanel>
+                  <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8">
+                    <Button Content="Edit for this service only" Command="{Binding MakeCustomCommand}" ToolTip.Tip="Copy the variant into this service; the song's variant stays as it is" />
+                    <Button Content="{Binding RevertText}" Command="{Binding RevertCommand}" IsVisible="{Binding CanRevert}" />
+                    <Button Content="Save as variant…" Command="{Binding SaveAsVariantCommand}" IsVisible="{Binding IsCustom}" />
+                  </StackPanel>
+                  <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBlock x:Name="EditingHeader" Classes="heading" Text="{Binding EditingText}" VerticalAlignment="Center" />
+                    <Border Classes="tag" IsVisible="{Binding IsSelectionNotLoaded}">
+                      <TextBlock Text="not loaded" />
+                    </Border>
+                    <Button Classes="primary" Content="Load" Command="{Binding LoadSelectedCommand}" IsVisible="{Binding IsSelectionNotLoaded}" />
+                    <TextBlock Classes="meta" Text="{Binding ArrangementText}" VerticalAlignment="Center" />
+                  </StackPanel>
+                </DockPanel>
+                <WrapPanel Orientation="Horizontal">
+                  <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,0,16,4">
+                    <TextBlock Classes="label" Text="KEY" VerticalAlignment="Center" Margin="0,0,4,0" />
+                    <Button Classes="cell" Command="{Binding KeyDownCommand}" AutomationProperties.Name="Entry key down"><c:Icon Glyph="minus" IconSize="14" /></Button>
+                    <TextBlock Classes="mono" Classes.warning="{Binding KeyWarning}" Text="{Binding KeyText}" MinWidth="60" TextAlignment="Center" VerticalAlignment="Center"
+                               ToolTip.Tip="{Binding KeyTip}" />
+                    <Button Classes="cell" Command="{Binding KeyUpCommand}" AutomationProperties.Name="Entry key up"><c:Icon Glyph="plus" IconSize="14" /></Button>
+                  </StackPanel>
+                  <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,0,16,4">
+                    <TextBlock Classes="label" Text="TEMPO" VerticalAlignment="Center" Margin="0,0,4,0" />
+                    <Button Classes="cell" Command="{Binding TempoDownCommand}" AutomationProperties.Name="Entry tempo down"><c:Icon Glyph="minus" IconSize="14" /></Button>
+                    <TextBlock Classes="mono" Text="{Binding TempoText}" MinWidth="48" TextAlignment="Center" VerticalAlignment="Center" />
+                    <Button Classes="cell" Command="{Binding TempoUpCommand}" AutomationProperties.Name="Entry tempo up"><c:Icon Glyph="plus" IconSize="14" /></Button>
+                  </StackPanel>
+                  <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,16,4">
+                    <TextBlock Classes="label" Text="COUNT-IN" VerticalAlignment="Center" />
+                    <ComboBox Classes="cell" ItemsSource="{Binding CountInChoices}" SelectedItem="{Binding CountIn}" MinWidth="140" AutomationProperties.Name="Count-in" />
+                    <TextBlock Classes="meta" Text="click not audible yet" VerticalAlignment="Center" IsVisible="{Binding CountInNotAudible}" />
+                  </StackPanel>
+                  <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,16,4">
+                    <TextBlock Classes="label" Text="MIX" VerticalAlignment="Center" />
+                    <ComboBox Classes="cell" ItemsSource="{Binding MixPresets}" SelectedItem="{Binding MixPreset}" MinWidth="140" AutomationProperties.Name="Mix preset" />
+                  </StackPanel>
+                  <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,16,4" IsVisible="{Binding HasTransition}">
+                    <TextBlock Classes="label" Text="THEN" VerticalAlignment="Center" />
+                    <Button Classes="chip" Command="{Binding EditTransitionCommand}" AutomationProperties.Name="Transition after this song">
+                      <StackPanel Orientation="Horizontal" Spacing="6">
+                        <c:Icon Glyph="transition" IconSize="12" VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding TransitionText}" VerticalAlignment="Center" />
+                      </StackPanel>
+                    </Button>
+                  </StackPanel>
+                  <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,0,4">
+                    <TextBlock Classes="label" Text="NOTES" VerticalAlignment="Center" />
+                    <TextBox Classes="cell" Text="{Binding Notes}" Width="260" PlaceholderText="For the band, shown in the setlist" AutomationProperties.Name="Entry notes" />
+                  </StackPanel>
+                </WrapPanel>
+              </StackPanel>
+            </Border>
+            <DockPanel DataContext="{Binding Entry}" x:DataType="vm:EntryViewModel">
               <!-- Variants (ARR-1…3) -->
               <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
                 <TextBox x:Name="VariantNameBox" Text="{Binding VariantName}" PlaceholderText="Variant name" Width="180" />
@@ -432,7 +639,7 @@
                         </StackPanel>
                         <TextBlock Grid.Row="2" Text="Key lift" VerticalAlignment="Center" Margin="0,0,0,6" />
                         <TextBox Grid.Row="2" Grid.Column="1" Classes="cell" Text="{Binding Lift}" Width="56" HorizontalAlignment="Left" Margin="0,0,0,6"
-                                 ToolTip.Tip="Semitones, −6 to +6. Stored now; it sounds from milestone 6" AutomationProperties.Name="Key lift" />
+                                 ToolTip.Tip="Semitones, −6 to +6, on top of the entry key. Stored now; it sounds once live key processing is in the engine" AutomationProperties.Name="Key lift" />
                         <TextBlock Grid.Row="3" Text="Mute" VerticalAlignment="Center" Margin="0,0,0,6" />
                         <StackPanel Grid.Row="3" Grid.Column="1" Spacing="4" Margin="0,0,0,6">
                           <ComboBox ItemsSource="{Binding MuteChoices}" SelectedItem="{Binding Mute}" HorizontalAlignment="Stretch" AutomationProperties.Name="Mute" />
@@ -483,6 +690,8 @@
                 <TextBlock Text="{Binding AsWrittenNote}" Classes="meta" Margin="12,4" VerticalAlignment="Bottom" IsVisible="{Binding IsAsWritten}" />
               </Grid>
             </DockPanel>
+            </DockPanel>
+            </ScrollViewer>
           </TabItem>
           <TabItem Header="SECTIONS">
             <DockPanel DataContext="{Binding Sections}" x:DataType="vm:SectionsViewModel" Margin="16,12,16,0">
@@ -584,6 +793,15 @@
           </TabItem>
 
           <TabItem Header="MIXER">
+            <DockPanel>
+            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="16,8,16,4">
+              <TextBlock Classes="label" Text="MIX PRESET" VerticalAlignment="Center" />
+              <ComboBox x:Name="MixPresetSelect" ItemsSource="{Binding MixPresetChoices}" SelectedItem="{Binding CurrentMixPreset}" MinWidth="200"
+                        AutomationProperties.Name="Mix preset" ToolTip.Tip="The mix this entry plays with; fader moves change it" />
+              <Button Content="Save as new…" Command="{Binding SaveMixAsNewCommand}" />
+              <Button Content="Rename" Command="{Binding RenameMixCommand}" />
+              <Button Content="Delete" Command="{Binding DeleteMixCommand}" />
+            </StackPanel>
             <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
               <StackPanel Orientation="Horizontal">
                 <ItemsControl x:Name="Mixer" ItemsSource="{Binding Song.Tracks}">
@@ -602,6 +820,8 @@
                           <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Spacing="4" HorizontalAlignment="Center" Margin="0,4,0,0">
                             <ToggleButton Classes="ms mute" Content="M" IsChecked="{Binding Mute}" ToolTip.Tip="Mute" />
                             <ToggleButton Classes="ms solo" Content="S" IsChecked="{Binding Solo}" ToolTip.Tip="Solo" />
+                            <ToggleButton Classes="ms" Content="#" IsChecked="{Binding Transposes}" ToolTip.Tip="Follows the entry key (click and guide never do)"
+                                          AutomationProperties.Name="Follows the key" />
                           </StackPanel>
                           <TextBlock DockPanel.Dock="Bottom" Classes="mono" Text="{Binding GainText}" HorizontalAlignment="Center" />
                           <Grid ColumnDefinitions="*,10" Margin="0,6">
@@ -637,6 +857,7 @@
                 </ContentControl>
               </StackPanel>
             </ScrollViewer>
+            </DockPanel>
           </TabItem>
 
           <TabItem Header="SONG">

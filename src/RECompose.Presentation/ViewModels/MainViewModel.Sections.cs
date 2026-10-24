@@ -5,6 +5,7 @@ using RECompose.Core.Commands;
 using RECompose.Core.Arrangements;
 using RECompose.Core.Library;
 using RECompose.Core.Sections;
+using RECompose.Core.Services;
 using RECompose.Core.Timing;
 using RECompose.Engine;
 using RECompose.Presentation.Services;
@@ -331,7 +332,11 @@ public sealed partial class MainViewModel
         if (_song?.Id == songId)
         {
             var gridChanged = before.Grid != after.Grid;
+            var mixBefore = _song.Mix.Id;
             _song.SetModel(after, active.Id, active.Set);
+            if (_song.Mix.Id != mixBefore)
+                ApplyMixPreset(); // an undo or a deleted preset changed the preset in use
+            RefreshMixPresets();
             if (gridChanged)
                 _song.ResetFields();
             Sections.Refresh();
@@ -355,21 +360,31 @@ public sealed partial class MainViewModel
         var before = _song.Model.Sections;
         var beforeGuide = _song.Model.GuideAnalysis;
         var variantsBefore = _song.Model.Arrangements;
-        var variantsAfter = variantsBefore;
-        if (variantsBefore.Count > 0)
+        Func<List<Arrangement>, List<Arrangement>>? remap = null;
+        if (merged is { } m)
+            remap = v => ArrangementEdit.RemapSection(v, m.Removed, m.Kept);
+        else if (redetect)
         {
-            if (merged is { } m)
-                variantsAfter = ArrangementEdit.RemapSection(variantsBefore, m.Removed, m.Kept);
-            else if (redetect)
-                variantsAfter = ArrangementEdit.RemapAfterRedetect(variantsBefore, _song.Sections,
-                    SectionList.Describe(sections, _song.Grid, _song.DurationSec));
+            var oldInfos = _song.Sections;
+            var newInfos = SectionList.Describe(sections, _song.Grid, _song.DurationSec);
+            remap = v => ArrangementEdit.RemapAfterRedetect(v, oldInfos, newInfos);
         }
 
-        void Apply(List<Section> value, GuideAnalysis? g, List<Arrangement> variants) =>
-            UpdateSong(songId, s => s with { Sections = value, GuideAnalysis = g ?? s.GuideAnalysis, Arrangements = variants, UpdatedAt = DateTimeOffset.UtcNow });
+        var variantsAfter = remap is not null && variantsBefore.Count > 0 ? remap(variantsBefore) : variantsBefore;
 
-        Apply(sections, guide, variantsAfter);
-        _undo.Push(new UndoableChange(description, () => Apply(before, beforeGuide, variantsBefore), () => Apply(sections, guide, variantsAfter)));
+        // Custom arrangements of this song's service entries follow the sections like its variants (SEC-17, SEC-54).
+        var servicesAfter = remap is null ? [] : ServicesWithCustomsMapped(songId, remap);
+        var servicesBefore = servicesAfter.Select(s => _services.First(x => x.Id == s.Id)).ToList();
+
+        void Apply(List<Section> value, GuideAnalysis? g, List<Arrangement> variants, List<Service> services)
+        {
+            UpdateSong(songId, s => s with { Sections = value, GuideAnalysis = g ?? s.GuideAnalysis, Arrangements = variants, UpdatedAt = DateTimeOffset.UtcNow });
+            foreach (var service in services)
+                ApplyService(service);
+        }
+
+        Apply(sections, guide, variantsAfter, servicesAfter);
+        _undo.Push(new UndoableChange(description, () => Apply(before, beforeGuide, variantsBefore, servicesBefore), () => Apply(sections, guide, variantsAfter, servicesAfter)));
         AppLog.Write("Sections", description);
         if (toast is not null)
             ShowToast(toast.Length == 0 ? description : toast, canUndo: true);

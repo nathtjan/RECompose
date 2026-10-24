@@ -47,4 +47,16 @@ public sealed record AppSettings
     public bool ShowImportReview { get; init; } = true;
     public bool FollowPlayhead { get; init; } = true;
     public string? LastSongId { get; init; }
+
+    /// <summary>The service shown in the sidebar (DM-80 currentServiceId).</summary>
+    public string? LastServiceId { get; init; }
+
+    /// <summary>The service entry that was loaded (DM-80 loadedEntryId); it is loaded again at start-up.</summary>
+    public string? LastEntryId { get; init; }
+
+    /// <summary>
+    /// ARR-12 "remember this choice": variant id → "service" (edits from a service make a custom arrangement) or "all"
+    /// (they change the variant). May be null in files written before milestone 4.
+    /// </summary>
+    public Dictionary<string, string>? VariantScopes { get; init; }
 }
