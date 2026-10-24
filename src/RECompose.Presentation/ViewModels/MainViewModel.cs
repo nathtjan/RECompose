@@ -261,6 +261,17 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public const int MixerTab = 2;
     public const int SongTab = 3;
 
+    private string _nowPass = string.Empty, _nowNote = string.Empty, _nextNote = string.Empty;
+
+    /// <summary>"pass 1 of 2" or "until cued" on the NOW card (ARR-23).</summary>
+    public string NowPassText { get => _nowPass; private set => Set(ref _nowPass, value); }
+
+    /// <summary>The note on the section playing, shown on NOW (ARR-37).</summary>
+    public string NowNoteText { get => _nowNote; private set => Set(ref _nowNote, value); }
+
+    /// <summary>The note on the next entry, shown on NEXT (ARR-37).</summary>
+    public string NextNoteText { get => _nextNote; private set => Set(ref _nextNote, value); }
+
     /// <summary>The length of the plan the engine reports, in frames: how the app and the engine agree on the arrangement.</summary>
     public long EnginePlanFrames { get => _enginePlanFrames; private set => Set(ref _enginePlanFrames, value); }
 
@@ -790,6 +801,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             SongBarText = TimeText = ChartBarText = string.Empty;
             NowLabel = NowDetail = NextLabel = NextTag = CountdownText = string.Empty;
             SectionProgress = 0;
+            NowPassText = NowNoteText = NextNoteText = string.Empty;
             return;
         }
 
@@ -803,6 +815,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         NextTag = r.NextTag;
         CountdownText = r.Countdown;
         SectionProgress = r.SectionProgress;
+        NowPassText = r.NowPass;
+        NowNoteText = r.NowNote;
+        NextNoteText = r.NextNote;
     }
 
     // ---- Mixer (PB-80…84) with undo and autosave ------------------------------------

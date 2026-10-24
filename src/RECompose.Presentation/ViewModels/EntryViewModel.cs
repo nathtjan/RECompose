@@ -180,6 +180,9 @@ public sealed class EntryViewModel : ObservableObject
         }
     }
 
+    public IReadOnlyList<MuteChoice> MuteChoices => MuteChoice.All;
+    public IReadOnlyList<EndingChoice> EndingChoices => EndingChoice.All;
+
     public bool HasSelection => Selected is not null;
     public bool SelectedIsSection => Selected?.Entry.Kind == EntryKind.Section;
     public bool SelectedIsGenerated => Selected?.Entry.Kind is EntryKind.Click or EntryKind.Pad;

@@ -45,7 +45,7 @@ public partial class MainWindow : Window
         {
             if (ViewModel is { } vm)
             {
-                vm.SelectedTab = 0;
+                vm.SelectedTab = MainViewModel.SectionsTab;
                 vm.Sections.RequestRename(id);
             }
         };
@@ -105,7 +105,7 @@ public partial class MainWindow : Window
     {
         if (ViewModel is not { } vm || vm.Sections.Rows.FirstOrDefault(r => r.Id == id) is not { } row)
             return;
-        vm.SelectedTab = 0;
+        vm.SelectedTab = MainViewModel.SectionsTab;
         Avalonia.Threading.Dispatcher.UIThread.Post(() =>
         {
             SectionRows.ScrollIntoView(row);
@@ -147,7 +147,7 @@ public partial class MainWindow : Window
         var menu = new ContextMenu();
         menu.Items.Add(Item("Rename…", () =>
         {
-            vm.SelectedTab = 0;
+            vm.SelectedTab = MainViewModel.SectionsTab;
             sections.RequestRename(id);
         }));
         menu.Items.Add(types);
@@ -160,6 +160,13 @@ public partial class MainWindow : Window
     }
 
     private MainViewModel? ViewModel => DataContext as MainViewModel;
+
+    /// <summary>A section button in the ENTRY palette: add that section to the variant (ARR-20).</summary>
+    private void OnPaletteClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: string sectionId })
+            ViewModel?.Entry.AddSection(sectionId);
+    }
 
     private void OnKeyDownTunnel(object? sender, KeyEventArgs e)
     {
@@ -192,6 +199,10 @@ public partial class MainWindow : Window
                     return;
                 case Key.F:
                     Search.Focus();
+                    e.Handled = true;
+                    return;
+                case Key.D when vm.SelectedTab == MainViewModel.EntryTab && FocusManager?.GetFocusedElement() is not TextBox:
+                    vm.Entry.DuplicateCommand.Execute(null);
                     e.Handled = true;
                     return;
             }
@@ -236,7 +247,16 @@ public partial class MainWindow : Window
             case Key.S:
                 vm.Sections.SplitAtPlayhead();
                 break;
-            case Key.Delete when vm.SelectedTab == 0 && vm.Sections.Selected is { } selected:
+            case Key.Delete when vm.SelectedTab == MainViewModel.EntryTab && vm.Entry.Selected is not null:
+                vm.Entry.RemoveCommand.Execute(null);
+                break;
+            case Key.Up when e.KeyModifiers.HasFlag(KeyModifiers.Alt) && vm.SelectedTab == MainViewModel.EntryTab:
+                vm.Entry.MoveUpCommand.Execute(null);
+                break;
+            case Key.Down when e.KeyModifiers.HasFlag(KeyModifiers.Alt) && vm.SelectedTab == MainViewModel.EntryTab:
+                vm.Entry.MoveDownCommand.Execute(null);
+                break;
+            case Key.Delete when vm.SelectedTab == MainViewModel.SectionsTab && vm.Sections.Selected is { } selected:
                 vm.Sections.DeleteById(selected.Id);
                 break;
             case Key.Space:
