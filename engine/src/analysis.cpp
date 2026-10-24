@@ -347,6 +347,15 @@ int transcribe (int argc, char* argv[])
     whisper_log_set (quietLog, nullptr);
     auto contextParams = whisper_context_default_params();
     contextParams.use_gpu = false;
+    // Word times from cross-attention alignment (DTW) are far better than the token-level
+    // heuristic, which spreads a window's words evenly. The alignment heads are per model.
+    const auto modelName = juce::File (juce::String::fromUTF8 (model)).getFileName();
+    if (modelName.contains ("base.en"))
+    {
+        contextParams.flash_attn = false;
+        contextParams.dtw_token_timestamps = true;
+        contextParams.dtw_aheads_preset = WHISPER_AHEADS_BASE_EN;
+    }
     std::unique_ptr<whisper_context, void (*) (whisper_context*)> context (
         whisper_init_from_file_with_params (model, contextParams), whisper_free);
     if (context == nullptr)
@@ -373,7 +382,7 @@ int transcribe (int argc, char* argv[])
         std::vector<Placed> placed;
     };
     std::vector<Window> windows;
-    constexpr double gap = 1.0, lead = 0.3, maxWindow = 28.0;
+    constexpr double gap = 1.5, lead = 0.3, maxWindow = 28.0;
     for (const auto& span : spans)
     {
         const double length = span.end - span.start;
@@ -421,7 +430,7 @@ int transcribe (int argc, char* argv[])
         struct Word
         {
             std::string text;
-            double start = 0, end = 0, p = 0;
+            double start = 0, end = 0, p = 0, aligned = -1;
             int tokens = 0;
         };
         std::vector<Word> found;
@@ -446,11 +455,14 @@ int transcribe (int argc, char* argv[])
                 auto& word = found.back();
                 word.text += piece;
                 word.end = std::max (word.end, data.t1 / 100.0);
+                if (contextParams.dtw_token_timestamps && data.t_dtw >= 0 && word.aligned < 0)
+                    word.aligned = data.t_dtw / 100.0;
                 word.p += data.p;
                 ++word.tokens;
             }
         }
 
+        size_t previous = 0; // words come in order, so their stretches never go back
         for (auto& w : found)
         {
             const auto text = trim (w.text);
@@ -462,25 +474,36 @@ int transcribe (int argc, char* argv[])
             if (! hasLetters)
                 continue;
 
-            // The stretch whose window position is nearest to the word's middle.
-            const double middle = (w.start + std::max (w.end, w.start)) / 2;
-            const Placed* home = &window.placed.front();
+            // The stretch nearest to where the word was aligned (or its token time).
+            const double at = w.aligned >= 0 ? w.aligned : (w.start + std::max (w.end, w.start)) / 2;
+            size_t homeIndex = previous;
             double best = 1e9;
-            for (const auto& placed : window.placed)
+            for (size_t i = previous; i < window.placed.size(); ++i)
             {
-                const double distance = middle < placed.windowStart ? placed.windowStart - middle
-                                      : middle > placed.windowStart + placed.length ? middle - placed.windowStart - placed.length
+                const auto& placed = window.placed[i];
+                const double distance = at < placed.windowStart ? placed.windowStart - at
+                                      : at > placed.windowStart + placed.length ? at - placed.windowStart - placed.length
                                       : 0.0;
                 if (distance < best)
                 {
                     best = distance;
-                    home = &placed;
+                    homeIndex = i;
                 }
             }
+            previous = homeIndex;
+            const Placed* home = &window.placed[homeIndex];
 
+            // Inside the stretch, the token times are good enough for bar-level starts;
+            // a word that seems to start outside its stretch starts at its aligned time.
             const double offset = home->sourceStart - home->windowStart;
-            const double start = std::clamp (w.start + offset, home->sourceStart, home->sourceStart + home->length);
-            const double end = std::clamp (std::max (w.end, w.start + 0.05) + offset, start, home->sourceStart + home->length);
+            double wordStart = w.start, wordEnd = std::max (w.end, w.start + 0.05);
+            if (w.aligned >= 0 && (wordStart < home->windowStart - 0.1 || wordStart > home->windowStart + home->length))
+            {
+                wordStart = std::max (home->windowStart, w.aligned - 0.15);
+                wordEnd = std::min (home->windowStart + home->length, w.aligned + 0.3);
+            }
+            const double start = std::clamp (wordStart + offset, home->sourceStart, home->sourceStart + home->length);
+            const double end = std::clamp (wordEnd + offset, start, home->sourceStart + home->length);
             juce::Array<juce::var> row { juce::String::fromUTF8 (text.c_str()), number (start), number (end),
                                          number (w.tokens > 0 ? w.p / w.tokens : 0.0) };
             words.add (row);
