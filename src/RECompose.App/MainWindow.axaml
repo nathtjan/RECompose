@@ -1,6 +1,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
-<!-- Prepare (UI-10): top bar, library sidebar, song header with transport and readouts,
-     timeline, editor tabs MIXER and SONG. Perform arrives in milestone 5. -->
+<!-- Prepare (UI-10): top bar, library sidebar, song header with transport, readouts and the
+     NOW and NEXT blocks, timeline with the sections lane, editor tabs SECTIONS, MIXER and SONG.
+     Perform arrives in milestone 5. -->
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:RECompose.Presentation.ViewModels"
@@ -23,6 +24,38 @@
     </Style>
     <Style Selector="ListBox#Library ListBoxItem">
       <Setter Property="Padding" Value="16,8" />
+    </Style>
+    <Style Selector="Border.badge">
+      <Setter Property="CornerRadius" Value="{DynamicResource radius-s-corner}" />
+      <Setter Property="Padding" Value="5,1" />
+      <Setter Property="MinWidth" Value="30" />
+      <Setter Property="HorizontalAlignment" Value="Left" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Border.badge TextBlock">
+      <Setter Property="Foreground" Value="{DynamicResource text-on-section}" />
+      <Setter Property="FontWeight" Value="Bold" />
+      <Setter Property="FontSize" Value="{DynamicResource type-meta-size}" />
+      <Setter Property="HorizontalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="ListBox#SectionRows ListBoxItem">
+      <Setter Property="Padding" Value="8,2" />
+    </Style>
+    <Style Selector="Grid.row.flash">
+      <Setter Property="Background" Value="{DynamicResource accent-subtle}" />
+    </Style>
+    <Style Selector="TextBox.cell">
+      <Setter Property="MinHeight" Value="28" />
+      <Setter Property="Padding" Value="6,2" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="ComboBox.cell">
+      <Setter Property="MinHeight" Value="28" />
+      <Setter Property="Padding" Value="6,2" />
+    </Style>
+    <Style Selector="Button.cell">
+      <Setter Property="MinHeight" Value="28" />
+      <Setter Property="Padding" Value="8,0" />
     </Style>
   </Window.Styles>
 
@@ -53,6 +86,11 @@
             <TextBlock Classes="mono" Text="{Binding AudioStatus}" VerticalAlignment="Center" />
           </StackPanel>
         </Button>
+        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="0,0,16,0"
+                    IsVisible="{Binding HasBackgroundActivity}" ToolTip.Tip="{Binding BackgroundActivity}">
+          <c:Icon Glyph="rendering" IconSize="14" VerticalAlignment="Center" TextElement.Foreground="{DynamicResource state-pending}" />
+          <TextBlock Classes="meta" Text="{Binding BackgroundActivity}" VerticalAlignment="Center" MaxWidth="360" TextTrimming="CharacterEllipsis" />
+        </StackPanel>
         <Panel />
       </DockPanel>
     </Border>
@@ -98,6 +136,8 @@
                   <StackPanel Spacing="2">
                     <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
                     <TextBlock Classes="meta" Text="{Binding MetaLine}" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Classes="meta" Text="{Binding Activity}" IsVisible="{Binding HasActivity}" Foreground="{DynamicResource state-pending}"
+                               TextTrimming="CharacterEllipsis" />
                   </StackPanel>
                 </DockPanel>
               </DataTemplate>
@@ -119,7 +159,7 @@
 
         <!-- Song header (UI-13): title, key BPM meter, transport, readouts -->
         <Border Grid.Row="0" Classes="panel" BorderThickness="0,0,0,1" Padding="16,12" IsVisible="{Binding HasSong}">
-          <Grid ColumnDefinitions="*,Auto,Auto">
+          <Grid ColumnDefinitions="*,Auto,Auto" RowDefinitions="Auto,Auto">
             <StackPanel Grid.Column="0" Spacing="2" VerticalAlignment="Center">
               <TextBlock Classes="title" Text="{Binding Song.Title}" TextTrimming="CharacterEllipsis" />
               <TextBlock Classes="meta" Text="{Binding Song.HeaderLine}" />
@@ -157,6 +197,48 @@
                 <TextBlock Classes="mono" Foreground="{DynamicResource text-secondary}" Text="{Binding ChartBarText}" />
               </StackPanel>
             </StackPanel>
+
+            <!-- NOW and NEXT for the song as written (PB-30, PB-31, PB-35, LIVE-20 rule 4) -->
+            <Grid Grid.Row="1" Grid.ColumnSpan="3" ColumnDefinitions="*,*" Margin="0,12,0,0" IsVisible="{Binding HasSections}">
+              <Border Grid.Column="0" Classes="inset" Padding="12,8" Margin="0,0,6,0">
+                <StackPanel Spacing="4">
+                  <TextBlock Classes="label" Text="NOW" />
+                  <StackPanel Orientation="Horizontal" Spacing="12">
+                    <TextBlock x:Name="NowLabel" Classes="heading" Text="{Binding NowLabel}" />
+                    <TextBlock Classes="readout" Text="{Binding NowDetail}" VerticalAlignment="Center" />
+                  </StackPanel>
+                  <ProgressBar Minimum="0" Maximum="1" Value="{Binding SectionProgress}" Height="4" MinHeight="4" />
+                </StackPanel>
+              </Border>
+              <Border Grid.Column="1" Classes="inset" Padding="12,8" Margin="6,0,0,0">
+                <StackPanel Spacing="4">
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <TextBlock Classes="label" Text="NEXT" />
+                    <TextBlock Classes="label" Text="·" />
+                    <TextBlock Classes="label" Text="{Binding NextTag}" />
+                  </StackPanel>
+                  <StackPanel Orientation="Horizontal" Spacing="12">
+                    <TextBlock x:Name="NextLabel" Classes="heading" Text="{Binding NextLabel}" />
+                    <TextBlock Classes="readout" Text="{Binding CountdownText}" VerticalAlignment="Center" />
+                  </StackPanel>
+                </StackPanel>
+              </Border>
+            </Grid>
+
+            <!-- UI-80: no sections yet -->
+            <Border Grid.Row="1" Grid.ColumnSpan="3" Classes="inset" Padding="12,10" Margin="0,12,0,0" IsVisible="{Binding !HasSections}">
+              <DockPanel>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8">
+                  <Button Classes="primary" Content="Detect from guide" Command="{Binding Sections.DetectCommand}"
+                          ToolTip.Tip="{Binding Sections.DetectHint}" />
+                  <Button Content="Mark at playhead (M)" Command="{Binding MarkCommand}" />
+                </StackPanel>
+                <TextBlock VerticalAlignment="Center" TextWrapping="Wrap">
+                  <Run Text="No sections yet." FontWeight="Bold" />
+                  <Run Text=" Detect them from the guide, or play the song and press M at each section." />
+                </TextBlock>
+              </DockPanel>
+            </Border>
           </Grid>
         </Border>
 
@@ -169,6 +251,15 @@
                   <ToggleButton DockPanel.Dock="Right" Classes="ms" Content="Follow" IsChecked="{Binding FollowPlayhead}" Padding="6,0"
                                 Height="22" MinHeight="22" ToolTip.Tip="Follow the playhead when zoomed in (.)" />
                   <TextBlock Classes="label" Text="TRACKS" VerticalAlignment="Center" />
+                </DockPanel>
+              </Border>
+              <Border Height="32" Classes="panel" BorderThickness="0,0,1,1" Padding="12,0">
+                <DockPanel>
+                  <Button DockPanel.Dock="Right" Classes="ghost cell" Command="{Binding MarkCommand}" ToolTip.Tip="Mark a section at the playhead (M)"
+                          Padding="4,0" MinHeight="24" Height="24">
+                    <c:Icon Glyph="plus" IconSize="14" />
+                  </Button>
+                  <TextBlock Classes="label" Text="SECTIONS" VerticalAlignment="Center" />
                 </DockPanel>
               </Border>
               <ItemsControl ItemsSource="{Binding Song.Tracks}">
@@ -200,14 +291,115 @@
                             Position="{Binding PositionSec}"
                             Version="{Binding Song.WaveformVersion, FallbackValue=0}"
                             Follow="{Binding FollowPlayhead}"
-                            IsPlaying="{Binding IsPlaying}" />
+                            IsPlaying="{Binding IsPlaying}"
+                            SectionsVersion="{Binding Song.SectionsVersion, FallbackValue=0}"
+                            SelectedSection="{Binding Sections.Selected.Id, FallbackValue={x:Null}}" />
           </Grid>
         </ScrollViewer>
 
         <GridSplitter Grid.Row="2" Height="4" Background="{DynamicResource border}" ResizeDirection="Rows" IsVisible="{Binding HasSong}" />
 
-        <!-- Editor tabs (UI-16): MIXER and SONG -->
+        <!-- Editor tabs (UI-16): SECTIONS, MIXER and SONG -->
         <TabControl Grid.Row="3" IsVisible="{Binding HasSong}" SelectedIndex="{Binding SelectedTab}" Padding="0" Background="{DynamicResource bg-surface}">
+          <TabItem Header="SECTIONS">
+            <DockPanel DataContext="{Binding Sections}" x:DataType="vm:SectionsViewModel" Margin="16,12,16,0">
+              <!-- Toolbar: Detect, Review, + At playhead, Split (SEC-10, SEC-30, SEC-50, SEC-53) -->
+              <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Spacing="8">
+                  <Button x:Name="DetectButton" Classes="primary" Content="Detect from guide" Command="{Binding DetectCommand}" ToolTip.Tip="{Binding DetectHint}" />
+                  <Button Content="{Binding ReviewLabel}" Command="{Binding ReviewCommand}" ToolTip.Tip="Step through the sections that need review" />
+                  <Button Command="{Binding AddAtPlayheadCommand}" ToolTip.Tip="Add a section at the playhead (like M) and name it">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                      <c:Icon Glyph="plus" IconSize="14" VerticalAlignment="Center" />
+                      <TextBlock Text="At playhead" VerticalAlignment="Center" />
+                    </StackPanel>
+                  </Button>
+                  <Button x:Name="SplitButton" Content="Split at playhead" ToolTip.Tip="Split the section under the playhead (S)" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" Margin="16,0,0,0" IsVisible="{Binding IsBusy}">
+                  <c:Icon Glyph="rendering" IconSize="14" TextElement.Foreground="{DynamicResource state-pending}" VerticalAlignment="Center" />
+                  <TextBlock Classes="meta" Text="{Binding BusyText}" VerticalAlignment="Center" />
+                </StackPanel>
+                <TextBlock Classes="meta" Text="{Binding DetectHint}" VerticalAlignment="Center" Margin="16,0,0,0" TextTrimming="CharacterEllipsis"
+                           IsVisible="{Binding !IsBusy}" />
+              </DockPanel>
+
+              <!-- Result box (SEC-16) -->
+              <Border DockPanel.Dock="Top" Classes="inset" Padding="12,8" Margin="0,0,0,8" IsVisible="{Binding HasResult}">
+                <SelectableTextBlock x:Name="ResultBox" Text="{Binding ResultText}" TextWrapping="Wrap" />
+              </Border>
+
+              <!-- Review (SEC-30, SEC-31) -->
+              <Border DockPanel.Dock="Top" Classes="inset" Padding="12,8" Margin="0,0,0,8" IsVisible="{Binding IsReviewing}"
+                      BorderBrush="{DynamicResource state-warning}" BorderThickness="1">
+                <DockPanel>
+                  <StackPanel DockPanel.Dock="Left" Spacing="2" VerticalAlignment="Center" Margin="0,0,16,0">
+                    <TextBlock Classes="heading" Text="{Binding ReviewTitle}" />
+                    <TextBlock Classes="meta" Text="{Binding ReviewHeard}" />
+                  </StackPanel>
+                  <WrapPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button Classes="primary" Content="Accept  ⏎" Command="{Binding AcceptCommand}" Margin="0,2,6,2" ToolTip.Tip="Accept this start (Enter)" />
+                    <Button Content="Earlier  ←" Command="{Binding EarlierCommand}" Margin="0,2,6,2" ToolTip.Tip="One bar earlier (←)" />
+                    <Button Content="Later  →" Command="{Binding LaterCommand}" Margin="0,2,6,2" ToolTip.Tip="One bar later (→)" />
+                    <Button x:Name="ReviewRenameButton" Content="Rename  R" Margin="0,2,6,2" ToolTip.Tip="Rename (R)" />
+                    <Button x:Name="ReviewTypeButton" Content="Change type  T" Margin="0,2,6,2" ToolTip.Tip="Change the type (T)" />
+                    <Button Content="Delete  Del" Command="{Binding ReviewDeleteCommand}" Margin="0,2,6,2" ToolTip.Tip="Delete this section (Delete)" />
+                    <Button Content="Next  N" Command="{Binding NextCommand}" Margin="0,2,6,2" ToolTip.Tip="Skip to the next one (N)" />
+                    <Button Content="Play again" Command="{Binding ReplayCommand}" Margin="0,2,6,2" />
+                    <Button Classes="ghost" Content="Stop review" Command="{Binding StopReviewCommand}" Margin="0,2,6,2" ToolTip.Tip="Esc" />
+                  </WrapPanel>
+                </DockPanel>
+              </Border>
+
+              <!-- The table (SEC-51), always in time order -->
+              <Grid DockPanel.Dock="Top" ColumnDefinitions="28,44,*,150,100,72,64,40,84,40" Margin="8,0,8,4">
+                <TextBlock Grid.Column="2" Classes="label" Text="LABEL" />
+                <TextBlock Grid.Column="3" Classes="label" Text="TYPE" />
+                <TextBlock Grid.Column="4" Classes="label" Text="START (S)" />
+                <TextBlock Grid.Column="5" Classes="label" Text="CHART BAR" />
+                <TextBlock Grid.Column="6" Classes="label" Text="BARS" />
+                <TextBlock Grid.Column="7" Classes="label" Text="CALL" />
+              </Grid>
+              <TextBlock DockPanel.Dock="Top" Classes="meta" Margin="8" IsVisible="{Binding IsEmpty}" TextWrapping="Wrap"
+                         Text="No sections yet. Press Detect from guide, or play the song and press M at each section." />
+              <ListBox x:Name="SectionRows" ItemsSource="{Binding Rows}" SelectedItem="{Binding Selected}" Background="Transparent">
+                <ListBox.ItemTemplate>
+                  <DataTemplate x:DataType="vm:SectionRowViewModel">
+                    <Grid Classes="row" Classes.flash="{Binding Flash}" ColumnDefinitions="28,44,*,150,100,72,64,40,84,40">
+                      <c:Icon Grid.Column="0" Glyph="warning" IconSize="16" IsVisible="{Binding NeedsReview}" VerticalAlignment="Center"
+                              TextElement.Foreground="{DynamicResource state-warning}" ToolTip.Tip="Needs review" />
+                      <Border Grid.Column="1" Classes="badge" Background="{Binding ColorToken, Converter={x:Static c:TokenBrushConverter.Instance}}">
+                        <Panel>
+                          <TextBlock Text="{Binding Badge}" IsVisible="{Binding HasBadge}" />
+                          <c:Icon Glyph="diamond" IconSize="12" IsVisible="{Binding !HasBadge}" HorizontalAlignment="Center"
+                                  TextElement.Foreground="{DynamicResource text-on-section}" />
+                        </Panel>
+                      </Border>
+                      <TextBox Grid.Column="2" Classes="cell" Tag="section-name" Text="{Binding Name}" Margin="0,0,8,0"
+                               ToolTip.Tip="{Binding Label}" />
+                      <ComboBox Grid.Column="3" Classes="cell" ItemsSource="{Binding Types}" SelectedItem="{Binding Type}" Tag="section-type"
+                                HorizontalAlignment="Stretch" Margin="0,0,8,0" />
+                      <TextBox Grid.Column="4" Classes="cell mono" Tag="section-start" Text="{Binding StartText}" Margin="0,0,8,0"
+                               FontFamily="{DynamicResource FontMono}" ToolTip.Tip="Seconds; snaps to the nearest bar" />
+                      <TextBlock Grid.Column="5" Classes="mono" Text="{Binding ChartBarText}" VerticalAlignment="Center" />
+                      <TextBlock Grid.Column="6" Classes="mono" Text="{Binding LengthText}" VerticalAlignment="Center" />
+                      <Button Grid.Column="7" Classes="ghost cell" Command="{Binding PlayCallCommand}" IsEnabled="{Binding HasCall}"
+                              ToolTip.Tip="{Binding CallTip}" AutomationProperties.Name="Play the guide call">
+                        <c:Icon Glyph="play" IconSize="14" />
+                      </Button>
+                      <Button Grid.Column="8" Classes="cell" Content="Playhead" Command="{Binding ToPlayheadCommand}"
+                              ToolTip.Tip="Start this section at the playhead (nearest bar)" />
+                      <Button Grid.Column="9" Classes="ghost cell" Command="{Binding DeleteCommand}" ToolTip.Tip="Delete this section"
+                              AutomationProperties.Name="Delete section">
+                        <c:Icon Glyph="close" IconSize="14" />
+                      </Button>
+                    </Grid>
+                  </DataTemplate>
+                </ListBox.ItemTemplate>
+              </ListBox>
+            </DockPanel>
+          </TabItem>
+
           <TabItem Header="MIXER">
             <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
               <StackPanel Orientation="Horizontal">
@@ -277,13 +469,18 @@
                 <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding Song.MeterText}" PlaceholderText="4/4" Margin="0,0,0,8" />
                 <TextBlock Grid.Row="4" Grid.Column="0" Classes="label" Text="FIRST DOWNBEAT" VerticalAlignment="Center" Margin="0,0,16,8" />
                 <TextBox Grid.Row="4" Grid.Column="1" Text="{Binding Song.DownbeatText}" PlaceholderText="seconds, e.g. 0.020" Margin="0,0,0,8" />
-                <Button Grid.Row="5" Grid.Column="1" Content="Save song details" Command="{Binding ApplySongEditsCommand}" HorizontalAlignment="Left" Margin="0,4,0,12" />
+                <StackPanel Grid.Row="5" Grid.Column="1" Grid.ColumnSpan="2" Orientation="Horizontal" Spacing="8" Margin="0,4,0,12">
+                  <Button Content="Save song details" Command="{Binding ApplySongEditsCommand}" />
+                  <Button Content="Detect from click" Command="{Binding DetectDownbeatCommand}" ToolTip.Tip="Find the first downbeat in the click track" />
+                  <Button Content="Re-analyse click" Command="{Binding ReanalyseClickCommand}" ToolTip.Tip="BPM, meter and first downbeat from the click track" />
+                  <Button Content="Re-transcribe guide" Command="{Binding RetranscribeCommand}" ToolTip.Tip="Listen to the guide track again" />
+                </StackPanel>
                 <StackPanel Grid.Row="6" Grid.Column="0" Grid.ColumnSpan="2" Spacing="4">
                   <TextBlock Classes="label" Text="SOURCE FOLDER" />
                   <TextBlock Classes="mono" Text="{Binding Song.SourceFolder}" TextWrapping="Wrap" />
                 </StackPanel>
                 <TextBlock Grid.Row="0" Grid.Column="2" Grid.RowSpan="6" Classes="meta" Margin="24,0,0,0" TextWrapping="Wrap" MaxWidth="420" HorizontalAlignment="Left"
-                           Text="BPM and meter set the bar grid for the ruler and the readouts. Click analysis (milestone 2) will fill them in from the click track; until then they come from the file names or from here." />
+                           Text="BPM, meter and first downbeat set the bar grid for the ruler, the sections and the readouts. They come from the click track after import; values typed here are kept until you press Re-analyse click." />
               </Grid>
             </ScrollViewer>
           </TabItem>
@@ -292,9 +489,13 @@
     </Grid>
 
     <!-- Toast (UI-70) -->
-    <Border Grid.Row="2" Classes="toast" IsVisible="{Binding HasToast}" IsHitTestVisible="False"
+    <Border Grid.Row="2" Classes="toast" IsVisible="{Binding HasToast}"
             HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,24">
-      <TextBlock Text="{Binding Toast}" />
+      <StackPanel Orientation="Horizontal" Spacing="12">
+        <TextBlock Text="{Binding Toast}" VerticalAlignment="Center" />
+        <Button Classes="ghost" Content="Undo" Command="{Binding UndoCommand}" IsVisible="{Binding ToastCanUndo}"
+                Padding="8,0" MinHeight="24" Height="24" ToolTip.Tip="Ctrl+Z" />
+      </StackPanel>
     </Border>
   </Grid>
 </Window>

@@ -118,7 +118,8 @@ public sealed class WindowSmokeTests : IDisposable
             Logger.Sink = sink;
             var store = new DataStore(Path.Combine(_root, "data"));
             var dialogs = new AcceptingDialogs();
-            await using var vm = new MainViewModel(store, new EngineHostOptions(executable, _endpoint) { IdleExitSeconds = 3 }, new EngineTools(executable), new AvaloniaDispatcher(), dialogs);
+            await using var vm = new MainViewModel(store, new EngineHostOptions(executable, _endpoint) { IdleExitSeconds = 3 }, new EngineTools(executable), new AvaloniaDispatcher(), dialogs,
+                new SpeechModel(store.Root, allowDownload: false));
 
             var window = new MainWindow { DataContext = vm, Width = 1440, Height = 900 };
             window.Show();
@@ -143,7 +144,7 @@ public sealed class WindowSmokeTests : IDisposable
             Assert.Equal(1440, frame!.PixelSize.Width);
 
             var timeline = window.FindControl<TimelineView>("Timeline")!;
-            Assert.Equal(TimelineView.RulerHeight + 5 * TimelineView.LaneHeight, timeline.Bounds.Height, 1);
+            Assert.Equal(TimelineView.TracksTop + 5 * TimelineView.LaneHeight, timeline.Bounds.Height, 1);
             Assert.True(timeline.Bounds.Width > 400);
             Assert.Equal("bar 4.1 / 6", vm.SongBarText); // 72 BPM 4/4: 3.33 s a bar, 20 s of audio
 
@@ -153,7 +154,27 @@ public sealed class WindowSmokeTests : IDisposable
             Dispatcher.UIThread.RunJobs();
             Assert.NotNull(window.CaptureRenderedFrame());
 
-            vm.SelectedTab = 1; // SONG
+            // M marks a section at the playhead (SEC-52); the lane, the table and NOW/NEXT render.
+            Assert.False(vm.HasSections);
+            window.KeyPressQwerty(PhysicalKey.M, RawInputModifiers.None);
+            Dispatcher.UIThread.RunJobs();
+            Assert.Single(vm.Sections.Rows);
+            Assert.Equal("SECTION 1", vm.NowLabel);
+            Assert.Equal("END OF SONG", vm.NextLabel);
+            Assert.NotNull(window.CaptureRenderedFrame());
+
+            await vm.SeekAsync(3.4);
+            window.KeyPressQwerty(PhysicalKey.M, RawInputModifiers.None);
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal(2, vm.Sections.Rows.Count);
+            Assert.Equal("SECTION 2", vm.NowLabel);
+            Assert.Equal("SECTION 1", vm.NextLabel);
+            Assert.NotNull(window.CaptureRenderedFrame());
+
+            vm.SelectedTab = 1; // MIXER
+            Dispatcher.UIThread.RunJobs();
+            Assert.NotNull(window.CaptureRenderedFrame());
+            vm.SelectedTab = 2; // SONG
             Dispatcher.UIThread.RunJobs();
             Assert.NotNull(window.CaptureRenderedFrame());
             window.Close();
@@ -205,4 +226,5 @@ internal sealed class AcceptingDialogs : IDialogs
     public Task<bool> ReviewImportAsync(ImportReviewViewModel review) => Task.FromResult(true);
     public Task<DuplicateChoice> AskDuplicateAsync(string existingTitle) => Task.FromResult(DuplicateChoice.Cancel);
     public Task<bool> EditAudioSettingsAsync(AudioSettingsViewModel settings) => Task.FromResult(false);
+    public Task<bool> ConfirmAsync(string title, string message, string confirmLabel) => Task.FromResult(true);
 }

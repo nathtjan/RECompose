@@ -21,6 +21,9 @@ public interface IDialogs
     /// <summary>"Already in library as {title}: Open it / Import anyway" (SL-55).</summary>
     Task<DuplicateChoice> AskDuplicateAsync(string existingTitle);
 
+    /// <summary>A confirmation for a destructive or surprising action (UI-60). True = the confirm button.</summary>
+    Task<bool> ConfirmAsync(string title, string message, string confirmLabel);
+
     /// <summary>Settings › Audio. True = Apply.</summary>
     Task<bool> EditAudioSettingsAsync(AudioSettingsViewModel settings);
 }

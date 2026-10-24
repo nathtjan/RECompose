@@ -37,6 +37,126 @@ public partial class MainWindow : Window
         AddHandler(DoubleTappedEvent, OnDoubleTapped, RoutingStrategies.Bubble, handledEventsToo: true);
 
         Timeline.SeekRequested += seconds => _ = ViewModel?.SeekAsync(seconds);
+
+        // Sections lane (SEC-50).
+        Timeline.SectionSelected += id => ViewModel?.Sections.Select(id);
+        Timeline.SectionMoved += (id, seconds, beats) => ViewModel?.Sections.MoveStart(id, seconds, beats);
+        Timeline.SectionRenameRequested += id =>
+        {
+            if (ViewModel is { } vm)
+            {
+                vm.SelectedTab = 0;
+                vm.Sections.RequestRename(id);
+            }
+        };
+        Timeline.SectionMenuRequested += OpenSectionMenu;
+
+        // Sections table: names and starts are committed on Enter or when the field loses focus (SEC-51).
+        SectionRows.AddHandler(LostFocusEvent, (_, e) => CommitCell(e.Source as TextBox), RoutingStrategies.Bubble);
+        SectionRows.AddHandler(KeyDownEvent, (_, e) =>
+        {
+            if (e.Key == Key.Enter && e.Source is TextBox box && CommitCell(box))
+            {
+                Focus();
+                e.Handled = true;
+            }
+            else if (e.Key == Key.Escape && e.Source is TextBox escaped && escaped.DataContext is SectionRowViewModel row)
+            {
+                row.Name = row.Info.Section.Name;
+                row.StartText = row.Info.StartSec.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture);
+                Focus();
+                e.Handled = true;
+            }
+        }, RoutingStrategies.Tunnel);
+
+        SplitButton.Click += (_, _) => ViewModel?.Sections.SplitAtPlayhead();
+        ReviewRenameButton.Click += (_, _) => ViewModel?.Sections.ReviewRename();
+        ReviewTypeButton.Click += (_, _) => ViewModel?.Sections.ReviewChangeType();
+
+        DataContextChanged += (_, _) =>
+        {
+            if (ViewModel is { } vm)
+            {
+                vm.Sections.FocusNameRequested += id => FocusCell(id, "section-name");
+                vm.Sections.FocusTypeRequested += id => FocusCell(id, "section-type");
+            }
+        };
+    }
+
+    private static bool CommitCell(TextBox? box)
+    {
+        if (box?.DataContext is not SectionRowViewModel row)
+            return false;
+        switch (box.Tag as string)
+        {
+            case "section-name":
+                row.CommitName();
+                return true;
+            case "section-start":
+                row.CommitStart();
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    /// <summary>Focuses a row's name field or opens its Type select (+ At playhead, double-click, R and T in review).</summary>
+    private void FocusCell(string id, string tag)
+    {
+        if (ViewModel is not { } vm || vm.Sections.Rows.FirstOrDefault(r => r.Id == id) is not { } row)
+            return;
+        vm.SelectedTab = 0;
+        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+        {
+            SectionRows.ScrollIntoView(row);
+            if (SectionRows.ContainerFromItem(row) is not Control container)
+                return;
+            var target = container.GetVisualDescendants().OfType<Control>().FirstOrDefault(c => c.Tag as string == tag);
+            switch (target)
+            {
+                case TextBox box:
+                    box.Focus();
+                    box.SelectAll();
+                    break;
+                case ComboBox combo:
+                    combo.Focus();
+                    combo.IsDropDownOpen = true;
+                    break;
+            }
+        }, Avalonia.Threading.DispatcherPriority.Background);
+    }
+
+    /// <summary>Right-click on a section block: Rename, Change type, Split at playhead, Merge with next, Delete (SEC-50).</summary>
+    private void OpenSectionMenu(string id)
+    {
+        if (ViewModel is not { } vm)
+            return;
+        var sections = vm.Sections;
+
+        MenuItem Item(string header, Action action)
+        {
+            var item = new MenuItem { Header = header };
+            item.Click += (_, _) => action();
+            return item;
+        }
+
+        var types = new MenuItem { Header = "Change type" };
+        foreach (var choice in SectionTypeChoice.All)
+            types.Items.Add(Item(choice.Name, () => sections.SetTypeOf(id, choice.Type)));
+
+        var menu = new ContextMenu();
+        menu.Items.Add(Item("Rename…", () =>
+        {
+            vm.SelectedTab = 0;
+            sections.RequestRename(id);
+        }));
+        menu.Items.Add(types);
+        menu.Items.Add(new Separator());
+        menu.Items.Add(Item("Split at playhead", sections.SplitAtPlayhead));
+        menu.Items.Add(Item("Merge with next", () => sections.MergeWithNext(id)));
+        menu.Items.Add(new Separator());
+        menu.Items.Add(Item("Delete", () => sections.DeleteById(id)));
+        menu.Open(Timeline);
     }
 
     private MainViewModel? ViewModel => DataContext as MainViewModel;
@@ -82,8 +202,43 @@ public partial class MainWindow : Window
         if (FocusManager?.GetFocusedElement() is TextBox)
             return;
 
+        // The review flow takes Enter, ←, →, R, T, Delete, N and Esc (SEC-31).
+        if (vm.Sections.IsReviewing && !e.KeyModifiers.HasFlag(KeyModifiers.Alt))
+        {
+            Action? review = e.Key switch
+            {
+                Key.Enter => vm.Sections.ReviewAccept,
+                Key.Left => vm.Sections.ReviewEarlier,
+                Key.Right => vm.Sections.ReviewLater,
+                Key.R => vm.Sections.ReviewRename,
+                Key.T => vm.Sections.ReviewChangeType,
+                Key.Delete or Key.Back => vm.Sections.ReviewDelete,
+                Key.N => vm.Sections.ReviewNext,
+                Key.Escape => vm.Sections.StopReview,
+                _ => null,
+            };
+            if (review is not null)
+            {
+                review();
+                e.Handled = true;
+                return;
+            }
+        }
+
+        if (FocusManager?.GetFocusedElement() is ComboBox { IsDropDownOpen: true })
+            return;
+
         switch (e.Key)
         {
+            case Key.M:
+                vm.MarkCommand.Execute(null);
+                break;
+            case Key.S:
+                vm.Sections.SplitAtPlayhead();
+                break;
+            case Key.Delete when vm.SelectedTab == 0 && vm.Sections.Selected is { } selected:
+                vm.Sections.DeleteById(selected.Id);
+                break;
             case Key.Space:
                 vm.PlayPauseCommand.Execute(null);
                 break;

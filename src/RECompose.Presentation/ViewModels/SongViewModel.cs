@@ -3,6 +3,7 @@ using System.Collections.ObjectModel;
 using System.Globalization;
 using RECompose.Core.Library;
 using RECompose.Core.Music;
+using RECompose.Core.Sections;
 using RECompose.Core.Timing;
 using RECompose.Engine;
 using RECompose.Presentation.Mvvm;
@@ -14,6 +15,20 @@ public sealed class SongItemViewModel(SongSummary summary) : ObservableObject
 {
     private SongSummary _summary = summary;
     private bool _isLoaded;
+    private string? _activity;
+
+    /// <summary>"Analysing the click…", "Listening to the guide 40 %" (SL-54), or null.</summary>
+    public string? Activity
+    {
+        get => _activity;
+        set
+        {
+            if (Set(ref _activity, value))
+                OnPropertyChanged(nameof(HasActivity));
+        }
+    }
+
+    public bool HasActivity => _activity is not null;
 
     public SongSummary Summary
     {
@@ -57,6 +72,9 @@ public sealed class SongViewModel : ObservableObject
     private string _bpmText;
     private string _meterText;
     private string _downbeatText;
+    private List<SectionInfo> _sections = [];
+    private AsWrittenPlan _plan = null!;
+    private int _sectionsVersion;
 
     public SongViewModel(Song model, LoadedSong? loaded, AudioSettingsResolver outputs)
     {
@@ -84,6 +102,7 @@ public sealed class SongViewModel : ObservableObject
             Tracks.Add(vm);
         }
 
+        RefreshSections();
         _titleText = model.Title;
         _keyText = Key.TryParse(model.OriginalKey, out var k) ? k.ToDisplayString() : string.Empty;
         _bpmText = Format.Bpm(model.Bpm);
@@ -102,8 +121,30 @@ public sealed class SongViewModel : ObservableObject
             OnPropertyChanged(nameof(Grid));
             OnPropertyChanged(nameof(DurationSec));
             OnPropertyChanged(nameof(SourceFolder));
+            RefreshSections();
             WaveformVersion++;
         }
+    }
+
+    /// <summary>The written sections with labels, lengths and chart bars (DM-20, SEC-41).</summary>
+    public IReadOnlyList<SectionInfo> Sections => _sections;
+
+    public bool HasSections => _sections.Count > 0;
+
+    /// <summary>The as-written plan: NOW, NEXT and song bars (PB-30…35).</summary>
+    public AsWrittenPlan Plan => _plan;
+
+    /// <summary>Bumped when the sections lane needs redrawing.</summary>
+    public int SectionsVersion { get => _sectionsVersion; private set => Set(ref _sectionsVersion, value); }
+
+    private void RefreshSections()
+    {
+        _sections = SectionList.Describe(_model.Sections, _model.Grid, DurationSec);
+        _plan = new AsWrittenPlan(_model.Grid, _sections, DurationSec);
+        OnPropertyChanged(nameof(Sections));
+        OnPropertyChanged(nameof(HasSections));
+        OnPropertyChanged(nameof(Plan));
+        SectionsVersion++;
     }
 
     public LoadedSong? Loaded
@@ -114,6 +155,7 @@ public sealed class SongViewModel : ObservableObject
             _loaded = value;
             OnPropertyChanged(nameof(DurationSec));
             OnPropertyChanged(nameof(SampleRate));
+            RefreshSections();
         }
     }
 
@@ -136,7 +178,8 @@ public sealed class SongViewModel : ObservableObject
         {
             var key = Key.TryParse(_model.OriginalKey, out var k) ? k.ToDisplayString() : "Key ?";
             var bpm = Format.Bpm(_model.Bpm) + " BPM" + (_model.TempoAssumed ? " (assumed)" : string.Empty);
-            return $"{key}   {bpm}   {_model.BeatsPerBar}/{_model.BeatUnit}";
+            var meter = $"{_model.BeatsPerBar}/{_model.BeatUnit}" + (_model.MeterAssumed ? " (assumed)" : string.Empty);
+            return $"{key}   {bpm}   {meter}";
         }
     }
 
@@ -157,6 +200,16 @@ public sealed class SongViewModel : ObservableObject
     public string DownbeatText { get => _downbeatText; set => Set(ref _downbeatText, value); }
 
     public void RefreshLanes() => WaveformVersion++;
+
+    /// <summary>Puts the SONG tab fields back to the model (after an analysis changed it).</summary>
+    public void ResetFields()
+    {
+        TitleText = _model.Title;
+        KeyText = Key.TryParse(_model.OriginalKey, out var k) ? k.ToDisplayString() : string.Empty;
+        BpmText = Format.Bpm(_model.Bpm);
+        MeterText = $"{_model.BeatsPerBar}/{_model.BeatUnit}";
+        DownbeatText = _model.FirstDownbeatSec.ToString("0.000", CultureInfo.InvariantCulture);
+    }
 }
 
 /// <summary>Turns a track's output into the label shown in its lane header ("Main", "Cue", "3–4").</summary>

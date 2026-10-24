@@ -53,6 +53,47 @@ public sealed class AvaloniaDialogs(Window owner) : IDialogs
         return await window.ShowDialog<bool>(owner);
     }
 
+    /// <summary>UI-60: a confirmation with Cancel and the action named on its button.</summary>
+    public async Task<bool> ConfirmAsync(string title, string message, string confirmLabel)
+    {
+        var window = new Window
+        {
+            Title = title,
+            Width = 460,
+            SizeToContent = SizeToContent.Height,
+            CanResize = false,
+            ShowInTaskbar = false,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+        };
+
+        var confirm = new Button { Content = confirmLabel, Classes = { "primary" }, IsDefault = true };
+        var cancel = new Button { Content = "Cancel", IsCancel = true };
+        confirm.Click += (_, _) => window.Close(true);
+        cancel.Click += (_, _) => window.Close(false);
+
+        var heading = new TextBlock { Text = title };
+        heading.Classes.Add("title");
+        window.Content = new StackPanel
+        {
+            Margin = new Avalonia.Thickness(20),
+            Spacing = 12,
+            Children =
+            {
+                heading,
+                new TextBlock { Text = message, TextWrapping = Avalonia.Media.TextWrapping.Wrap },
+                new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    HorizontalAlignment = HorizontalAlignment.Right,
+                    Spacing = 8,
+                    Children = { cancel, confirm },
+                },
+            },
+        };
+
+        return await window.ShowDialog<bool>(owner);
+    }
+
     /// <summary>SL-55: "Already in the library as {title}." Open it · Import anyway · Cancel.</summary>
     public async Task<DuplicateChoice> AskDuplicateAsync(string existingTitle)
     {

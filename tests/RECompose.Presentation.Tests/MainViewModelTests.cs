@@ -45,7 +45,8 @@ public sealed class MainViewModelTests : IDisposable
     {
         var executable = Executable();
         var store = new DataStore(Path.Combine(_root, "data"));
-        return new MainViewModel(store, new EngineHostOptions(executable, _endpoint) { IdleExitSeconds = 3 }, new EngineTools(executable), new LockedDispatcher(), _dialogs);
+        return new MainViewModel(store, new EngineHostOptions(executable, _endpoint) { IdleExitSeconds = 3 }, new EngineTools(executable), new LockedDispatcher(), _dialogs,
+            new SpeechModel(store.Root, allowDownload: false));
     }
 
     /// <summary>A fixture-A-like folder: 72 BPM, 3/4, key B♭, click, guide and music stems.</summary>
@@ -251,6 +252,15 @@ internal sealed class ScriptedDialogs : IDialogs
             review.Title = review.Title[..review.Title.IndexOf(" - ", StringComparison.Ordinal)];
         review.MeterText = "3/4";
         return Task.FromResult(true);
+    }
+
+    public int Confirmations { get; private set; }
+    public bool Confirm { get; set; } = true;
+
+    public Task<bool> ConfirmAsync(string title, string message, string confirmLabel)
+    {
+        Confirmations++;
+        return Task.FromResult(Confirm);
     }
 
     public Task<DuplicateChoice> AskDuplicateAsync(string existingTitle)

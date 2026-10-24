@@ -7,6 +7,7 @@ using RECompose.Core.Import;
 using RECompose.Core.Library;
 using RECompose.Core.Music;
 using RECompose.Core.Persistence;
+using RECompose.Core.Sections;
 using RECompose.Core.Settings;
 using RECompose.Core.Timing;
 using RECompose.Engine;
@@ -20,11 +21,12 @@ namespace RECompose.Presentation.ViewModels;
 /// audio settings, and the engine connection. Everything here runs on the UI thread;
 /// engine events are posted to it.
 /// </summary>
-public sealed class MainViewModel : ObservableObject, IAsyncDisposable
+public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 {
     private readonly DataStore _store;
     private readonly EngineHostOptions _engineOptions;
     private readonly ImportService _import;
+    private readonly AnalysisService _analysis;
     private readonly IUiDispatcher _ui;
     private readonly IDialogs _dialogs;
     private readonly UndoStack _undo = new();
@@ -57,11 +59,14 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private long? _seekFrame;          // a seek the engine hasn't confirmed yet
     private DateTime _seekSentAt;
 
-    public MainViewModel(DataStore store, EngineHostOptions engineOptions, EngineTools tools, IUiDispatcher ui, IDialogs dialogs)
+    public MainViewModel(DataStore store, EngineHostOptions engineOptions, EngineTools tools, IUiDispatcher ui, IDialogs dialogs,
+        SpeechModel? speech = null, IAnalysisTools? analysisTools = null)
     {
         _store = store;
         _engineOptions = engineOptions;
         _import = new ImportService(store, tools);
+        _analysis = new AnalysisService(store, analysisTools ?? tools, speech ?? new SpeechModel(store.Root));
+        Sections = new SectionsViewModel(this);
         _ui = ui;
         _dialogs = dialogs;
         _settings = store.LoadSettings();
@@ -77,6 +82,10 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         LoadSelectedCommand = new RelayCommand(() => _selected is { } s ? LoadSongAsync(s.Id) : Task.CompletedTask);
         ApplySongEditsCommand = new RelayCommand(ApplySongEdits, () => _song is not null);
         DismissBannerCommand = new RelayCommand(() => Banner = null);
+        ReanalyseClickCommand = new RelayCommand(() => ReanalyseClickAsync(downbeatOnly: false), () => _song is not null);
+        DetectDownbeatCommand = new RelayCommand(() => ReanalyseClickAsync(downbeatOnly: true), () => _song is not null);
+        RetranscribeCommand = new RelayCommand(RetranscribeAsync, () => _song is not null);
+        MarkCommand = new RelayCommand(() => MarkAtPlayhead(), () => _song is not null);
         RelayCommand.Failed = ex =>
         {
             AppLog.Error("Command", ex);
@@ -111,8 +120,10 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             if (Set(ref _song, value))
             {
                 OnPropertyChanged(nameof(HasSong));
-                foreach (var command in new[] { PlayPauseCommand, StopCommand, ToStartCommand, ApplySongEditsCommand })
+                foreach (var command in new[] { PlayPauseCommand, StopCommand, ToStartCommand, ApplySongEditsCommand, ReanalyseClickCommand, DetectDownbeatCommand, RetranscribeCommand, MarkCommand })
                     command.Refresh();
+                Sections.Refresh();
+                OnPropertyChanged(nameof(HasSections));
                 foreach (var item in _allSongs)
                     item.IsLoaded = value is not null && item.Id == value.Id;
             }
@@ -215,7 +226,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
-    /// <summary>0 = MIXER, 1 = SONG.</summary>
+    /// <summary>0 = SECTIONS, 1 = MIXER, 2 = SONG (UI-16 order).</summary>
     public int SelectedTab { get => _selectedTab; set => Set(ref _selectedTab, value); }
 
     public AppSettings Settings => _settings;
@@ -230,6 +241,10 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     public RelayCommand LoadSelectedCommand { get; }
     public RelayCommand ApplySongEditsCommand { get; }
     public RelayCommand DismissBannerCommand { get; }
+    public RelayCommand ReanalyseClickCommand { get; }
+    public RelayCommand DetectDownbeatCommand { get; }
+    public RelayCommand RetranscribeCommand { get; }
+    public RelayCommand MarkCommand { get; }
 
     // ---- Start-up and the engine connection (REL-34) --------------------------------
 
@@ -438,7 +453,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                 SelectedSong = item;
                 ShowToast($"Imported {song.Title} · {song.Tracks.Count} tracks");
                 AppLog.Write("Library", $"Imported {song.Title} from {folder}: {song.Tracks.Count} tracks");
-                _ = ComputePeaksAsync(song);
+                _ = AnalyseAfterImportAsync(song);
                 return;
             }
         }
@@ -521,6 +536,8 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             LoadPeaks(model.Id, track.Id);
         if (vm.Tracks.Any(t => !File.Exists(_store.PeaksPath(model.Id, t.Id))))
             _ = ComputePeaksAsync(model);
+        Sections.ResultText = string.Empty;
+        Sections.Refresh();
     }
 
     private void MarkMissing(string trackId, string problem)
@@ -573,7 +590,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     {
         if (_song is null || IsPlaying)
             return Task.CompletedTask;
-        return SeekAsync(Readouts.StepBars(_song.Grid, PositionSec, bars, _song.DurationSec));
+        return SeekAsync(Readouts.StepBars(_song.Plan.SongGrid, PositionSec, bars, _song.DurationSec));
     }
 
     private void ApplySnapshot(EngineSnapshot s)
@@ -599,6 +616,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         }
         if (_seekFrame is null && s.SampleRate > 0)
             PositionSec = s.HeardFrame / s.SampleRate;
+        CheckRangeEnd(s.State);
 
         Status = s.State == TransportState.Playing
             ? (s.Waiting ? "LOADING" : "PLAYING")
@@ -626,15 +644,21 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         if (_song is null)
         {
             SongBarText = TimeText = ChartBarText = string.Empty;
+            NowLabel = NowDetail = NextLabel = NextTag = CountdownText = string.Empty;
+            SectionProgress = 0;
             return;
         }
 
-        var grid = _song.Grid;
-        var duration = _song.DurationSec;
-        SongBarText = $"bar {Readouts.SongBar(grid, PositionSec)} / {Readouts.TotalBars(grid, duration)}";
-        var (elapsed, remaining) = Readouts.Times(PositionSec, duration);
-        TimeText = $"{elapsed} / {remaining}";
-        ChartBarText = $"chart bar {Readouts.ChartBar(grid, PositionSec)}";
+        var r = _song.Plan.At(PositionSec);
+        SongBarText = r.SongBar;
+        TimeText = r.Time;
+        ChartBarText = r.ChartBar;
+        NowLabel = r.NowLabel;
+        NowDetail = r.NowDetail;
+        NextLabel = r.NextLabel ?? string.Empty;
+        NextTag = r.NextTag;
+        CountdownText = r.Countdown;
+        SectionProgress = r.SectionProgress;
     }
 
     // ---- Mixer (PB-80…84) with undo and autosave ------------------------------------
@@ -781,8 +805,12 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             return;
         }
 
+        var old = _song.Model;
+        var gridChanged = Math.Abs(old.Bpm - bpm) > 1e-9 || old.BeatsPerBar != meter.BeatsPerBar || Math.Abs(old.FirstDownbeatSec - downbeat) > 1e-9;
         var model = _song.Model with
         {
+            TempoSource = gridChanged ? TempoSource.Manual : old.TempoSource,
+            MeterAssumed = old.MeterAssumed && !gridChanged,
             Title = string.IsNullOrWhiteSpace(_song.TitleText) ? _song.Model.Title : _song.TitleText.Trim(),
             Bpm = bpm,
             BeatsPerBar = meter.BeatsPerBar,
@@ -792,8 +820,11 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             TempoAssumed = false,
             UpdatedAt = DateTimeOffset.UtcNow,
         };
+        if (gridChanged && model.Sections.Count > 0)
+            model = model with { Sections = SectionList.Resnap(model.Sections, model.Grid) };
         _song.Model = model;
         _store.SaveSong(model);
+        Sections.Refresh();
 
         var library = _store.LoadLibrary();
         library.Songs.RemoveAll(s => s.Id == model.Id);
@@ -843,14 +874,25 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
     // ---- Feedback (UI-70) -----------------------------------------------------------
 
-    public void ShowToast(string text)
+    /// <summary>True while the toast offers Undo ("Marked Chorus at chart bar 11 · Undo").</summary>
+    public bool ToastCanUndo { get => _toastCanUndo; private set => Set(ref _toastCanUndo, value); }
+
+    private bool _toastCanUndo;
+
+    public void ShowToast(string text) => ShowToast(text, canUndo: false);
+
+    public void ShowToast(string text, bool canUndo)
     {
         Toast = text;
+        ToastCanUndo = canUndo;
         var version = ++_toastVersion;
-        _ui.After(TimeSpan.FromSeconds(3), () => _ui.Post(() =>
+        _ui.After(TimeSpan.FromSeconds(canUndo ? 4 : 3), () => _ui.Post(() =>
         {
             if (version == _toastVersion)
+            {
                 Toast = null;
+                ToastCanUndo = false;
+            }
         }));
     }
 
