@@ -1,23 +1,300 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<!-- Prepare (UI-10): top bar, library sidebar, song header with transport and readouts,
+     timeline, editor tabs MIXER and SONG. Perform arrives in milestone 5. -->
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:RECompose.Presentation.ViewModels"
+        xmlns:c="using:RECompose.App.Controls"
         x:Class="RECompose.App.MainWindow"
+        x:DataType="vm:MainViewModel"
         Title="RECompose"
-        Width="1280" Height="760"
+        Width="1440" Height="900"
         MinWidth="1280" MinHeight="760"
-        WindowStartupLocation="CenterScreen"
-        FontFamily="{StaticResource FontSans}">
-  <!-- Milestone 0 walking skeleton: proves the app starts, loads the bundled fonts and
-       starts or reattaches to the engine process. The Prepare layout (UI-10) arrives in milestone 1. -->
-  <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12">
-    <TextBlock FontSize="40" HorizontalAlignment="Center">
-      <Run Text="REC" FontWeight="ExtraBold" /><Run Text="ompose" FontWeight="Medium" />
-    </TextBlock>
-    <TextBlock x:Name="EngineStatus"
-               FontFamily="{StaticResource FontMono}"
-               FontSize="13"
-               HorizontalAlignment="Center"
-               TextWrapping="Wrap"
-               MaxWidth="720"
-               TextAlignment="Center" />
-  </StackPanel>
+        WindowStartupLocation="CenterScreen">
+
+  <Window.Styles>
+    <Style Selector="Ellipse.led">
+      <Setter Property="Width" Value="8" />
+      <Setter Property="Height" Value="8" />
+      <Setter Property="Fill" Value="{DynamicResource state-error}" />
+    </Style>
+    <Style Selector="Ellipse.led.ok">
+      <Setter Property="Fill" Value="{DynamicResource state-playing}" />
+    </Style>
+    <Style Selector="ListBox#Library ListBoxItem">
+      <Setter Property="Padding" Value="16,8" />
+    </Style>
+  </Window.Styles>
+
+  <Grid RowDefinitions="48,Auto,*">
+
+    <!-- Top bar (UI-11) -->
+    <Border Grid.Row="0" Classes="topbar" Padding="16,0">
+      <DockPanel>
+        <TextBlock DockPanel.Dock="Left" VerticalAlignment="Center" FontSize="18" Margin="0,0,24,0">
+          <Run Text="REC" FontWeight="ExtraBold" /><Run Text="ompose" FontWeight="Medium" />
+        </TextBlock>
+        <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center" Spacing="2">
+          <ToggleButton Content="Prepare" IsChecked="True" IsHitTestVisible="False" />
+          <ToggleButton Content="Perform" IsEnabled="False" ToolTip.Tip="The Perform view arrives in milestone 5." />
+        </StackPanel>
+
+        <Button DockPanel.Dock="Right" Command="{Binding OpenSettingsCommand}" ToolTip.Tip="Settings (Ctrl+,)" Margin="12,0,0,0" VerticalAlignment="Center">
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <c:Icon Glyph="settings" IconSize="16" VerticalAlignment="Center" />
+            <TextBlock Text="Settings" VerticalAlignment="Center" />
+          </StackPanel>
+        </Button>
+        <Button DockPanel.Dock="Right" Classes="ghost" Command="{Binding OpenSettingsCommand}" VerticalAlignment="Center"
+                ToolTip.Tip="Audio device. Click to change it.">
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <Ellipse Classes="led" Classes.ok="{Binding AudioOk}" VerticalAlignment="Center" />
+            <TextBlock Classes="label" Text="AUDIO" VerticalAlignment="Center" />
+            <TextBlock Classes="mono" Text="{Binding AudioStatus}" VerticalAlignment="Center" />
+          </StackPanel>
+        </Button>
+        <Panel />
+      </DockPanel>
+    </Border>
+
+    <!-- Banner (UI-70): stays until dismissed or resolved -->
+    <Border Grid.Row="1" Classes="banner" IsVisible="{Binding HasBanner}">
+      <DockPanel>
+        <Button DockPanel.Dock="Right" Classes="ghost" Content="Dismiss" Command="{Binding DismissBannerCommand}" />
+        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+          <c:Icon Glyph="warning" IconSize="16" TextElement.Foreground="{DynamicResource state-warning}" VerticalAlignment="Center" />
+          <TextBlock Text="{Binding Banner}" TextWrapping="Wrap" VerticalAlignment="Center" />
+        </StackPanel>
+      </DockPanel>
+    </Border>
+
+    <Grid Grid.Row="2" ColumnDefinitions="300,*">
+
+      <!-- Library sidebar (UI-12, SL-56) -->
+      <Border Grid.Column="0" Classes="panel" BorderThickness="0,0,1,0">
+        <DockPanel>
+          <StackPanel DockPanel.Dock="Top" Margin="16,16,16,8" Spacing="8">
+            <DockPanel>
+              <Button DockPanel.Dock="Right" Command="{Binding ImportCommand}" ToolTip.Tip="Import a stems folder (Ctrl+I)">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <c:Icon Glyph="folder" IconSize="16" VerticalAlignment="Center" />
+                  <TextBlock Text="Import" VerticalAlignment="Center" />
+                </StackPanel>
+              </Button>
+              <TextBlock Classes="label" Text="LIBRARY" VerticalAlignment="Center" />
+            </DockPanel>
+            <TextBox x:Name="Search" PlaceholderText="Search title or key" Text="{Binding SearchText}" />
+          </StackPanel>
+
+          <TextBlock DockPanel.Dock="Top" Margin="16" TextWrapping="Wrap" Classes="meta" IsVisible="{Binding LibraryEmpty}"
+                     Text="No songs yet. Drag a folder of stems onto this window, or press Import." />
+
+          <ListBox x:Name="Library" ItemsSource="{Binding Songs}" SelectedItem="{Binding SelectedSong}" Background="Transparent">
+            <ListBox.ItemTemplate>
+              <DataTemplate x:DataType="vm:SongItemViewModel">
+                <DockPanel>
+                  <Ellipse DockPanel.Dock="Right" Classes="led ok" IsVisible="{Binding IsLoaded}" VerticalAlignment="Center"
+                           ToolTip.Tip="Loaded" />
+                  <StackPanel Spacing="2">
+                    <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Classes="meta" Text="{Binding MetaLine}" TextTrimming="CharacterEllipsis" />
+                  </StackPanel>
+                </DockPanel>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+        </DockPanel>
+      </Border>
+
+      <!-- Song area -->
+      <Grid Grid.Column="1" RowDefinitions="Auto,*,Auto,300">
+
+        <!-- Empty state (UI-80) -->
+        <StackPanel Grid.Row="0" Grid.RowSpan="2" IsVisible="{Binding !HasSong}" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12">
+          <TextBlock Classes="title" Text="Import a song to begin" HorizontalAlignment="Center" />
+          <TextBlock Classes="meta" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" MaxWidth="460"
+                     Text="Drag a folder of stems onto this window, or press Ctrl+I. Double-click a song in the library to load it." />
+          <Button HorizontalAlignment="Center" Command="{Binding ImportCommand}" Content="Import a stems folder" />
+        </StackPanel>
+
+        <!-- Song header (UI-13): title, key BPM meter, transport, readouts -->
+        <Border Grid.Row="0" Classes="panel" BorderThickness="0,0,0,1" Padding="16,12" IsVisible="{Binding HasSong}">
+          <Grid ColumnDefinitions="*,Auto,Auto">
+            <StackPanel Grid.Column="0" Spacing="2" VerticalAlignment="Center">
+              <TextBlock Classes="title" Text="{Binding Song.Title}" TextTrimming="CharacterEllipsis" />
+              <TextBlock Classes="meta" Text="{Binding Song.HeaderLine}" />
+            </StackPanel>
+
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" Margin="16,0">
+              <Button Command="{Binding ToStartCommand}" ToolTip.Tip="To the start" AutomationProperties.Name="To the start" Width="44">
+                <c:Icon Glyph="restart" IconSize="16" HorizontalAlignment="Center" />
+              </Button>
+              <Button Command="{Binding StopCommand}" ToolTip.Tip="Stop" AutomationProperties.Name="Stop" Width="44">
+                <c:Icon Glyph="stop" IconSize="16" HorizontalAlignment="Center" />
+              </Button>
+              <Button Classes="primary" Command="{Binding PlayPauseCommand}" ToolTip.Tip="Play or pause (Space)" Width="96">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <c:Icon Glyph="play" IconSize="16" IsVisible="{Binding !IsPlaying}" VerticalAlignment="Center" />
+                  <c:Icon Glyph="pause" IconSize="16" IsVisible="{Binding IsPlaying}" VerticalAlignment="Center" />
+                  <TextBlock Text="{Binding PlayLabel}" VerticalAlignment="Center" />
+                </StackPanel>
+              </Button>
+            </StackPanel>
+
+            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="20" VerticalAlignment="Center">
+              <StackPanel Spacing="2">
+                <TextBlock Classes="label" Text="SONG BAR" />
+                <TextBlock Classes="readout" Text="{Binding SongBarText}" MinWidth="170" />
+              </StackPanel>
+              <StackPanel Spacing="2">
+                <TextBlock Classes="label" Text="TIME" />
+                <TextBlock Classes="readout" Text="{Binding TimeText}" MinWidth="150" />
+              </StackPanel>
+              <StackPanel Spacing="4" VerticalAlignment="Center">
+                <Border Classes="pill" Classes.playing="{Binding IsPlaying}" Classes.loading="{Binding IsLoadingStatus}" HorizontalAlignment="Left">
+                  <TextBlock Text="{Binding Status}" />
+                </Border>
+                <TextBlock Classes="mono" Foreground="{DynamicResource text-secondary}" Text="{Binding ChartBarText}" />
+              </StackPanel>
+            </StackPanel>
+          </Grid>
+        </Border>
+
+        <!-- Timeline (UI-15): lane headers and lanes scroll together -->
+        <ScrollViewer Grid.Row="1" IsVisible="{Binding HasSong}" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+          <Grid ColumnDefinitions="240,*">
+            <StackPanel Grid.Column="0">
+              <Border Height="28" Classes="panel" BorderThickness="0,0,1,1" Padding="12,0">
+                <DockPanel>
+                  <ToggleButton DockPanel.Dock="Right" Classes="ms" Content="Follow" IsChecked="{Binding FollowPlayhead}" Padding="6,0"
+                                Height="22" MinHeight="22" ToolTip.Tip="Follow the playhead when zoomed in (.)" />
+                  <TextBlock Classes="label" Text="TRACKS" VerticalAlignment="Center" />
+                </DockPanel>
+              </Border>
+              <ItemsControl ItemsSource="{Binding Song.Tracks}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="vm:TrackViewModel">
+                    <Border Height="56" Classes="panel" BorderThickness="0,0,1,1" Padding="12,0">
+                      <DockPanel>
+                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                          <ToggleButton Classes="ms mute" Content="M" IsChecked="{Binding Mute}" ToolTip.Tip="Mute" />
+                          <ToggleButton Classes="ms solo" Content="S" IsChecked="{Binding Solo}" ToolTip.Tip="Solo" />
+                        </StackPanel>
+                        <StackPanel VerticalAlignment="Center" Spacing="2">
+                          <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                          <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock Classes="meta" Text="{Binding RoleLabel}" />
+                            <TextBlock Classes="meta" Text="{Binding OutputLabel}" />
+                            <TextBlock Classes="meta error" Text="{Binding Problem}" IsVisible="{Binding Missing}" />
+                          </StackPanel>
+                        </StackPanel>
+                      </DockPanel>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
+
+            <c:TimelineView x:Name="Timeline" Grid.Column="1" VerticalAlignment="Top"
+                            Song="{Binding Song}"
+                            Position="{Binding PositionSec}"
+                            Version="{Binding Song.WaveformVersion, FallbackValue=0}"
+                            Follow="{Binding FollowPlayhead}"
+                            IsPlaying="{Binding IsPlaying}" />
+          </Grid>
+        </ScrollViewer>
+
+        <GridSplitter Grid.Row="2" Height="4" Background="{DynamicResource border}" ResizeDirection="Rows" IsVisible="{Binding HasSong}" />
+
+        <!-- Editor tabs (UI-16): MIXER and SONG -->
+        <TabControl Grid.Row="3" IsVisible="{Binding HasSong}" SelectedIndex="{Binding SelectedTab}" Padding="0" Background="{DynamicResource bg-surface}">
+          <TabItem Header="MIXER">
+            <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+              <StackPanel Orientation="Horizontal">
+                <ItemsControl x:Name="Mixer" ItemsSource="{Binding Song.Tracks}">
+                  <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                      <StackPanel Orientation="Horizontal" />
+                    </ItemsPanelTemplate>
+                  </ItemsControl.ItemsPanel>
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:TrackViewModel">
+                      <Border Classes="strip" Width="92">
+                        <DockPanel>
+                          <TextBlock DockPanel.Dock="Top" Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Name}" />
+                          <TextBlock DockPanel.Dock="Top" Classes="meta" Text="{Binding RoleLabel}" TextTrimming="CharacterEllipsis" />
+                          <TextBlock DockPanel.Dock="Bottom" Classes="meta" Text="{Binding OutputLabel}" HorizontalAlignment="Center" Margin="0,4,0,0" />
+                          <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Spacing="4" HorizontalAlignment="Center" Margin="0,4,0,0">
+                            <ToggleButton Classes="ms mute" Content="M" IsChecked="{Binding Mute}" ToolTip.Tip="Mute" />
+                            <ToggleButton Classes="ms solo" Content="S" IsChecked="{Binding Solo}" ToolTip.Tip="Solo" />
+                          </StackPanel>
+                          <TextBlock DockPanel.Dock="Bottom" Classes="mono" Text="{Binding GainText}" HorizontalAlignment="Center" />
+                          <Grid ColumnDefinitions="*,10" Margin="0,6">
+                            <Slider Grid.Column="0" Orientation="Vertical" Minimum="-60" Maximum="6" Value="{Binding GainDb}"
+                                    HorizontalAlignment="Center" Tag="fader"
+                                    ToolTip.Tip="Double-click for 0.0 dB" />
+                            <c:LevelMeter Grid.Column="1" Value="{Binding Meter}" Margin="0,8" />
+                          </Grid>
+                        </DockPanel>
+                      </Border>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <!-- MASTER -->
+                <ContentControl Content="{Binding Song.Master}">
+                  <ContentControl.ContentTemplate>
+                    <DataTemplate x:DataType="vm:TrackViewModel">
+                      <Border Classes="strip" Width="92">
+                        <DockPanel>
+                          <TextBlock DockPanel.Dock="Top" Text="MASTER" FontWeight="Bold" />
+                          <TextBlock DockPanel.Dock="Top" Classes="meta" Text="All outputs" />
+                          <TextBlock DockPanel.Dock="Bottom" Classes="mono" Text="{Binding GainText}" HorizontalAlignment="Center" Margin="0,0,0,32" />
+                          <Grid ColumnDefinitions="*,10" Margin="0,6">
+                            <Slider Grid.Column="0" Orientation="Vertical" Minimum="-60" Maximum="6" Value="{Binding GainDb}"
+                                    HorizontalAlignment="Center" Tag="fader" ToolTip.Tip="Double-click for 0.0 dB" />
+                            <c:LevelMeter Grid.Column="1" Value="{Binding Meter}" Margin="0,8" />
+                          </Grid>
+                        </DockPanel>
+                      </Border>
+                    </DataTemplate>
+                  </ContentControl.ContentTemplate>
+                </ContentControl>
+              </StackPanel>
+            </ScrollViewer>
+          </TabItem>
+
+          <TabItem Header="SONG">
+            <ScrollViewer>
+              <Grid ColumnDefinitions="Auto,320,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto" Margin="16" >
+                <TextBlock Grid.Row="0" Grid.Column="0" Classes="label" Text="TITLE" VerticalAlignment="Center" Margin="0,0,16,8" />
+                <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding Song.TitleText}" Margin="0,0,0,8" />
+                <TextBlock Grid.Row="1" Grid.Column="0" Classes="label" Text="KEY" VerticalAlignment="Center" Margin="0,0,16,8" />
+                <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding Song.KeyText}" PlaceholderText="B♭, F♯m, E" Margin="0,0,0,8" />
+                <TextBlock Grid.Row="2" Grid.Column="0" Classes="label" Text="BPM" VerticalAlignment="Center" Margin="0,0,16,8" />
+                <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding Song.BpmText}" Margin="0,0,0,8" />
+                <TextBlock Grid.Row="3" Grid.Column="0" Classes="label" Text="METER" VerticalAlignment="Center" Margin="0,0,16,8" />
+                <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding Song.MeterText}" PlaceholderText="4/4" Margin="0,0,0,8" />
+                <TextBlock Grid.Row="4" Grid.Column="0" Classes="label" Text="FIRST DOWNBEAT" VerticalAlignment="Center" Margin="0,0,16,8" />
+                <TextBox Grid.Row="4" Grid.Column="1" Text="{Binding Song.DownbeatText}" PlaceholderText="seconds, e.g. 0.020" Margin="0,0,0,8" />
+                <Button Grid.Row="5" Grid.Column="1" Content="Save song details" Command="{Binding ApplySongEditsCommand}" HorizontalAlignment="Left" Margin="0,4,0,12" />
+                <StackPanel Grid.Row="6" Grid.Column="0" Grid.ColumnSpan="2" Spacing="4">
+                  <TextBlock Classes="label" Text="SOURCE FOLDER" />
+                  <TextBlock Classes="mono" Text="{Binding Song.SourceFolder}" TextWrapping="Wrap" />
+                </StackPanel>
+                <TextBlock Grid.Row="0" Grid.Column="2" Grid.RowSpan="6" Classes="meta" Margin="24,0,0,0" TextWrapping="Wrap" MaxWidth="420" HorizontalAlignment="Left"
+                           Text="BPM and meter set the bar grid for the ruler and the readouts. Click analysis (milestone 2) will fill them in from the click track; until then they come from the file names or from here." />
+              </Grid>
+            </ScrollViewer>
+          </TabItem>
+        </TabControl>
+      </Grid>
+    </Grid>
+
+    <!-- Toast (UI-70) -->
+    <Border Grid.Row="2" Classes="toast" IsVisible="{Binding HasToast}" IsHitTestVisible="False"
+            HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,24">
+      <TextBlock Text="{Binding Toast}" />
+    </Border>
+  </Grid>
 </Window>

@@ -116,7 +116,17 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     public bool HasSong => _song is not null;
 
     /// <summary>READY · PLAYING · LOADING (UI-13; HOLD and TRANSITION arrive with M4/M5).</summary>
-    public string Status { get => _status; private set => Set(ref _status, value); }
+    public string Status
+    {
+        get => _status;
+        private set
+        {
+            if (Set(ref _status, value))
+                OnPropertyChanged(nameof(IsLoadingStatus));
+        }
+    }
+
+    public bool IsLoadingStatus => _status == "LOADING";
 
     public TransportState State
     {
@@ -824,8 +834,14 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     /// <summary>On a normal quit the engine stops too. After a crash it keeps playing (REL-34).</summary>
     public async ValueTask DisposeAsync()
     {
-        _shuttingDown = true;
         Flush();
+        await ShutdownEngineAsync();
+    }
+
+    /// <summary>Stops the engine process. Touches no bindable state, so any thread may call it.</summary>
+    public async Task ShutdownEngineAsync()
+    {
+        _shuttingDown = true;
         if (_engine is { } engine)
         {
             try

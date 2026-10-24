@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: ["**"]
   pull_request:
   workflow_dispatch:
 
@@ -45,6 +45,13 @@ jobs:
       - name: Install Linux packages
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libasound2-dev libfreetype-dev libfontconfig-dev ninja-build
+
+      - name: Check generated design resources
+        shell: bash
+        run: |
+          PY=$(command -v python3 || command -v python)
+          "$PY" tools/tokens/generate.py --check
+          "$PY" tools/icons/generate.py --check
 
       - uses: actions/setup-dotnet@v6
         with:

@@ -76,10 +76,11 @@ target_compile_definitions(recompose_juce
         JUCE_WEB_BROWSER=0
         JUCE_MODAL_LOOPS_PERMITTED=0
         JUCE_JACK=0
-        # Stems arrive as WAV, AIFF, FLAC, Ogg or MP3. Opus and Windows Media are off so
-        # both platforms read the same formats (PLAT-1).
+        # Stems arrive as WAV, AIFF, FLAC, Ogg or MP3 (JUCE's own MP3 decoder). Opus and
+        # Windows Media are off so both platforms read the same formats (PLAT-1).
         JUCE_USE_OPUS=0
         JUCE_USE_WINDOWS_MEDIA_FORMAT=0
+        JUCE_USE_MP3AUDIOFORMAT=1
         JUCE_ASIO=${RECOMPOSE_ASIO_ENABLED})
 
 if(RECOMPOSE_ASIO_ENABLED)

@@ -1,0 +1,46 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<!-- Settings › Audio (SET-10): driver, device, rate and buffer, and the logical outputs
+     Main (music) and Cue (click and guide) mapped to device channels (PB-85). -->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:RECompose.Presentation.ViewModels"
+        x:Class="RECompose.App.Dialogs.AudioSettingsWindow"
+        x:DataType="vm:AudioSettingsViewModel"
+        Title="Audio settings"
+        Width="560" SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        CanResize="False"
+        ShowInTaskbar="False">
+  <StackPanel Margin="20" Spacing="12">
+    <TextBlock Classes="title" Text="Audio" />
+    <TextBlock Classes="mono" Foreground="{DynamicResource text-secondary}" Text="{Binding CurrentDevice}" TextWrapping="Wrap" />
+
+    <Grid ColumnDefinitions="140,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="10">
+      <TextBlock Grid.Row="0" Classes="label" Text="DRIVER" VerticalAlignment="Center" />
+      <ComboBox Grid.Row="0" Grid.Column="1" ItemsSource="{Binding DeviceTypes}" SelectedItem="{Binding SelectedType}" HorizontalAlignment="Stretch" />
+
+      <TextBlock Grid.Row="1" Classes="label" Text="DEVICE" VerticalAlignment="Center" />
+      <ComboBox Grid.Row="1" Grid.Column="1" ItemsSource="{Binding Devices}" SelectedItem="{Binding SelectedDevice}" HorizontalAlignment="Stretch" />
+
+      <TextBlock Grid.Row="2" Classes="label" Text="SAMPLE RATE" VerticalAlignment="Center" />
+      <ComboBox Grid.Row="2" Grid.Column="1" ItemsSource="{Binding SampleRates}" SelectedItem="{Binding SelectedRate}" HorizontalAlignment="Stretch" />
+
+      <TextBlock Grid.Row="3" Classes="label" Text="BUFFER" VerticalAlignment="Center" />
+      <ComboBox Grid.Row="3" Grid.Column="1" ItemsSource="{Binding BufferSizes}" SelectedItem="{Binding SelectedBuffer}" HorizontalAlignment="Stretch" />
+
+      <TextBlock Grid.Row="4" Classes="label" Text="MAIN" VerticalAlignment="Center" ToolTip.Tip="Music tracks" />
+      <ComboBox Grid.Row="4" Grid.Column="1" ItemsSource="{Binding OutputOptions}" SelectedItem="{Binding MainOutput}" HorizontalAlignment="Stretch" />
+
+      <TextBlock Grid.Row="5" Classes="label" Text="CUE" VerticalAlignment="Center" ToolTip.Tip="Click and guide, for in-ears" />
+      <ComboBox Grid.Row="5" Grid.Column="1" ItemsSource="{Binding OutputOptions}" SelectedItem="{Binding CueOutput}" HorizontalAlignment="Stretch" />
+
+      <TextBlock Grid.Row="6" Grid.Column="1" Classes="meta" TextWrapping="Wrap"
+                 Text="Channels listed are the open device's outputs. Choose the device first and apply, then pick outputs if it has more than two." />
+    </Grid>
+
+    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8" Margin="0,8,0,0">
+      <Button x:Name="CancelButton" Content="Cancel" IsCancel="True" />
+      <Button x:Name="ApplyButton" Classes="primary" Content="Apply" IsDefault="True" />
+    </StackPanel>
+  </StackPanel>
+</Window>

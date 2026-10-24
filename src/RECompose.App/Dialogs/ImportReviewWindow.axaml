@@ -1,0 +1,80 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<!-- Import review (SL-51): title, key, BPM and meter parsed from the names, and every file
+     with its detected role, group and output, all editable before importing. -->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:RECompose.Presentation.ViewModels"
+        x:Class="RECompose.App.Dialogs.ImportReviewWindow"
+        x:DataType="vm:ImportReviewViewModel"
+        Title="Import song"
+        Width="900" Height="640" MinWidth="760" MinHeight="480"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False">
+  <DockPanel Margin="20">
+    <StackPanel DockPanel.Dock="Top" Spacing="12">
+      <TextBlock Classes="title" Text="Import song" />
+      <TextBlock Classes="mono" Foreground="{DynamicResource text-secondary}" Text="{Binding Folder}" TextTrimming="CharacterEllipsis" />
+
+      <Grid ColumnDefinitions="2*,12,*,12,*,12,*">
+        <StackPanel Grid.Column="0" Spacing="4">
+          <TextBlock Classes="label" Text="TITLE" />
+          <TextBox Text="{Binding Title}" />
+        </StackPanel>
+        <StackPanel Grid.Column="2" Spacing="4">
+          <TextBlock Classes="label" Text="KEY" />
+          <TextBox Text="{Binding KeyText}" PlaceholderText="B♭" />
+        </StackPanel>
+        <StackPanel Grid.Column="4" Spacing="4">
+          <TextBlock Classes="label" Text="BPM" />
+          <TextBox Text="{Binding BpmText}" PlaceholderText="72" />
+        </StackPanel>
+        <StackPanel Grid.Column="6" Spacing="4">
+          <TextBlock Classes="label" Text="METER" />
+          <TextBox Text="{Binding MeterText}" PlaceholderText="4/4" />
+        </StackPanel>
+      </Grid>
+
+      <TextBlock Classes="meta" Text="{Binding Summary}" />
+      <TextBlock Classes="meta" Text="{Binding TempoNotice}" IsVisible="{Binding TempoNotice, Converter={x:Static ObjectConverters.IsNotNull}}" TextWrapping="Wrap" />
+      <TextBlock Classes="meta" Text="{Binding DuplicateNotice}" IsVisible="{Binding DuplicateNotice, Converter={x:Static ObjectConverters.IsNotNull}}" />
+
+      <Grid ColumnDefinitions="*,150,170,110" Margin="0,8,0,0">
+        <TextBlock Grid.Column="0" Classes="label" Text="FILE" />
+        <TextBlock Grid.Column="1" Classes="label" Text="ROLE" />
+        <TextBlock Grid.Column="2" Classes="label" Text="GROUP" />
+        <TextBlock Grid.Column="3" Classes="label" Text="OUTPUT" />
+      </Grid>
+    </StackPanel>
+
+    <StackPanel DockPanel.Dock="Bottom" Spacing="8" Margin="0,12,0,0">
+      <TextBlock Classes="error" Text="{Binding Error}" IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}" TextWrapping="Wrap" />
+      <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+        <Button x:Name="CancelButton" Content="Cancel" IsCancel="True" />
+        <Button x:Name="ImportButton" Classes="primary" Content="Import" IsDefault="True" />
+      </StackPanel>
+    </StackPanel>
+
+    <Border Classes="inset" Padding="8">
+      <ScrollViewer>
+        <ItemsControl ItemsSource="{Binding Rows}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:ImportRowViewModel">
+              <Grid ColumnDefinitions="*,150,170,110" Margin="0,4">
+                <StackPanel Grid.Column="0" Spacing="2" VerticalAlignment="Center">
+                  <TextBlock Text="{Binding FileName}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                  <TextBlock Classes="meta" Text="{Binding Detail}" Classes.error="{Binding !Ok}" />
+                </StackPanel>
+                <ComboBox Grid.Column="1" ItemsSource="{x:Static vm:ImportRowViewModel.Roles}" SelectedItem="{Binding Role}"
+                          IsEnabled="{Binding Ok}" HorizontalAlignment="Stretch" Margin="0,0,8,0" />
+                <ComboBox Grid.Column="2" ItemsSource="{x:Static vm:ImportRowViewModel.Groups}" SelectedItem="{Binding Group}"
+                          IsEnabled="{Binding IsMusic}" HorizontalAlignment="Stretch" Margin="0,0,8,0" />
+                <ComboBox Grid.Column="3" ItemsSource="{Binding OutputOptions}" SelectedItem="{Binding Output}"
+                          IsEnabled="{Binding Ok}" HorizontalAlignment="Stretch" />
+              </Grid>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </ScrollViewer>
+    </Border>
+  </DockPanel>
+</Window>

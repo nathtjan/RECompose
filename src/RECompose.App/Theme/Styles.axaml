@@ -1,0 +1,172 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<!-- Instrument styles for the Prepare screen. Colours and sizes come from the generated
+     token resources (Theme/Tokens.g.cs); nothing here is a hard-coded colour. -->
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <Style Selector="Window">
+    <Setter Property="Background" Value="{DynamicResource bg-app}" />
+    <Setter Property="Foreground" Value="{DynamicResource text-primary}" />
+    <Setter Property="FontFamily" Value="{DynamicResource FontSans}" />
+    <Setter Property="FontSize" Value="{DynamicResource type-body-size}" />
+  </Style>
+
+  <!-- Type styles (design system "Interface" and "Readouts" groups). -->
+  <Style Selector="TextBlock.title">
+    <Setter Property="FontSize" Value="{DynamicResource type-title-size}" />
+    <Setter Property="FontWeight" Value="Bold" />
+  </Style>
+  <Style Selector="TextBlock.heading">
+    <Setter Property="FontSize" Value="{DynamicResource type-heading-size}" />
+    <Setter Property="FontWeight" Value="Bold" />
+  </Style>
+  <Style Selector="TextBlock.meta">
+    <Setter Property="FontSize" Value="{DynamicResource type-meta-size}" />
+    <Setter Property="FontWeight" Value="Medium" />
+    <Setter Property="Foreground" Value="{DynamicResource text-secondary}" />
+  </Style>
+  <Style Selector="TextBlock.label">
+    <Setter Property="FontSize" Value="{DynamicResource type-label-size}" />
+    <Setter Property="FontWeight" Value="Bold" />
+    <Setter Property="LetterSpacing" Value="1" />
+    <Setter Property="Foreground" Value="{DynamicResource text-label}" />
+  </Style>
+  <Style Selector="TextBlock.mono">
+    <Setter Property="FontFamily" Value="{DynamicResource FontMono}" />
+    <Setter Property="FontSize" Value="{DynamicResource type-mono-size}" />
+  </Style>
+  <Style Selector="TextBlock.readout">
+    <Setter Property="FontFamily" Value="{DynamicResource FontMono}" />
+    <Setter Property="FontSize" Value="{DynamicResource type-value-size}" />
+    <Setter Property="FontWeight" Value="Medium" />
+  </Style>
+  <Style Selector="TextBlock.error">
+    <Setter Property="Foreground" Value="{DynamicResource state-error}" />
+  </Style>
+
+  <!-- Panels: flat grounds separated by 1 px rules, no shadows. -->
+  <Style Selector="Border.panel">
+    <Setter Property="Background" Value="{DynamicResource bg-surface}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource border}" />
+  </Style>
+  <Style Selector="Border.topbar">
+    <Setter Property="Background" Value="{DynamicResource bg-surface}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource border}" />
+    <Setter Property="BorderThickness" Value="0,0,0,1" />
+  </Style>
+  <Style Selector="Border.banner">
+    <Setter Property="Background" Value="{DynamicResource state-warning-subtle}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource state-warning}" />
+    <Setter Property="BorderThickness" Value="0,0,0,1" />
+    <Setter Property="Padding" Value="16,8" />
+  </Style>
+  <Style Selector="Border.toast">
+    <Setter Property="Background" Value="{DynamicResource bg-raised}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource border}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{DynamicResource radius-l-corner}" />
+    <Setter Property="Padding" Value="16,10" />
+  </Style>
+  <Style Selector="Border.strip">
+    <Setter Property="Background" Value="{DynamicResource bg-surface}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource border}" />
+    <Setter Property="BorderThickness" Value="0,0,1,0" />
+    <Setter Property="Padding" Value="8" />
+  </Style>
+  <Style Selector="Border.inset">
+    <Setter Property="Background" Value="{DynamicResource bg-inset}" />
+    <Setter Property="CornerRadius" Value="{DynamicResource radius-m-corner}" />
+  </Style>
+
+  <!-- Status pill: the word always says the state; colour only repeats it. -->
+  <Style Selector="Border.pill">
+    <Setter Property="CornerRadius" Value="{DynamicResource radius-s-corner}" />
+    <Setter Property="Padding" Value="8,3" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="BorderBrush" Value="{DynamicResource state-ready}" />
+  </Style>
+  <Style Selector="Border.pill TextBlock">
+    <Setter Property="FontSize" Value="{DynamicResource type-label-size}" />
+    <Setter Property="FontWeight" Value="Bold" />
+    <Setter Property="LetterSpacing" Value="1" />
+    <Setter Property="Foreground" Value="{DynamicResource state-ready}" />
+  </Style>
+  <Style Selector="Border.pill.playing">
+    <Setter Property="BorderBrush" Value="{DynamicResource state-playing}" />
+  </Style>
+  <Style Selector="Border.pill.playing TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource state-playing}" />
+  </Style>
+  <Style Selector="Border.pill.loading">
+    <Setter Property="BorderBrush" Value="{DynamicResource state-pending}" />
+  </Style>
+  <Style Selector="Border.pill.loading TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource state-pending}" />
+  </Style>
+
+  <!-- Keys (buttons): raised charcoal faces, radius-m, compact height in Prepare. -->
+  <Style Selector="Button, ToggleButton">
+    <Setter Property="CornerRadius" Value="{DynamicResource radius-m-corner}" />
+    <Setter Property="MinHeight" Value="{DynamicResource size-key-compact}" />
+    <Setter Property="Padding" Value="12,0" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+    <Setter Property="BorderThickness" Value="1,1,1,2" />
+  </Style>
+
+  <!-- The one yellow key: Play. -->
+  <Style Selector="Button.primary /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource accent}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource accent-edge}" />
+    <Setter Property="Foreground" Value="{DynamicResource text-on-accent}" />
+  </Style>
+  <Style Selector="Button.primary:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource accent-hover}" />
+    <Setter Property="Foreground" Value="{DynamicResource text-on-accent}" />
+  </Style>
+  <Style Selector="Button.primary:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource accent-edge}" />
+  </Style>
+  <Style Selector="Button.primary">
+    <Setter Property="FontWeight" Value="Bold" />
+  </Style>
+
+  <Style Selector="Button.ghost /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+  </Style>
+
+  <!-- Mute and solo: the letter always shows; when on, the face takes the state colour. -->
+  <Style Selector="ToggleButton.ms">
+    <Setter Property="MinWidth" Value="28" />
+    <Setter Property="MinHeight" Value="24" />
+    <Setter Property="Height" Value="24" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
+    <Setter Property="FontWeight" Value="Bold" />
+    <Setter Property="FontSize" Value="{DynamicResource type-meta-size}" />
+  </Style>
+  <Style Selector="ToggleButton.mute:checked /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource state-warning}" />
+    <Setter Property="Foreground" Value="{DynamicResource text-on-accent}" />
+  </Style>
+  <Style Selector="ToggleButton.solo:checked /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource state-pending}" />
+    <Setter Property="Foreground" Value="{DynamicResource text-on-accent}" />
+  </Style>
+
+  <Style Selector="TextBox, ComboBox">
+    <Setter Property="CornerRadius" Value="{DynamicResource radius-m-corner}" />
+    <Setter Property="MinHeight" Value="{DynamicResource size-key-compact}" />
+  </Style>
+
+  <Style Selector="TabItem">
+    <Setter Property="FontSize" Value="{DynamicResource type-label-size}" />
+    <Setter Property="FontWeight" Value="Bold" />
+    <Setter Property="MinHeight" Value="36" />
+    <Setter Property="Padding" Value="12,0" />
+  </Style>
+
+  <Style Selector="ListBoxItem">
+    <Setter Property="Padding" Value="12,8" />
+  </Style>
+</Styles>

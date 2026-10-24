@@ -3,12 +3,14 @@
              x:Class="RECompose.App.App"
              RequestedThemeVariant="Dark">
   <Application.Resources>
-    <!-- Milestone 1 replaces these with resources generated from design/tokens.json. -->
-    <FontFamily x:Key="FontSans">avares://RECompose/Assets/Fonts#Hanken Grotesk</FontFamily>
-    <FontFamily x:Key="FontMono">avares://RECompose/Assets/Fonts#Martian Mono</FontFamily>
+    <!-- Bundled fonts (PLAT-20); REC Accidentals draws ♭ ♮ ♯ in every style. Colours,
+         sizes and type sizes are added from design/tokens.json in App.Initialize. -->
+    <FontFamily x:Key="FontSans">avares://RECompose/Assets/Fonts#Hanken Grotesk, avares://RECompose/Assets/Fonts#REC Accidentals</FontFamily>
+    <FontFamily x:Key="FontMono">avares://RECompose/Assets/Fonts#Martian Mono, avares://RECompose/Assets/Fonts#REC Accidentals</FontFamily>
   </Application.Resources>
 
   <Application.Styles>
     <FluentTheme />
+    <StyleInclude Source="avares://RECompose/Theme/Styles.axaml" />
   </Application.Styles>
 </Application>
