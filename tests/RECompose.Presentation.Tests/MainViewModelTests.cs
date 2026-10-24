@@ -203,6 +203,36 @@ public sealed class MainViewModelTests : IDisposable
     }
 
     [Fact]
+    public async Task A_song_saved_by_milestone_1_opens_at_start_up()
+    {
+        string songId;
+        await using (var first = NewViewModel())
+        {
+            await first.InitializeAsync();
+            await first.ImportFolderAsync(StemsFolder());
+            await first.LoadSongAsync(first.Songs[0].Id);
+            songId = first.Song!.Id;
+            await first.ShutdownEngineAsync();
+        }
+
+        // Rewrite the file as milestone 1 left it: no sections and no analysis.
+        var path = Path.Combine(_root, "data", "songs", songId + ".json");
+        var json = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!.AsObject();
+        json.Remove("sections");
+        json.Remove("clickAnalysis");
+        json.Remove("guideAnalysis");
+        json.Remove("tempoSource");
+        json["sections"] = null;
+        File.WriteAllText(path, json.ToJsonString());
+
+        await using var vm = NewViewModel();
+        await vm.InitializeAsync();
+        Assert.Equal(songId, vm.Song?.Id);
+        Assert.False(vm.HasSections);
+        Assert.DoesNotContain("couldn't be opened", vm.Banner ?? string.Empty); // no audio device here is fine
+    }
+
+    [Fact]
     public async Task A_missing_stem_is_reported_and_the_rest_loads()
     {
         await using var vm = NewViewModel();

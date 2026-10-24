@@ -8,8 +8,11 @@ namespace RECompose.Engine;
 /// <summary>How to find and start the engine process.</summary>
 public sealed record EngineHostOptions(string ExecutablePath, string Endpoint)
 {
-    /// <summary>How long a freshly started engine may take to accept connections.</summary>
-    public TimeSpan StartTimeout { get; init; } = TimeSpan.FromSeconds(10);
+    /// <summary>
+    /// How long a freshly started engine may take to accept connections. Generous because the
+    /// first start of a new build on Windows waits for the antivirus scan of the executable.
+    /// </summary>
+    public TimeSpan StartTimeout { get; init; } = TimeSpan.FromSeconds(30);
 
     /// <summary>The engine exits after this long with no app connected and nothing playing.</summary>
     public double IdleExitSeconds { get; init; } = 10;

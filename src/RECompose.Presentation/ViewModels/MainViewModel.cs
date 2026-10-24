@@ -290,6 +290,24 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         else
             ShowDevice(device);
 
+        try
+        {
+            await RestoreSongAsync(session, loaded, snapshot, afterCrash);
+        }
+        catch (Exception ex)
+        {
+            // A song that can't be opened must not take the app down with it: start empty.
+            AppLog.Error("Library", ex);
+            Song = null;
+            Status = "READY";
+            _settings = _settings with { LastSongId = null };
+            _store.SaveSettings(_settings);
+            Banner = $"The last song couldn't be opened ({ex.Message}). Double-click it in the library to try again.";
+        }
+    }
+
+    private async Task RestoreSongAsync(EngineSession session, LoadedSong? loaded, EngineSnapshot snapshot, bool afterCrash)
+    {
         if (session.Attached && loaded is not null && _store.LoadSong(loaded.SongId) is { } model)
         {
             // The app restarted while the engine kept the song: pick it up as it is.

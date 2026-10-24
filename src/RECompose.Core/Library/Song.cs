@@ -85,6 +85,27 @@ public sealed record Song
 
     public TempoGrid Grid => new(Bpm, BeatsPerBar, FirstDownbeatSec);
 
+    /// <summary>
+    /// The song with every list present. Files written by older versions lack newer fields
+    /// (sections came in milestone 2), and a missing or null list must never reach the app.
+    /// </summary>
+    public Song Normalized()
+    {
+        var guide = GuideAnalysis is { } g && (g.Words is null || g.Calls is null)
+            ? g with { Words = g.Words ?? [], Calls = g.Calls ?? [] }
+            : GuideAnalysis;
+        if (Tracks is not null && MixPresets is not null && Sections is not null && Notes is not null && ReferenceEquals(guide, GuideAnalysis))
+            return this;
+        return this with
+        {
+            Tracks = Tracks ?? [],
+            MixPresets = MixPresets ?? [],
+            Sections = Sections ?? [],
+            Notes = Notes ?? string.Empty,
+            GuideAnalysis = guide,
+        };
+    }
+
     public MixPreset DefaultMix =>
         MixPresets.FirstOrDefault(p => p.Id == DefaultMixPresetId) ?? MixPresets.FirstOrDefault()
         ?? new MixPreset { Id = "default" };

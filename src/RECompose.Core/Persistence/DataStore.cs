@@ -44,7 +44,7 @@ public sealed class DataStore(string root)
     public void SaveLibrary(LibraryIndex library) =>
         Write(Path.Combine(Root, "library.json"), library, RecomposeJsonContext.Default.LibraryIndex);
 
-    public Song? LoadSong(string id) => Read(SongPath(id), RecomposeJsonContext.Default.Song);
+    public Song? LoadSong(string id) => Read(SongPath(id), RecomposeJsonContext.Default.Song)?.Normalized();
 
     public void SaveSong(Song song) => Write(SongPath(song.Id), song, RecomposeJsonContext.Default.Song);
 
