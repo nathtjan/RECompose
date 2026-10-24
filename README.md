@@ -2,7 +2,7 @@
 
 Live multitrack stem playback for a church music director, on Windows and macOS. The MD shapes each song's arrangement for this week's service, rehearses it with the band, and runs it live, hands-free, by voice or foot pedal.
 
-**Status:** milestone 2 (sections and analysis) is ready to test: after import the click track sets the tempo grid and the guide track is transcribed offline, Detect from guide finds the sections, and the MD reviews and edits them; the header shows NOW and NEXT. Milestone 1 brought the engine, import, mixer, routing, transport and timeline. How to try it: [docs/testing/M2-test-guide.md](docs/testing/M2-test-guide.md) (and [M1](docs/testing/M1-test-guide.md)). Plans: [M1](docs/milestones/M1-engine-and-import.md), [M2](docs/milestones/M2-sections-and-analysis.md).
+**Status:** milestone 3 (arrangements) is ready to test: a song can carry named variants built from a palette, the timeline (As heard) or quick-order shorthand; the header counts the arrangement and Play runs it with sample-accurate splices, repeats, mutes and fades. Milestone 2 brought sections and analysis, milestone 1 the engine, import, mixer, routing, transport and timeline. How to try it: [docs/testing/M3-test-guide.md](docs/testing/M3-test-guide.md) (and [M2](docs/testing/M2-test-guide.md), [M1](docs/testing/M1-test-guide.md)). Plans: [M1](docs/milestones/M1-engine-and-import.md), [M2](docs/milestones/M2-sections-and-analysis.md), [M3](docs/milestones/M3-arrangements.md).
 
 ## Stack
 

@@ -2,6 +2,8 @@
 
 **Goal:** the MD shapes a song for this Sunday and hears it. A song gets named variants ("Short", "Christmas"); each variant is a list of entries (sections with options, click bars, pad bars, holds); the MD builds one by clicking the palette, dragging in the timeline, or typing `V1 C V2 C B x2 C+2 E`. The header counts the arrangement (`NOW CHORUS 1 · pass 1 of 2 · bar 6 / 14`, `NEXT · ARRANGEMENT · CHORUS 1 (pass 2) · in 8 bars, 2 beats`), and Play runs it with sample-accurate splices.
 
+**Status:** delivered; all work packages done, CI green on Windows, macOS and Linux. Test guide: [M3-test-guide.md](../testing/M3-test-guide.md). Known gaps: no mouse drag-reorder in the ENTRY list (Move buttons and Alt+arrows instead; the timeline drags); key lift, click/pad bars and holds are stored only.
+
 **Starting point:** milestone 2. Songs have a grid and sections; the only plan is the song as written.
 
 ## Decisions for this milestone
