@@ -12,7 +12,8 @@
 //   recompose-engine transcribe <file> <model> [--prompt <text>] [--threads N]
 //       JSON on stdout: {"ok":true,"model":..,"chunks":n,"words":[[text, start, end, p], ...]}
 //       Word timestamps of a guide track (SEC-11/12) with whisper.cpp. Only the stretches
-//       where someone speaks are transcribed, each on its own; times are in source seconds.
+//       where someone speaks are transcribed, packed into windows of up to 28 s with a
+//       second of silence between them; times are in source seconds.
 //       Progress goes to stderr as lines "progress 0.42".
 //
 // On failure both print {"ok":false,"problem":"..."} and exit with a non-zero code.

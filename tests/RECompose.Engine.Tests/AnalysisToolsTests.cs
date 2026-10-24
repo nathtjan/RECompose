@@ -119,6 +119,8 @@ public class AnalysisToolsTests
         var heard = $"{transcript.Chunks} stretches in {seconds:0.0} s: " +
             string.Join(" | ", transcript.Words.Select(w => $"{w.Text}@{w.Start:0.00}({w.Confidence:0.00})"));
         TestContext.Current.SendDiagnosticMessage(heard);
+        if (Environment.GetEnvironmentVariable("REC_E2E_REPORT") is { Length: > 0 } report)
+            await File.WriteAllTextAsync(report, heard, ct);
 
         var duration = onsets.DurationSec;
         var result = SectionDetector.Detect(transcript.Words, grid, duration, (_, _) => false);

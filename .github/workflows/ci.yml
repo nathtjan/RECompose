@@ -109,6 +109,7 @@ jobs:
           PY=$(command -v python3 || command -v python)
           "$PY" tools/ci/make-guide-fixture.py build/guide-fixture
           echo "REC_E2E_GUIDE=${{ github.workspace }}/build/guide-fixture" >> "$GITHUB_ENV"
+          echo "REC_E2E_REPORT=${{ github.workspace }}/build/e2e-heard.txt" >> "$GITHUB_ENV"
           if [ "$RUNNER_OS" = "Linux" ]; then echo "REC_REQUIRE_E2E=1" >> "$GITHUB_ENV"; fi
 
       - name: Build app
@@ -124,6 +125,12 @@ jobs:
           set -o pipefail
           mkdir -p ci-logs
           dotnet test --solution RECompose.slnx -c Release --no-build --results-directory TestResults --report-xunit-trx 2>&1 | tee ci-logs/5-test-app.txt
+
+      - name: Report what the speech model heard
+        if: always()
+        shell: bash
+        run: |
+          if [ -f build/e2e-heard.txt ]; then echo "::notice title=Detect from guide on $RUNNER_OS::$(cat build/e2e-heard.txt)"; else echo "::notice title=Detect from guide on $RUNNER_OS::not run"; fi
 
       - name: Report failures
         if: failure()

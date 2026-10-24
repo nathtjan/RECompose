@@ -360,17 +360,41 @@ int transcribe (int argc, char* argv[])
     juce::Array<juce::var> words;
     const whisper_token eot = whisper_token_eot (context.get());
 
-    for (size_t si = 0; si < spans.size(); ++si)
+    // Calls are short, and whisper hears an isolated half-second word poorly and spends a
+    // full 30 s encoder pass on it. So the stretches are packed into windows of up to 28 s,
+    // one second of silence apart, and each word is mapped back to the stretch it fell in.
+    struct Placed
     {
-        const auto& span = spans[si];
+        double windowStart, sourceStart, length;
+    };
+    struct Window
+    {
+        std::vector<float> samples;
+        std::vector<Placed> placed;
+    };
+    std::vector<Window> windows;
+    constexpr double gap = 1.0, lead = 0.3, maxWindow = 28.0;
+    for (const auto& span : spans)
+    {
+        const double length = span.end - span.start;
+        if (windows.empty() || windows.back().samples.size() / 16000.0 + gap + length > maxWindow)
+        {
+            windows.emplace_back();
+            windows.back().samples.assign (static_cast<size_t> (lead * 16000), 0.0f);
+        }
+        auto& w = windows.back();
+        if (! w.placed.empty())
+            w.samples.resize (w.samples.size() + static_cast<size_t> (gap * 16000), 0.0f);
+        w.placed.push_back ({ w.samples.size() / 16000.0, span.start, length });
         const int from = static_cast<int> (span.start * 16000);
         const int to = std::min (static_cast<int> (audio.size()), static_cast<int> (span.end * 16000));
+        w.samples.insert (w.samples.end(), audio.begin() + from, audio.begin() + to);
+    }
 
-        // Whisper wants at least a second; pad short calls with silence.
-        std::vector<float> chunk (audio.begin() + from, audio.begin() + to);
-        if (chunk.size() < 17600)
-            chunk.resize (17600, 0.0f);
-        const double seconds = chunk.size() / 16000.0;
+    for (size_t wi = 0; wi < windows.size(); ++wi)
+    {
+        auto& window = windows[wi];
+        window.samples.resize (std::max<size_t> (window.samples.size() + static_cast<size_t> (lead * 16000), 17600), 0.0f);
 
         auto params = whisper_full_default_params (WHISPER_SAMPLING_GREEDY);
         params.n_threads = threads;
@@ -388,10 +412,8 @@ int transcribe (int argc, char* argv[])
         params.temperature = 0.0f;
         params.no_speech_thold = 0.6f;
         params.initial_prompt = prompt.empty() ? nullptr : prompt.c_str();
-        // A shorter encoder context for short stretches: much faster, enough for a call.
-        params.audio_ctx = seconds < 14 ? 768 : 0;
 
-        if (whisper_full (context.get(), params, chunk.data(), static_cast<int> (chunk.size())) != 0)
+        if (whisper_full (context.get(), params, window.samples.data(), static_cast<int> (window.samples.size())) != 0)
             continue;
 
         // Words from the tokens: a token that starts with a space starts a word; the
@@ -440,14 +462,31 @@ int transcribe (int argc, char* argv[])
             if (! hasLetters)
                 continue;
 
-            const double start = std::clamp (span.start + w.start, span.start, span.end);
-            const double end = std::clamp (span.start + std::max (w.end, w.start + 0.05), start, span.end);
+            // The stretch whose window position is nearest to the word's middle.
+            const double middle = (w.start + std::max (w.end, w.start)) / 2;
+            const Placed* home = &window.placed.front();
+            double best = 1e9;
+            for (const auto& placed : window.placed)
+            {
+                const double distance = middle < placed.windowStart ? placed.windowStart - middle
+                                      : middle > placed.windowStart + placed.length ? middle - placed.windowStart - placed.length
+                                      : 0.0;
+                if (distance < best)
+                {
+                    best = distance;
+                    home = &placed;
+                }
+            }
+
+            const double offset = home->sourceStart - home->windowStart;
+            const double start = std::clamp (w.start + offset, home->sourceStart, home->sourceStart + home->length);
+            const double end = std::clamp (std::max (w.end, w.start + 0.05) + offset, start, home->sourceStart + home->length);
             juce::Array<juce::var> row { juce::String::fromUTF8 (text.c_str()), number (start), number (end),
                                          number (w.tokens > 0 ? w.p / w.tokens : 0.0) };
             words.add (row);
         }
 
-        std::fprintf (stderr, "progress %.3f\n", static_cast<double> (si + 1) / static_cast<double> (spans.size()));
+        std::fprintf (stderr, "progress %.3f\n", static_cast<double> (wi + 1) / static_cast<double> (windows.size()));
         std::fflush (stderr);
     }
 
