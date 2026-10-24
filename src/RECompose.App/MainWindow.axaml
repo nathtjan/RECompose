@@ -268,6 +268,9 @@
                 <DockPanel>
                   <ToggleButton DockPanel.Dock="Right" Classes="ms" Content="Follow" IsChecked="{Binding FollowPlayhead}" Padding="6,0"
                                 Height="22" MinHeight="22" ToolTip.Tip="Follow the playhead when zoomed in (.)" />
+                  <ToggleButton DockPanel.Dock="Left" Classes="ms" Content="{Binding TimelineModeLabel}" IsChecked="{Binding TimelineAsHeard}"
+                                Padding="6,0" Height="22" MinHeight="22" Margin="0,0,8,0"
+                                ToolTip.Tip="As heard shows the playing variant in its own order; As written shows the song as it was recorded" />
                   <TextBlock Classes="label" Text="TRACKS" VerticalAlignment="Center" />
                 </DockPanel>
               </Border>
@@ -277,7 +280,7 @@
                           Padding="4,0" MinHeight="24" Height="24">
                     <c:Icon Glyph="plus" IconSize="14" />
                   </Button>
-                  <TextBlock Classes="label" Text="SECTIONS" VerticalAlignment="Center" />
+                  <TextBlock Classes="label" Text="{Binding TimelineLaneLabel}" VerticalAlignment="Center" />
                 </DockPanel>
               </Border>
               <ItemsControl ItemsSource="{Binding Song.Tracks}">
@@ -306,7 +309,9 @@
 
             <c:TimelineView x:Name="Timeline" Grid.Column="1" VerticalAlignment="Top"
                             Song="{Binding Song}"
-                            Position="{Binding PositionSec}"
+                            Position="{Binding TimelinePosition}"
+                            AsHeard="{Binding TimelineAsHeard}"
+                            SelectedEntry="{Binding Entry.SelectedId, FallbackValue={x:Null}}"
                             Version="{Binding Song.WaveformVersion, FallbackValue=0}"
                             Follow="{Binding FollowPlayhead}"
                             IsPlaying="{Binding IsPlaying}"

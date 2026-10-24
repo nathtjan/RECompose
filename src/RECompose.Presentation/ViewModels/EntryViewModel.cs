@@ -175,10 +175,38 @@ public sealed class EntryViewModel : ObservableObject
             LoadOptions();
             RefreshCommands();
             OnPropertyChanged(nameof(HasSelection));
+            OnPropertyChanged(nameof(SelectedId));
             OnPropertyChanged(nameof(SelectedIsSection));
             OnPropertyChanged(nameof(SelectedIsGenerated));
         }
     }
+
+    /// <summary>The id of the selected entry, for the timeline's outline.</summary>
+    public string? SelectedId => Selected?.Id;
+
+    /// <summary>Selects an entry by id (a click on the timeline); null clears the selection.</summary>
+    public void SelectById(string? id) => Selected = id is null ? null : Rows.FirstOrDefault(r => r.Id == id);
+
+    /// <summary>Copies an entry to a 0-based position (Alt-drag on the timeline).</summary>
+    public void DuplicateTo(string entryId, int index)
+    {
+        if (Rows.FirstOrDefault(r => r.Id == entryId) is not { } row)
+            return;
+        string? added = null;
+        Edit($"Duplicated {row.Text}", a =>
+        {
+            var (arrangement, copy) = ArrangementEdit.Duplicate(a, entryId, Math.Clamp(index, 0, Rows.Count));
+            added = copy?.Id;
+            return arrangement;
+        });
+        if (added is not null)
+            _pendingSelect = added;
+        ApplyPendingSelection();
+    }
+
+    /// <summary>Trims an entry's bar range by dragging its edge (AT-30).</summary>
+    public void TrimEntry(string entryId, int fromBar, int? toBar) =>
+        UpdateEntry(entryId, "Trimmed range", e => e with { Range = new BarRange { FromBar = Math.Max(1, fromBar), ToBar = toBar } });
 
     public IReadOnlyList<MuteChoice> MuteChoices => MuteChoice.All;
     public IReadOnlyList<EndingChoice> EndingChoices => EndingChoice.All;

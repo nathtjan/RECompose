@@ -36,7 +36,31 @@ public partial class MainWindow : Window
         // Double-click a fader for 0.0 dB (PB-80).
         AddHandler(DoubleTappedEvent, OnDoubleTapped, RoutingStrategies.Bubble, handledEventsToo: true);
 
-        Timeline.SeekRequested += seconds => _ = ViewModel?.SeekAsync(seconds);
+        Timeline.SeekRequested += seconds =>
+        {
+            if (ViewModel is { } vm)
+                _ = vm.TimelineAsHeard ? vm.SeekPlanAsync(seconds) : vm.SeekAsync(seconds);
+        };
+
+        // Arrangement lane (as heard): select, open, reorder, copy, trim (ARR-24, AT-30).
+        Timeline.EntrySelected += id => ViewModel?.Entry.SelectById(id);
+        Timeline.EntryActivated += id =>
+        {
+            if (ViewModel is { } vm)
+            {
+                vm.Entry.SelectById(id);
+                vm.SelectedTab = MainViewModel.EntryTab;
+            }
+        };
+        Timeline.EntryMoved += (id, index, copy) =>
+        {
+            if (copy)
+                ViewModel?.Entry.DuplicateTo(id, index);
+            else
+                ViewModel?.Entry.MoveEntry(id, index);
+        };
+        Timeline.EntryTrimmed += (id, from, to) => ViewModel?.Entry.TrimEntry(id, from, to);
+        Timeline.EntryMenuRequested += OpenEntryMenu;
 
         // Sections lane (SEC-50).
         Timeline.SectionSelected += id => ViewModel?.Sections.Select(id);
@@ -156,6 +180,31 @@ public partial class MainWindow : Window
         menu.Items.Add(Item("Merge with next", () => sections.MergeWithNext(id)));
         menu.Items.Add(new Separator());
         menu.Items.Add(Item("Delete", () => sections.DeleteById(id)));
+        menu.Open(Timeline);
+    }
+
+    /// <summary>Right-click on an arrangement block: duplicate, move, remove, open options.</summary>
+    private void OpenEntryMenu(string id)
+    {
+        if (ViewModel is not { } vm)
+            return;
+        var entry = vm.Entry;
+        entry.SelectById(id);
+
+        MenuItem Item(string header, Action action)
+        {
+            var item = new MenuItem { Header = header };
+            item.Click += (_, _) => action();
+            return item;
+        }
+
+        var menu = new ContextMenu();
+        menu.Items.Add(Item("Options…", () => vm.SelectedTab = MainViewModel.EntryTab));
+        menu.Items.Add(Item("Duplicate", () => entry.DuplicateCommand.Execute(null)));
+        menu.Items.Add(Item("Move earlier", () => entry.MoveUpCommand.Execute(null)));
+        menu.Items.Add(Item("Move later", () => entry.MoveDownCommand.Execute(null)));
+        menu.Items.Add(new Separator());
+        menu.Items.Add(Item("Remove", () => entry.RemoveCommand.Execute(null)));
         menu.Open(Timeline);
     }
 

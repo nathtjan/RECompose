@@ -175,10 +175,37 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             if (Set(ref _planPosition, value))
             {
                 UpdateSourcePosition();
+                OnPropertyChanged(nameof(TimelinePosition));
                 UpdateReadouts();
             }
         }
     }
+
+    private bool _timelineAsHeard;
+
+    /// <summary>
+    /// The timeline shows the arrangement on its own clock (as heard) rather than the written song (UI-15). It follows the
+    /// variant that plays and can be switched by hand.
+    /// </summary>
+    public bool TimelineAsHeard
+    {
+        get => _timelineAsHeard;
+        set
+        {
+            if (Set(ref _timelineAsHeard, value))
+            {
+                OnPropertyChanged(nameof(TimelinePosition));
+                OnPropertyChanged(nameof(TimelineModeLabel));
+                OnPropertyChanged(nameof(TimelineLaneLabel));
+            }
+        }
+    }
+
+    /// <summary>The playhead on the timeline's clock.</summary>
+    public double TimelinePosition => _timelineAsHeard ? _planPosition : _sourcePosition;
+
+    public string TimelineModeLabel => _timelineAsHeard ? "AS HEARD" : "AS WRITTEN";
+    public string TimelineLaneLabel => _timelineAsHeard ? "ARRANGEMENT" : "SECTIONS";
 
     /// <summary>
     /// The source second being heard: where the playhead is on the as-written timeline, and the time that
@@ -190,12 +217,16 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     {
         if (_song is null)
         {
-            Set(ref _sourcePosition, 0.0, nameof(PositionSec));
+            if (Set(ref _sourcePosition, 0.0, nameof(PositionSec)))
+                OnPropertyChanged(nameof(TimelinePosition));
             return;
         }
 
         if (_song.Plan.SourceAt(_planPosition) is { } source)
-            Set(ref _sourcePosition, source, nameof(PositionSec));
+        {
+            if (Set(ref _sourcePosition, source, nameof(PositionSec)))
+                OnPropertyChanged(nameof(TimelinePosition));
+        }
     }
 
     /// <summary>"bar 32.2 / 124" (PB-32).</summary>
@@ -630,6 +661,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         _committed["master"] = (vm.Master.GainDb, false, false);
 
         vm.PlanChanged += OnPlanChanged;
+        TimelineAsHeard = !vm.IsAsWritten;
         Song = vm;
         SelectedSong ??= _allSongs.FirstOrDefault(s => s.Id == model.Id);
         PlanPositionSec = 0;
@@ -719,6 +751,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     {
         if (_song is null)
             return;
+        if (!sameArrangement)
+            TimelineAsHeard = !_song.IsAsWritten; // the timeline follows the variant that plays
         var position = SongPlan.Remap(previous, _planPosition, _song.Plan, sameArrangement);
         PlanPositionSec = position;
         Sections.Refresh();
