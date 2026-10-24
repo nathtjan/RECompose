@@ -21,5 +21,6 @@
   <ItemGroup>
     <ProjectReference Include="../RECompose.Core/RECompose.Core.csproj" />
     <ProjectReference Include="../RECompose.Engine/RECompose.Engine.csproj" />
+    <ProjectReference Include="../RECompose.Presentation/RECompose.Presentation.csproj" />
   </ItemGroup>
 </Project>

@@ -3,9 +3,11 @@
     <Project Path="src/RECompose.App/RECompose.App.csproj" />
     <Project Path="src/RECompose.Core/RECompose.Core.csproj" />
     <Project Path="src/RECompose.Engine/RECompose.Engine.csproj" />
+    <Project Path="src/RECompose.Presentation/RECompose.Presentation.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/RECompose.Core.Tests/RECompose.Core.Tests.csproj" />
     <Project Path="tests/RECompose.Engine.Tests/RECompose.Engine.Tests.csproj" />
+    <Project Path="tests/RECompose.Presentation.Tests/RECompose.Presentation.Tests.csproj" />
   </Folder>
 </Solution>
