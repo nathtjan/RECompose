@@ -30,7 +30,7 @@ jobs:
             rid: osx-arm64
             cmake-args: '"-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64"'
           - name: Linux (tests only)
-            os: ubuntu-latest
+            os: ubuntu-24.04
             rid: linux-x64
             cmake-args: -G Ninja
 
@@ -67,7 +67,15 @@ jobs:
         run: dotnet build RECompose.slnx -c Release
 
       - name: Test app
-        run: dotnet test RECompose.slnx -c Release --no-build
+        shell: bash
+        run: |
+          set -o pipefail
+          dotnet test RECompose.slnx -c Release --no-build --logger trx --results-directory TestResults 2>&1 | tee test-output.txt
+
+      - name: Report test failures
+        if: failure()
+        shell: bash
+        run: python3 tools/ci/report-test-failures.py TestResults test-output.txt || python tools/ci/report-test-failures.py TestResults test-output.txt
 
       - name: Publish app
         if: runner.os != 'Linux'
