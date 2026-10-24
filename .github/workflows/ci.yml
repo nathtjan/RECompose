@@ -44,7 +44,7 @@ jobs:
 
       - name: Install Linux packages
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libasound2-dev libfreetype-dev libfontconfig-dev ninja-build
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libasound2-dev libfreetype-dev libfontconfig-dev ninja-build espeak-ng
 
       - name: Check generated design resources
         shell: bash
@@ -81,6 +81,36 @@ jobs:
       - name: Stage engine
         run: cmake --install build/engine --config Release --component engine --prefix artifacts/native
 
+      # The speech model for guide transcription (SEC-12): cached between runs, checked by SHA-1,
+      # used by the end-to-end test and shipped next to the app in models/.
+      - name: Cache speech model
+        uses: actions/cache@v4
+        with:
+          path: models
+          key: speech-model-ggml-base.en-137c40403d78fd54d454da0f9bd998f78703390c
+
+      - name: Speech model
+        shell: bash
+        run: |
+          PY=$(command -v python3 || command -v python)
+          mkdir -p models
+          if [ ! -f models/ggml-base.en.bin ]; then
+            curl -L --fail --retry 3 -o models/ggml-base.en.bin https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin
+          fi
+          "$PY" -c "import hashlib,sys; h=hashlib.sha1(open('models/ggml-base.en.bin','rb').read()).hexdigest(); print(h); sys.exit(h!='137c40403d78fd54d454da0f9bd998f78703390c')"
+          echo "RECOMPOSE_SPEECH_MODEL=${{ github.workspace }}/models/ggml-base.en.bin" >> "$GITHUB_ENV"
+
+      # A click and a guide spoken by the platform's text-to-speech voice for the end-to-end
+      # Detect test. Required on Linux; on the others it runs when a voice is available.
+      - name: Guide fixture
+        shell: bash
+        continue-on-error: ${{ runner.os != 'Linux' }}
+        run: |
+          PY=$(command -v python3 || command -v python)
+          "$PY" tools/ci/make-guide-fixture.py build/guide-fixture
+          echo "REC_E2E_GUIDE=${{ github.workspace }}/build/guide-fixture" >> "$GITHUB_ENV"
+          if [ "$RUNNER_OS" = "Linux" ]; then echo "REC_REQUIRE_E2E=1" >> "$GITHUB_ENV"; fi
+
       - name: Build app
         shell: bash
         run: |
@@ -110,6 +140,8 @@ jobs:
         if: runner.os != 'Linux'
         shell: bash
         run: |
+          mkdir -p publish/${{ matrix.rid }}/models
+          cp models/ggml-base.en.bin publish/${{ matrix.rid }}/models/
           ls publish/${{ matrix.rid }} | head -50
           test -f publish/${{ matrix.rid }}/recompose-engine || test -f publish/${{ matrix.rid }}/recompose-engine.exe
           test -f publish/${{ matrix.rid }}/RECompose || test -f publish/${{ matrix.rid }}/RECompose.exe

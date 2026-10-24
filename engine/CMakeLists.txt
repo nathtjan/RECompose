@@ -57,6 +57,41 @@ if(WIN32 AND RECOMPOSE_ASIO)
     set(RECOMPOSE_ASIO_ENABLED 1)
 endif()
 
+# whisper.cpp (MIT) for offline guide transcription (SEC-12, PLAT-40): the same engine
+# on both platforms. Built for the CPU only, without the build machine's CPU features
+# (GGML_NATIVE off; AVX2 and FMA on x64, so CPUs from 2013 on), and without OpenMP so no
+# extra runtime library has to ship. Turn off with -DRECOMPOSE_WHISPER=OFF.
+option(RECOMPOSE_WHISPER "Build guide transcription with whisper.cpp" ON)
+if(RECOMPOSE_WHISPER)
+    set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+    set(WHISPER_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    set(WHISPER_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+    set(WHISPER_BUILD_SERVER OFF CACHE BOOL "" FORCE)
+    set(WHISPER_SDL2 OFF CACHE BOOL "" FORCE)
+    set(WHISPER_CURL OFF CACHE BOOL "" FORCE)
+    set(GGML_NATIVE OFF CACHE BOOL "" FORCE)
+    set(GGML_OPENMP OFF CACHE BOOL "" FORCE)
+    set(GGML_METAL OFF CACHE BOOL "" FORCE)
+    set(GGML_BLAS OFF CACHE BOOL "" FORCE)
+    set(GGML_CCACHE OFF CACHE BOOL "" FORCE)
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64|x64)$")
+        set(GGML_AVX ON CACHE BOOL "" FORCE)
+        set(GGML_AVX2 ON CACHE BOOL "" FORCE)
+        set(GGML_FMA ON CACHE BOOL "" FORCE)
+        set(GGML_F16C ON CACHE BOOL "" FORCE)
+    endif()
+    FetchContent_Declare(whisper
+        GIT_REPOSITORY https://github.com/ggml-org/whisper.cpp.git
+        GIT_TAG v1.9.5
+        GIT_SHALLOW TRUE)
+    FetchContent_MakeAvailable(whisper)
+    # Their headers are not ours to warn about.
+    foreach(target whisper ggml)
+        get_target_property(dirs ${target} INTERFACE_INCLUDE_DIRECTORIES)
+        set_target_properties(${target} PROPERTIES INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${dirs}")
+    endforeach()
+endif()
+
 # JUCE modules compiled once into a static library that the engine and the tests share
 # (JUCE's own "shared code" pattern: module sources are added only to this target).
 add_library(recompose_juce STATIC)
@@ -106,6 +141,7 @@ add_library(recompose_engine_core STATIC
     src/message_handler.cpp
     src/engine.cpp
     src/tools.cpp
+    src/analysis.cpp
     src/audio/song.cpp
     src/audio/disk_streamer.cpp
     src/audio/player.cpp)
@@ -115,6 +151,12 @@ target_compile_definitions(recompose_engine_core PUBLIC RECOMPOSE_ENGINE_VERSION
 target_link_libraries(recompose_engine_core PUBLIC recompose_juce r8brain)
 if(WIN32)
     target_link_libraries(recompose_engine_core PUBLIC ws2_32)
+endif()
+if(RECOMPOSE_WHISPER)
+    target_link_libraries(recompose_engine_core PUBLIC whisper)
+    target_compile_definitions(recompose_engine_core PUBLIC RECOMPOSE_WITH_WHISPER=1)
+else()
+    target_compile_definitions(recompose_engine_core PUBLIC RECOMPOSE_WITH_WHISPER=0)
 endif()
 
 add_executable(recompose_engine src/main.cpp)

@@ -7,6 +7,7 @@
 //
 // Threads: the main thread runs JUCE's message loop (the device manager, the engine
 // state); the server thread moves bytes; the disk and audio threads stream and play.
+#include "analysis.h"
 #include "engine.h"
 #include "engine_server.h"
 #include "ipc/local_socket.h"
@@ -58,6 +59,8 @@ void printUsage()
                   "Usage: recompose-engine --endpoint <socket path> [--idle-exit-seconds N]\n"
                   "       recompose-engine probe <file>\n"
                   "       recompose-engine peaks <file> <out> [framesPerBucket]\n"
+                  "       recompose-engine onsets <file>\n"
+                  "       recompose-engine transcribe <file> <model> [--prompt <text>] [--threads N]\n"
                   "       recompose-engine --version\n");
 }
 } // namespace
@@ -87,6 +90,19 @@ int main (int argc, char* argv[])
         }
         return rec::tools::peaks (argv[2], argv[3], argc == 5 ? std::atoi (argv[4]) : 480);
     }
+
+    if (argc >= 2 && std::strcmp (argv[1], "onsets") == 0)
+    {
+        if (argc != 3)
+        {
+            printUsage();
+            return 64;
+        }
+        return rec::analysis::onsets (argv[2]);
+    }
+
+    if (argc >= 2 && std::strcmp (argv[1], "transcribe") == 0)
+        return rec::analysis::transcribe (argc, argv);
 
     rec::EngineServer::Options options;
 
