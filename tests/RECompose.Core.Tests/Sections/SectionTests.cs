@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 using RECompose.Core.Library;
+using RECompose.Core.Planning;
 using RECompose.Core.Persistence;
 using RECompose.Core.Sections;
 using RECompose.Core.Timing;
@@ -147,8 +148,10 @@ public class SectionTests
     [Fact]
     public void PB30_31_35_readouts_follow_the_written_sections()
     {
-        var plan = new AsWrittenPlan(A, SectionList.Describe(FixtureASections(), A, DurationA), DurationA);
+        var plan = PlanBuilder.Build(A, SectionList.Describe(FixtureASections(), A, DurationA), DurationA, null);
 
+        // The 0.02 s before the first section is shorter than half a beat: the plan starts at S0 (PB-41).
+        Assert.Equal(DurationA - 0.02, plan.DurationSec, 6);
         var rest = plan.At(0);
         Assert.Equal("INTRO", rest.NowLabel);
         Assert.Equal("bar 1 / 10", rest.NowDetail);
@@ -158,7 +161,7 @@ public class SectionTests
         Assert.Equal("bar 1.1 / 124", rest.SongBar);
 
         // Source 78.52 s: chart bar 32.2, the first chorus.
-        var r = plan.At(78.52);
+        var r = plan.At(plan.PlanAt(78.52)!.Value);
         Assert.Equal("CHORUS 1", r.NowLabel);
         Assert.Equal("bar 6 / 14", r.NowDetail);
         Assert.Equal("VAMP", r.NextLabel);
@@ -166,8 +169,9 @@ public class SectionTests
         Assert.Equal("bar 32.2 / 124", r.SongBar);
         Assert.Equal("chart bar 32.2", r.ChartBar);
 
-        Assert.Equal("in 1 beat", plan.Countdown(A.BarToTime(27) - A.BeatLength, A.BarToTime(27)));
-        Assert.Equal("now", plan.Countdown(A.BarToTime(27), A.BarToTime(27)));
+        var chorus = A.BarToTime(27) - 0.02; // plan time of the first chorus
+        Assert.Equal("in 1 beat", plan.Countdown(chorus - A.BeatLength, chorus));
+        Assert.Equal("now", plan.Countdown(chorus, chorus));
 
         var last = plan.At(DurationA - 1);
         Assert.Equal("ENDING", last.NowLabel);
@@ -179,7 +183,7 @@ public class SectionTests
     {
         // Fixture B: Verse 1 at chart bar 2; bar 1 is a lead-in.
         var sections = new List<Section> { Section.Create("Verse 1", B.BarToTime(2), SectionOrigin.Guide), Section.Create("Chorus", B.BarToTime(11), SectionOrigin.Guide) };
-        var plan = new AsWrittenPlan(B, SectionList.Describe(sections, B, DurationB), DurationB);
+        var plan = PlanBuilder.Build(B, SectionList.Describe(sections, B, DurationB), DurationB, null);
 
         Assert.Equal(81, plan.TotalBars);
         var rest = plan.At(0);
@@ -197,7 +201,7 @@ public class SectionTests
     [Fact]
     public void Without_sections_the_readouts_are_those_of_milestone_1()
     {
-        var plan = new AsWrittenPlan(A, [], DurationA);
+        var plan = PlanBuilder.Build(A, [], DurationA, null);
         var r = plan.At(78.52);
         Assert.Equal(string.Empty, r.NowLabel);
         Assert.Equal("bar 32.2 / 124", r.SongBar);

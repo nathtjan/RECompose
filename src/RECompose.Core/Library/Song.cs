@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+using RECompose.Core.Arrangements;
 using RECompose.Core.Sections;
 using RECompose.Core.Timing;
 
@@ -39,7 +40,7 @@ public enum TempoSource
     Assumed,
 }
 
-/// <summary>A library song: stems, metadata, written sections and analysis (DM-10). Arrangements arrive in M3.</summary>
+/// <summary>A library song: stems, metadata, written sections, variants and analysis (DM-10).</summary>
 public sealed record Song
 {
     public int SchemaVersion { get; init; } = 2;
@@ -69,6 +70,12 @@ public sealed record Song
     /// <summary>Written sections, always sorted by start (DM-10, DM-20).</summary>
     public List<Section> Sections { get; init; } = [];
 
+    /// <summary>Named variants (DM-10, ARR-1). Empty means the song plays as written.</summary>
+    public List<Arrangement> Arrangements { get; init; } = [];
+
+    /// <summary>The variant that plays; null plays the song as written. Services choose per entry from M4.</summary>
+    public string? DefaultArrangementId { get; init; }
+
     public ClickAnalysis? ClickAnalysis { get; init; }
     public GuideAnalysis? GuideAnalysis { get; init; }
 
@@ -94,7 +101,13 @@ public sealed record Song
         var guide = GuideAnalysis is { } g && (g.Words is null || g.Calls is null)
             ? g with { Words = g.Words ?? [], Calls = g.Calls ?? [] }
             : GuideAnalysis;
-        if (Tracks is not null && MixPresets is not null && Sections is not null && Notes is not null && ReferenceEquals(guide, GuideAnalysis))
+        var arrangements = Arrangements;
+        if (arrangements is null || arrangements.Any(a => a?.Entries is null))
+            arrangements = (Arrangements ?? []).Where(a => a is not null).Select(a => a.Normalized()).ToList();
+        var defaultId = DefaultArrangementId is { } id && arrangements.Any(a => a.Id == id) ? id : null;
+
+        if (Tracks is not null && MixPresets is not null && Sections is not null && Notes is not null
+            && ReferenceEquals(guide, GuideAnalysis) && ReferenceEquals(arrangements, Arrangements) && defaultId == DefaultArrangementId)
             return this;
         return this with
         {
@@ -103,8 +116,13 @@ public sealed record Song
             Sections = Sections ?? [],
             Notes = Notes ?? string.Empty,
             GuideAnalysis = guide,
+            Arrangements = arrangements,
+            DefaultArrangementId = defaultId,
         };
     }
+
+    /// <summary>The variant that plays, or null for as written.</summary>
+    public Arrangement? ActiveArrangement => DefaultArrangementId is { } id ? Arrangements.FirstOrDefault(a => a.Id == id) : null;
 
     public MixPreset DefaultMix =>
         MixPresets.FirstOrDefault(p => p.Id == DefaultMixPresetId) ?? MixPresets.FirstOrDefault()
