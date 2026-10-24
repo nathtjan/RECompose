@@ -4,6 +4,19 @@
 
 **Starting point:** milestone 1. Songs import, play, mix and route; the grid comes from the file name or the SONG tab; there are no sections.
 
+## Status (25 Oct 2026)
+
+Ready for the demo on the product owner's PC (see `docs/testing/M2-test-guide.md`). CI is green on Windows, macOS and Linux, including the end-to-end Detect test with real speech recognition of a guide spoken by each platform's own voice (espeak-ng, macOS `say`, Windows System.Speech): 9 of 9 sections at the right bars, transcribed in 6–7 s.
+
+| Package | Done | Still open |
+|---|---|---|
+| WP1 Core sections | Model, labels, badges, types and overrides, move/rename/retype/split/merge/delete/mark, as-written NOW, NEXT and countdown, song bars from the first section | Arrangement remapping on re-detect and delete (M3) |
+| WP2 Core analysis | Click fit with outlier rejection and accents, detection rules with confidence, result text, re-detect keeping edits | Tuning against real vendor guides (product owner's test) |
+| WP3 Engine tools | `onsets`, `transcribe` with whisper.cpp 1.9.5, speech packed into 28 s windows, words placed by DTW alignment | Bundled model in an installer (M10) |
+| WP4 App jobs | Peaks → click → guide after import with progress on the library row and the top bar, model lookup and download, SONG tab buttons | Cancelling a running job |
+| WP5 App UI | SECTIONS tab with table, result box and review flow; sections lane with drag, double-click and menu; M, S, Delete; NOW and NEXT; No sections yet card; toast with Undo | Hands-on check of the look and the drag feel |
+| WP6 CI and docs | Model cache, TTS fixture, what the model heard reported per platform, test guide | — |
+
 **Spec references:** 05 SEC-1…54, 03 DM-10/20/21, 04 PB-30/31/35 (as written), 02 UI-15 (sections lane), UI-16 (SECTIONS tab), UI-80 (no sections yet), 09 SL-53/54/60, 14 KEY-1 (M, Delete), 13 PLAT-40 (bundled recognition), 15 AT-35…38.
 
 ## Definition of done: the demo
