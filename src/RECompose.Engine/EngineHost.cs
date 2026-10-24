@@ -44,6 +44,13 @@ public static class EngineHost
                 await running.DisposeAsync().ConfigureAwait(false);
                 await StopRunningEngineAsync(options, cancellationToken).ConfigureAwait(false);
             }
+            catch (Exception ex) when (ex is EngineDisconnectedException or IOException)
+            {
+                // An engine that was just shutting down (quit and relaunch in quick succession):
+                // let it finish, then start a fresh one.
+                await running.DisposeAsync().ConfigureAwait(false);
+                await StopRunningEngineAsync(options, cancellationToken).ConfigureAwait(false);
+            }
             catch
             {
                 await running.DisposeAsync().ConfigureAwait(false);
