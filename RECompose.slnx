@@ -6,6 +6,7 @@
     <Project Path="src/RECompose.Presentation/RECompose.Presentation.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/RECompose.App.Tests/RECompose.App.Tests.csproj" />
     <Project Path="tests/RECompose.Core.Tests/RECompose.Core.Tests.csproj" />
     <Project Path="tests/RECompose.Engine.Tests/RECompose.Engine.Tests.csproj" />
     <Project Path="tests/RECompose.Presentation.Tests/RECompose.Presentation.Tests.csproj" />
