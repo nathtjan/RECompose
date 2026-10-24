@@ -17,11 +17,12 @@ namespace RECompose.Core.Persistence;
 [JsonSerializable(typeof(Song))]
 [JsonSerializable(typeof(LibraryIndex))]
 [JsonSerializable(typeof(Service))]
+[JsonSerializable(typeof(PadLibrary))]
 [JsonSerializable(typeof(AppSettings))]
 public sealed partial class RecomposeJsonContext : JsonSerializerContext;
 
 /// <summary>
-/// The data folder (DM-90): library.json, songs/&lt;id&gt;.json, services/&lt;id&gt;.json, settings.json, cache/.
+/// The data folder (DM-90): library.json, songs/&lt;id&gt;.json, services/&lt;id&gt;.json, padsets.json, settings.json, cache/.
 /// Every write is atomic (temp file, then rename), so a crash never leaves half a file.
 /// </summary>
 public sealed class DataStore(string root)
@@ -78,6 +79,14 @@ public sealed class DataStore(string root)
         if (File.Exists(ServicePath(id)))
             File.Delete(ServicePath(id));
     }
+
+    public PadLibrary LoadPads()
+    {
+        var pads = Read(Path.Combine(Root, "padsets.json"), RecomposeJsonContext.Default.PadLibrary) ?? new PadLibrary();
+        return pads with { PadSets = (pads.PadSets ?? []).Where(p => p is not null).Select(p => p.Normalized()).ToList() };
+    }
+
+    public void SavePads(PadLibrary pads) => Write(Path.Combine(Root, "padsets.json"), pads, RecomposeJsonContext.Default.PadLibrary);
 
     public AppSettings LoadSettings() =>
         Read(Path.Combine(Root, "settings.json"), RecomposeJsonContext.Default.AppSettings) ?? new AppSettings();
