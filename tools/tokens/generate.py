@@ -59,6 +59,7 @@ def generate() -> str:
         "// change the design system, then run the generator.",
         "// </auto-generated>",
         "// SPDX-License-Identifier: AGPL-3.0-or-later",
+        "#nullable enable",
         "using Avalonia;",
         "using Avalonia.Controls;",
         "using Avalonia.Media;",

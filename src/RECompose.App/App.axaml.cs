@@ -4,6 +4,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Avalonia.Threading;
+using RECompose.App.Dialogs;
 using RECompose.App.Theme;
 using RECompose.Core.Persistence;
 using RECompose.Engine;

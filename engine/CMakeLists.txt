@@ -38,6 +38,10 @@ FetchContent_Declare(r8brain
 FetchContent_MakeAvailable(r8brain) # no CMakeLists of its own: this only downloads it
 add_library(r8brain STATIC ${r8brain_SOURCE_DIR}/r8bbase.cpp)
 target_include_directories(r8brain SYSTEM PUBLIC ${r8brain_SOURCE_DIR})
+if(WIN32)
+    # r8brain's header includes windows.h; keep its min/max macros away from std::min/max.
+    target_compile_definitions(r8brain PUBLIC NOMINMAX)
+endif()
 set_target_properties(r8brain PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 # Steinberg ASIO SDK (GPLv3 option, compatible with this project's AGPLv3) for ASIO on
@@ -86,6 +90,7 @@ target_compile_definitions(recompose_juce
 if(RECOMPOSE_ASIO_ENABLED)
     target_include_directories(recompose_juce PRIVATE ${asiosdk_SOURCE_DIR}/common)
 endif()
+
 
 # Consumers see the module headers and the module-availability definitions too.
 target_include_directories(recompose_juce

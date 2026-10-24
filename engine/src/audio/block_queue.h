@@ -24,6 +24,11 @@ struct Block
     float data[kBlockFrames * kMaxTrackChannels] {}; // interleaved
 };
 
+#if defined(_MSC_VER)
+  #pragma warning(push)
+  #pragma warning(disable : 4324) // padded on purpose: head and tail on separate cache lines
+#endif
+
 class BlockQueue
 {
 public:
@@ -75,4 +80,8 @@ private:
     alignas (64) std::atomic<std::size_t> head_ { 0 };
     alignas (64) std::atomic<std::size_t> tail_ { 0 };
 };
+
+#if defined(_MSC_VER)
+  #pragma warning(pop)
+#endif
 } // namespace rec::audio
