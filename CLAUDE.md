@@ -1,6 +1,6 @@
 # RECompose: notes for coding agents
 
-Read `README.md` for the layout and build commands, `docs/adr/` for decisions, and the current milestone plan in `docs/milestones/`. The binding product spec (requirement IDs such as PB-30, LIVE-10) is in `specs/RECompose-spec.md` (local only, git-ignored) and the design system guide is kept in the product owner's Claude project; `design/` holds the design system's source files.
+Read `README.md` for the layout and build commands, `docs/adr/` for decisions, and the current milestone plan in `docs/milestones/`. The binding product spec (requirement IDs such as PB-30, LIVE-10) is in `specs/RECompose-spec.md` (local only, git-ignored; `specs/README.md` indexes the rest: handoff, design guide, screenshots, artifacts) and the design system guide is kept in the product owner's Claude project; `design/` holds the design system's source files.
 
 ## Rules
 
