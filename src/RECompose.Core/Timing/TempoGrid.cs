@@ -25,6 +25,39 @@ public readonly record struct TempoGrid(double Bpm, int BeatsPerBar, double Firs
     public double BeatToTime(double beat) => FirstDownbeatSec + beat * BeatLength;
 
     public double BarToTime(int bar) => FirstDownbeatSec + (bar - 1) * BarLength;
+
+    /// <summary>The bar line nearest to <paramref name="seconds"/>, never before 0 (sections start on bar lines, DM-20).</summary>
+    public double NearestBarTime(double seconds)
+    {
+        var index = Math.Round((seconds - FirstDownbeatSec) / BarLength);
+        var time = FirstDownbeatSec + index * BarLength;
+        while (time < -1e-9)
+            time += BarLength;
+        return Math.Max(0, time);
+    }
+
+    /// <summary>The beat nearest to <paramref name="seconds"/>, never before 0 (Alt-drag for pickups, SEC-50).</summary>
+    public double NearestBeatTime(double seconds)
+    {
+        var time = FirstDownbeatSec + Math.Round((seconds - FirstDownbeatSec) / BeatLength) * BeatLength;
+        while (time < -1e-9)
+            time += BeatLength;
+        return Math.Max(0, time);
+    }
+
+    /// <summary>The first bar line after <paramref name="seconds"/>, allowing <paramref name="spillBeats"/> of overrun past a bar line.</summary>
+    public double BarLineAfter(double seconds, double spillBeats = 0)
+    {
+        var position = (seconds - FirstDownbeatSec) / BarLength - spillBeats / Math.Max(1, BeatsPerBar);
+        var index = Math.Ceiling(position - 1e-9);
+        var time = FirstDownbeatSec + index * BarLength;
+        while (time < -1e-9)
+            time += BarLength;
+        return time;
+    }
+
+    /// <summary>The same grid with bar 1 at <paramref name="origin"/> (song bars count from the first section, PB-32).</summary>
+    public TempoGrid WithOrigin(double origin) => this with { FirstDownbeatSec = origin };
 }
 
 /// <summary>Number formatting shared by the readouts and the UI.</summary>

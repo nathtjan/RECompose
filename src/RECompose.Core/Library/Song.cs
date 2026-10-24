@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+using RECompose.Core.Sections;
 using RECompose.Core.Timing;
 
 namespace RECompose.Core.Library;
@@ -29,7 +30,16 @@ public sealed record SongSource
     public required string Path { get; init; }
 }
 
-/// <summary>A library song: stems and metadata (DM-10). Sections and arrangements arrive in M2/M3.</summary>
+/// <summary>Where the song's BPM and meter came from (SEC-1, SL-53).</summary>
+public enum TempoSource
+{
+    FileName,
+    Click,
+    Manual,
+    Assumed,
+}
+
+/// <summary>A library song: stems, metadata, written sections and analysis (DM-10). Arrangements arrive in M3.</summary>
 public sealed record Song
 {
     public int SchemaVersion { get; init; } = 2;
@@ -50,6 +60,17 @@ public sealed record Song
 
     /// <summary>True when BPM and meter were assumed rather than read (SEC-1 step 4).</summary>
     public bool TempoAssumed { get; init; }
+
+    public TempoSource TempoSource { get; init; } = TempoSource.FileName;
+
+    /// <summary>No accent contrast in the click: 4 beats per bar was assumed (SEC-1 step 2).</summary>
+    public bool MeterAssumed { get; init; }
+
+    /// <summary>Written sections, always sorted by start (DM-10, DM-20).</summary>
+    public List<Section> Sections { get; init; } = [];
+
+    public ClickAnalysis? ClickAnalysis { get; init; }
+    public GuideAnalysis? GuideAnalysis { get; init; }
 
     public List<Track> Tracks { get; init; } = [];
     public List<MixPreset> MixPresets { get; init; } = [];
