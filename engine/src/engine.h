@@ -53,6 +53,7 @@ private:
     juce::var transport (const juce::String& type, const juce::var& message);
     juce::var setTrack (const juce::var& message);
     juce::var setMaster (const juce::var& message);
+    juce::var setPlan (const juce::var& message);
     juce::var getState();
     juce::var renderOffline (const juce::var& message);
 
@@ -66,6 +67,7 @@ private:
     double engineRate();
     void push (const juce::var& message);
     void reloadAtRate (double rate);
+    std::unique_ptr<audio::Plan> buildPlan (double rate) const;
 
     // juce::AudioIODeviceCallback (audio thread except where noted)
     void audioDeviceIOCallbackWithContext (const float* const* inputs, int numInputs, float* const* outputs,
@@ -89,6 +91,16 @@ private:
     std::unique_ptr<audio::Song> song_;
     std::vector<std::unique_ptr<audio::Song>> retiring_;
     std::vector<audio::TrackSpec> specs_; // current mixer state of the loaded song, for getState/reload
+
+    // The plan as the app sent it, in plan seconds, so a device rate change can derive it again.
+    struct PlanSegmentSpec
+    {
+        double start = 0, end = 0, src = 0, fadeIn = 0, fadeOut = 0;
+        bool silent = false;
+        std::vector<std::string> mute;
+    };
+    std::vector<PlanSegmentSpec> planSpec_;
+    bool hasPlan_ = false;
 
     std::atomic<bool> callbackActive_ { false };
     std::atomic<int> outputLatency_ { 0 };

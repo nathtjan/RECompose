@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+using RECompose.Core.Planning;
 using System.Globalization;
 using System.Text.Json.Nodes;
 
@@ -102,7 +103,8 @@ public sealed record EngineSnapshot(
     bool DeviceOpen,
     IReadOnlyDictionary<string, float> Meters,
     float MasterLeft,
-    float MasterRight)
+    float MasterRight,
+    long PlanFrames = 0)
 {
     /// <summary>The frame being heard: the render position minus the output latency while playing (PB-4).</summary>
     public long HeardFrame => State == TransportState.Playing ? Math.Max(0, Frame - Latency) : Frame;
@@ -130,12 +132,13 @@ public sealed record EngineSnapshot(
             (bool?)o["deviceOpen"] ?? false,
             meters,
             (float?)master?[0] ?? 0,
-            (float?)master?[1] ?? 0);
+            (float?)master?[1] ?? 0,
+            (long?)o["planFrames"] ?? 0);
     }
 }
 
 /// <summary>
-/// Typed access to protocol 2 (docs/engine-protocol.md). Events are raised on a background
+/// Typed access to protocol 3 (docs/engine-protocol.md). Events are raised on a background
 /// thread; the UI marshals them itself.
 /// </summary>
 public sealed class EngineClient : IAsyncDisposable
@@ -222,6 +225,36 @@ public sealed class EngineClient : IAsyncDisposable
         if (solo is { } s) request["solo"] = s;
         if (output is { } o) request["output"] = new JsonObject { ["channel"] = o.Channel, ["width"] = o.Width };
         return Session.Connection.RequestAsync("setTrack", request, ct);
+    }
+
+    /// <summary>
+    /// Sends the arrangement as timed segments (PB-40). <paramref name="positionSec"/> is where the playhead
+    /// resumes, in plan seconds; null keeps the engine's current frame. Returns the plan length in frames.
+    /// </summary>
+    public async Task<long> SetPlanAsync(IEnumerable<PlanSegment> segments, double? positionSec = null, CancellationToken ct = default)
+    {
+        var list = new JsonArray();
+        foreach (var s in segments)
+        {
+            var mute = new JsonArray();
+            foreach (var id in s.Mute)
+                mute.Add(id);
+            list.Add(new JsonObject
+            {
+                ["start"] = s.Start,
+                ["end"] = s.End,
+                ["src"] = s.Src,
+                ["fadeIn"] = s.FadeIn,
+                ["fadeOut"] = s.FadeOut,
+                ["mute"] = mute,
+            });
+        }
+
+        var request = new JsonObject { ["segments"] = list };
+        if (positionSec is { } position)
+            request["position"] = position;
+        var reply = await Session.Connection.RequestAsync("setPlan", request, ct).ConfigureAwait(false);
+        return (long?)reply["frames"] ?? 0;
     }
 
     public Task SetMasterAsync(double gainDb, CancellationToken ct = default) =>

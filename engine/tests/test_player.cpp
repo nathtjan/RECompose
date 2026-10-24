@@ -101,6 +101,18 @@ struct Rig
         disk.wake();
     }
 
+    void setPlan (std::unique_ptr<Plan> plan, std::int64_t frame = 0)
+    {
+        Command c;
+        c.type = Command::Type::setPlan;
+        c.plan = song->publishPlan (std::move (plan));
+        c.frame = frame;
+        c.generation = song->requestFrame (frame).generation;
+        player.post (c);
+        disk.wake();
+        player.processCommandsOnly();
+    }
+
     // Renders frames offline; returns one vector per output channel.
     std::vector<std::vector<float>> render (int frames)
     {
@@ -126,6 +138,28 @@ TrackSpec spec (const juce::File& file, const char* id, int channel = 0, int wid
     s.outputChannel = channel;
     s.outputWidth = width;
     return s;
+}
+
+PlanSegment seg (std::int64_t start, std::int64_t end, std::int64_t src, std::int64_t fadeIn = 0,
+                 std::int64_t fadeOut = 0, std::vector<std::uint8_t> muted = {})
+{
+    PlanSegment s;
+    s.start = start;
+    s.end = end;
+    s.src = src;
+    s.fadeIn = fadeIn;
+    s.fadeOut = fadeOut;
+    s.muted = std::move (muted);
+    return s;
+}
+
+std::unique_ptr<Plan> makePlan (std::vector<PlanSegment> segments)
+{
+    auto plan = std::make_unique<Plan>();
+    for (const auto& s : segments)
+        plan->lengthFrames = std::max (plan->lengthFrames, s.end);
+    plan->segments = std::move (segments);
+    return plan;
 }
 
 bool near (float a, float b, float tol = 1.0e-5f) { return std::abs (a - b) <= tol; }
@@ -340,4 +374,154 @@ TEST ("player: a missing file is silent and the rest plays (REL-50)")
     rig.send (Command::Type::play);
     const auto out = rig.render (4800);
     CHECK (near (out[0][4000], 0.25f));
+}
+
+// ---- Plans (PB-40, PB-55, AT-3, AT-12) ------------------------------------------------
+
+TEST ("plan: sections play in the order of the plan, repeats included (PB-40)")
+{
+    const auto file = writeWav ("plan-order.wav", kRate, 1, 60000, [] (int i, int) { return ramp (i); });
+    Rig rig ({ spec (file, "ramp", 0, 1) }, 1);
+    rig.setPlan (makePlan ({ seg (0, 2000, 5000), seg (2000, 4000, 5000), seg (4000, 6000, 20000) }));
+
+    rig.send (Command::Type::play);
+    const auto out = rig.render (6500);
+
+    bool first = true, second = true, third = true;
+    for (int i = 600; i < 1990; ++i)
+        first = first && decodeRamp (out[0][static_cast<std::size_t> (i)]) == 5000 + i;
+    for (int i = 2500; i < 3990; ++i) // past the 10 ms blend at the seam
+        second = second && decodeRamp (out[0][static_cast<std::size_t> (i)]) == 5000 + (i - 2000);
+    for (int i = 4500; i < 5990; ++i)
+        third = third && decodeRamp (out[0][static_cast<std::size_t> (i)]) == 20000 + (i - 4000);
+    CHECK (first);
+    CHECK (second);
+    CHECK (third);
+
+    // The plan ends at its last segment: stopped, back at the start.
+    CHECK (rig.player.state() == TransportState::stopped);
+    CHECK (rig.player.position() == 0);
+    bool silent = true;
+    for (int i = 6000; i < 6500; ++i)
+        silent = silent && std::abs (out[0][static_cast<std::size_t> (i)]) < 1.0e-9f;
+    CHECK (silent);
+}
+
+TEST ("plan: contiguous segments have no seam")
+{
+    const auto file = writeWav ("plan-contiguous.wav", kRate, 1, 60000, [] (int i, int) { return ramp (i); });
+    Rig rig ({ spec (file, "ramp", 0, 1) }, 1);
+    rig.setPlan (makePlan ({ seg (0, 3000, 1000), seg (3000, 6000, 4000) }));
+
+    rig.send (Command::Type::play);
+    const auto out = rig.render (6000);
+
+    bool exact = true;
+    for (int i = 600; i < 6000; ++i)
+        exact = exact && decodeRamp (out[0][static_cast<std::size_t> (i)]) == 1000 + i;
+    CHECK (exact);
+}
+
+TEST ("plan: a splice lands on the boundary and does not pop (PB-55, AT-3)")
+{
+    // A tone, so a hard cut would be a step; the seam jumps by a non-multiple of the period.
+    const auto file = writeWav ("plan-tone.wav", kRate, 1, 80000, [] (int i, int)
+                                { return 0.5f * std::sin (6.2831853f * 440.0f * static_cast<float> (i) / 48000.0f); });
+    Rig rig ({ spec (file, "tone", 0, 1) }, 1);
+    rig.setPlan (makePlan ({ seg (0, 8000, 1000), seg (8000, 16000, 30077) }));
+
+    rig.send (Command::Type::play);
+    const auto out = rig.render (16000);
+
+    // Incoming material is on the boundary to within a sample once the 10 ms blend is over.
+    float worst = 0.0f;
+    for (int i = 8500; i < 12000; ++i)
+    {
+        const float expected = 0.5f * std::sin (6.2831853f * 440.0f * static_cast<float> (30077 + (i - 8000)) / 48000.0f);
+        worst = std::max (worst, std::abs (out[0][static_cast<std::size_t> (i)] - expected));
+    }
+    CHECK (worst < 1.0e-4f);
+
+    // No step at the seam: the largest sample-to-sample change near it stays within what two tones
+    // blending produce, far below the full-scale jump a hard cut makes.
+    float seam = 0.0f, tone = 0.0f;
+    for (int i = 7900; i < 8300; ++i)
+        seam = std::max (seam, std::abs (out[0][static_cast<std::size_t> (i)] - out[0][static_cast<std::size_t> (i - 1)]));
+    for (int i = 3000; i < 3400; ++i)
+        tone = std::max (tone, std::abs (out[0][static_cast<std::size_t> (i)] - out[0][static_cast<std::size_t> (i - 1)]));
+    CHECK (seam < tone * 2.5f + 1.0e-3f);
+}
+
+TEST ("plan: a mute ramps over 10 ms in the segment it applies to (AT-12)")
+{
+    const auto a = writeWav ("plan-a.wav", kRate, 1, 60000, [] (int, int) { return 0.5f; });
+    const auto b = writeWav ("plan-b.wav", kRate, 1, 60000, [] (int, int) { return 0.25f; });
+    Rig rig ({ spec (a, "a", 0, 1), spec (b, "b", 0, 1) }, 1);
+    rig.setPlan (makePlan ({ seg (0, 4000, 0), seg (4000, 8000, 4000, 0, 0, { 1, 0 }), seg (8000, 12000, 8000) }));
+
+    rig.send (Command::Type::play);
+    const auto out = rig.render (12000);
+
+    CHECK (near (out[0][3000], 0.75f, 1.0e-3f));
+    CHECK (near (out[0][4000 + 240], 0.5f, 0.02f));  // half way down the ramp
+    CHECK (near (out[0][4000 + 600], 0.25f, 1.0e-3f));
+    CHECK (near (out[0][7000], 0.25f, 1.0e-3f));
+    CHECK (near (out[0][8000 + 600], 0.75f, 1.0e-3f)); // unmuted again
+
+    bool monotonic = true;
+    for (int i = 4001; i < 4480; ++i)
+        monotonic = monotonic && out[0][static_cast<std::size_t> (i)] <= out[0][static_cast<std::size_t> (i - 1)] + 1.0e-6f;
+    CHECK (monotonic);
+}
+
+TEST ("plan: fades are dB-linear from −60 dB and skip solo-safe tracks (PB-40)")
+{
+    const auto a = writeWav ("plan-fade-a.wav", kRate, 1, 60000, [] (int, int) { return 1.0f; });
+    const auto b = writeWav ("plan-fade-b.wav", kRate, 1, 60000, [] (int, int) { return 1.0f; });
+    auto safe = spec (b, "b", 1, 1);
+    safe.soloSafe = true;
+    Rig rig ({ spec (a, "a", 0, 1), safe }, 2);
+    rig.setPlan (makePlan ({ seg (0, 14400, 0, 4800, 4800) }));
+
+    rig.send (Command::Type::play);
+    const auto out = rig.render (14400);
+
+    CHECK (near (out[0][2400], std::pow (10.0f, -1.5f), 2.0e-3f)); // half way up, −30 dB
+    CHECK (near (out[0][7200], 1.0f, 1.0e-3f));
+    CHECK (near (out[0][14400 - 2400], std::pow (10.0f, -1.5f), 2.0e-3f));
+    CHECK (out[0][14390] < 0.002f);
+    CHECK (near (out[1][7200], 1.0f, 1.0e-3f));
+    CHECK (near (out[1][14400 - 2400], 1.0f, 1.0e-3f)); // the solo-safe track plays through
+}
+
+TEST ("plan: a silent segment plays nothing and the next one carries on (PB-40)")
+{
+    const auto file = writeWav ("plan-silent.wav", kRate, 1, 60000, [] (int, int) { return 0.5f; });
+    Rig rig ({ spec (file, "a", 0, 1) }, 1);
+    rig.setPlan (makePlan ({ seg (0, 3000, 0), seg (3000, 6000, -1), seg (6000, 9000, 0) }));
+
+    rig.send (Command::Type::play);
+    const auto out = rig.render (9000);
+
+    CHECK (near (out[0][2000], 0.5f, 1.0e-3f));
+    bool silent = true;
+    for (int i = 3600; i < 6000; ++i) // after the 10 ms ring-out of the previous segment
+        silent = silent && std::abs (out[0][static_cast<std::size_t> (i)]) < 1.0e-6f;
+    CHECK (silent);
+    CHECK (near (out[0][8000], 0.5f, 1.0e-3f));
+}
+
+TEST ("plan: a new plan keeps the playhead where it was told (PB-40)")
+{
+    const auto file = writeWav ("plan-resume.wav", kRate, 1, 100000, [] (int i, int) { return ramp (i); });
+    Rig rig ({ spec (file, "ramp", 0, 1) }, 1);
+    rig.setPlan (makePlan ({ seg (0, 4000, 10000), seg (4000, 8000, 10000) }), 5000);
+
+    rig.send (Command::Type::play);
+    const auto out = rig.render (2000);
+
+    bool exact = true;
+    for (int i = 800; i < 2000; ++i) // plan frame 5000 + i is source 10000 + 1000 + i
+        exact = exact && decodeRamp (out[0][static_cast<std::size_t> (i)]) == 11000 + i;
+    CHECK (exact);
 }

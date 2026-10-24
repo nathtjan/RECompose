@@ -44,7 +44,9 @@ Frames are at the **engine rate**: the open device's sample rate (48 000 when no
 
 `hello` and `shutdown` keep this shape in every future version.
 
-### Protocol 2 (milestone 1)
+### Protocol 2 and 3 (milestones 1 and 3)
+
+Protocol 3 adds `setPlan` and the `planFrames` snapshot field; everything else is as in 2.
 
 | Request | Fields | Reply |
 |---|---|---|
@@ -56,8 +58,11 @@ Frames are at the **engine rate**: the open device's sample rate (48 000 when no
 | `seek` | `frame` | `ok`. While playing: a 10 ms fade-out, then playback resumes exactly at `frame` once every track has data there (PB-26, PB-55). |
 | `setTrack` | `trackId`, any of `gainDb`, `mute`, `solo`, `output` | `ok`. Changes ramp over one 256-frame block. |
 | `setMaster` | `gainDb` | `ok` |
+| `setPlan` (3) | `segments: [{start, end, src, fadeIn, fadeOut, mute: [trackIds]}]`, `position?` | `plan {frames}`. See below. |
 | `getState` | | `state {song, device, snapshot}` |
 | `renderOffline` | `frames`, `channels`, `path?` | `rendered {frames, channels, peak: [..], rms: [..], snapshot}`. Tests only: pulls the audio through the graph on the message thread instead of the device, waiting for the disk, and optionally writes a 32-bit float WAV. |
+
+**Plans (`setPlan`, PB-40).** The app turns the arrangement into contiguous timed segments in *plan seconds* (`RECompose.Core`, `PlanBuilder`); the engine only executes them. Segment `i` plays plan time `[start, end)`; `src` is the source second it reads from, or `null` for silence (click and pad bars, M4). A segment's `src` that continues where the previous one stopped plays on with no seam and no resampler reset. Where the source jumps, the incoming audio starts exactly on the boundary with a 2 ms fade-in while the outgoing audio keeps playing for 10 ms with a fade-out (PB-55), through a second resampler per track so the seam is as clean as the rest. `fadeIn` and `fadeOut` (seconds, inside the segment) are dB-linear from −60 dB to 0 and skip solo-safe tracks. `mute` lists track ids silenced in this segment, ramped over 10 ms. `position` is the plan second the playhead resumes at; absent keeps the current frame. Segments must be contiguous and start at 0, or the engine replies `badMessage`. The engine converts to frames once (rounding each start and source once) and keeps the seconds, so a device rate change derives the plan again. While playing, a new plan is applied like a seek (10 ms fade-out, then play on at `position`); a gap-free swap is milestone 5. A loaded song plays as written (one segment, source second 0) until a plan arrives; `loadSong` and `unloadSong` clear the plan. The song ends at the last segment: the transport stops and returns to the start. Every plan sent is kept until the song is unloaded (a few kilobytes each), so the audio thread never frees one.
 
 `device` = `{type, name, sampleRate, bufferSize, outputChannels: [names], activeOutputs, sampleRates, bufferSizes, outputLatency}`.
 
@@ -65,7 +70,7 @@ Frames are at the **engine rate**: the open device's sample rate (48 000 when no
 
 | Event | Fields |
 |---|---|
-| `snapshot` | `state` (`stopped`, `playing`, `paused`), `frame` (next frame to render), `t` (engine clock, ns), `latency` (output latency, frames), `sampleRate`, `songId`, `lengthFrames`, `buffered`, `waiting`, `starved`, `xruns`, `cpu`, `deviceOpen`, `meters: [{id, peak}]`, `master: [left, right]`. Sent at 60 Hz while playing, otherwise on change and once a second. The heard frame is `frame − latency` while playing (PB-4). |
+| `snapshot` | `state` (`stopped`, `playing`, `paused`), `frame` (next frame to render), `t` (engine clock, ns), `latency` (output latency, frames), `sampleRate`, `songId`, `lengthFrames` (the files), `planFrames` (the plan; the transport ends here), `buffered`, `waiting`, `starved`, `xruns`, `cpu`, `deviceOpen`, `meters: [{id, peak}]`, `master: [left, right]`. Sent at 60 Hz while playing, otherwise on change and once a second. The heard frame is `frame − latency` while playing (PB-4). |
 | `deviceChanged` | `device` (or null when it went away) |
 | `deviceError` | `message` |
 | `fileMissing` | `trackId`, `problem` (REL-50) |

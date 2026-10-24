@@ -14,6 +14,21 @@ namespace
     constexpr int kChunk = 256;
     constexpr float kMinusThreeDb = 0.70710678f;
     constexpr int kOfflineWaitLimitMs = 5000;
+    constexpr float kPlanMuteRampMs = 10.0f; // AT-12
+
+    // dB-linear fades from −60 dB to 0 (PB-40): t in [0, 1] is the progress through the fade.
+    float fadeGain (float t) noexcept { return std::pow (10.0f, -3.0f * (1.0f - t)); }
+
+    // The fade factor of a segment at a plan frame (1 outside the fades).
+    float segmentFade (const PlanSegment& s, std::int64_t frame) noexcept
+    {
+        float g = 1.0f;
+        if (s.fadeIn > 0 && frame < s.start + s.fadeIn)
+            g *= fadeGain (static_cast<float> (frame - s.start) / static_cast<float> (s.fadeIn));
+        if (s.fadeOut > 0 && frame > s.end - s.fadeOut)
+            g *= fadeGain (static_cast<float> (s.end - frame) / static_cast<float> (s.fadeOut));
+        return g;
+    }
 
     std::int64_t nowNs() noexcept
     {
@@ -91,6 +106,9 @@ void Player::handle (const Command& command) noexcept
             }
 
             song_ = command.song;
+            plan_ = song_ != nullptr ? song_->plan.load (std::memory_order_acquire) : nullptr;
+            pendingPlan_ = nullptr;
+            segmentIndex_ = 0;
             transport_ = TransportState::stopped;
             fade_ = 0.0f;
             fadeTarget_ = 0.0f;
@@ -153,31 +171,66 @@ void Player::handle (const Command& command) noexcept
             rewindToStart();
             return;
 
+        case Command::Type::setPlan:
+            if (song_ == nullptr || command.plan == nullptr)
+                return;
+            pendingPlan_ = command.plan;
+            seekTo (std::clamp<std::int64_t> (command.frame, 0, command.plan->lengthFrames), command.generation);
+            return;
+
         case Command::Type::seek:
-        {
             if (song_ == nullptr)
                 return;
-
-            const auto frame = std::clamp<std::int64_t> (command.frame, 0, song_->lengthFrames);
-
-            if (transport_ == TransportState::playing && ! waiting_)
-            {
-                seekPending_ = true;
-                seekGeneration_ = command.generation;
-                seekFrame_ = frame;
-                if (after_ == AfterFade::none || after_ == AfterFade::applySeek)
-                    startFade (0.0f, seekFadeMs, AfterFade::applySeek);
-                return;
-            }
-
-            const auto current = song_->currentRequest();
-            readGeneration_ = current.generation == command.generation ? command.generation
-                                                                       : song_->requestFrame (frame).generation;
-            position_frames_ = frame;
-            dropStaleBlocks();
+            seekTo (std::clamp<std::int64_t> (command.frame, 0, planLength()), command.generation);
             return;
-        }
     }
+}
+
+void Player::seekTo (std::int64_t frame, std::uint32_t generation) noexcept
+{
+    if (transport_ == TransportState::playing && ! waiting_)
+    {
+        seekPending_ = true;
+        seekGeneration_ = generation;
+        seekFrame_ = frame;
+        if (after_ == AfterFade::none || after_ == AfterFade::applySeek)
+            startFade (0.0f, seekFadeMs, AfterFade::applySeek);
+        return;
+    }
+
+    adoptPendingPlan();
+    const auto current = song_->currentRequest();
+    readGeneration_ = current.generation == generation ? generation : song_->requestFrame (frame).generation;
+    position_frames_ = frame;
+    dropStaleBlocks();
+}
+
+void Player::adoptPendingPlan() noexcept
+{
+    if (pendingPlan_ != nullptr)
+    {
+        plan_ = pendingPlan_;
+        pendingPlan_ = nullptr;
+        segmentIndex_ = 0;
+    }
+}
+
+std::int64_t Player::planLength() const noexcept
+{
+    return plan_ != nullptr ? plan_->lengthFrames : (song_ != nullptr ? song_->lengthFrames : 0);
+}
+
+// The segment that contains the playhead, or nullptr past the end of the plan.
+const PlanSegment* Player::locateSegment() noexcept
+{
+    if (plan_ == nullptr)
+        return nullptr;
+    const auto& segments = plan_->segments;
+    if (segmentIndex_ >= segments.size() || position_frames_ < segments[segmentIndex_].start)
+        segmentIndex_ = 0;
+    while (segmentIndex_ < segments.size() && position_frames_ >= segments[segmentIndex_].end)
+        ++segmentIndex_;
+    return segmentIndex_ < segments.size() && position_frames_ >= segments[segmentIndex_].start ? &segments[segmentIndex_] : nullptr;
 }
 
 void Player::startFade (float target, float milliseconds, AfterFade after) noexcept
@@ -192,6 +245,7 @@ void Player::rewindToStart() noexcept
 {
     if (song_ == nullptr)
         return;
+    adoptPendingPlan();
     readGeneration_ = song_->requestFrame (0).generation;
     position_frames_ = 0;
     dropStaleBlocks();
@@ -204,6 +258,7 @@ void Player::finishFade() noexcept
 
     auto reposition = [this]
     {
+        adoptPendingPlan();
         const auto current = song_->currentRequest();
         readGeneration_ = current.generation == seekGeneration_ ? seekGeneration_
                                                                  : song_->requestFrame (seekFrame_).generation;
@@ -308,7 +363,9 @@ void Player::process (float* const* outputs, int numOutputs, int numSamples, boo
             startFade (1.0f, playFadeMs, AfterFade::none);
         }
 
-        const int frames = std::min (kChunk, numSamples - done);
+        int frames = std::min (kChunk, numSamples - done);
+        if (const auto* segment = locateSegment())
+            frames = static_cast<int> (std::min<std::int64_t> (frames, segment->end - position_frames_)); // mutes and fades change at the seams
         renderChunk (outputs, numOutputs, done, frames, offline);
         done += frames;
     }
@@ -386,13 +443,27 @@ void Player::renderChunk (float* const* outputs, int numOutputs, int offset, int
         if (! track->missing && ! track->spec.soloSafe && track->solo.load (std::memory_order_relaxed))
             anySolo = true;
 
-    for (auto& trackPtr : song_->tracks)
+    const auto* segment = locateSegment();
+    const float planRamp = 1.0f / std::max (1.0f, kPlanMuteRampMs * static_cast<float> (sampleRate_) / 1000.0f);
+
+    for (std::size_t trackIndex = 0; trackIndex < song_->tracks.size(); ++trackIndex)
     {
-        auto& track = *trackPtr;
+        auto& track = *song_->tracks[trackIndex];
         if (track.missing || track.channels == 0)
             continue;
 
         pullFrames (track, position_frames_, frames, offline);
+
+        // The arrangement's mutes and fades for this segment (PB-40). Click and guide keep playing
+        // through fades; a mute listed for them is honoured.
+        const float planTarget = segment != nullptr && trackIndex < segment->muted.size() && segment->muted[trackIndex] != 0 ? 0.0f : 1.0f;
+        float fadeStart = 1.0f, fadeEnd = 1.0f;
+        if (segment != nullptr && ! track.spec.soloSafe && (segment->fadeIn > 0 || segment->fadeOut > 0))
+        {
+            fadeStart = segmentFade (*segment, position_frames_);
+            fadeEnd = segmentFade (*segment, position_frames_ + frames);
+        }
+        float planGain = track.planGain;
 
         float target = track.gain.load (std::memory_order_relaxed);
         if (track.mute.load (std::memory_order_relaxed))
@@ -414,7 +485,9 @@ void Player::renderChunk (float* const* outputs, int numOutputs, int offset, int
         float peak = 0.0f;
         for (int i = 0; i < frames; ++i)
         {
-            const float g = start + step * static_cast<float> (i + 1);
+            planGain += std::clamp (planTarget - planGain, -planRamp, planRamp);
+            const float fade = fadeStart + (fadeEnd - fadeStart) * static_cast<float> (i + 1) / static_cast<float> (frames);
+            const float g = (start + step * static_cast<float> (i + 1)) * planGain * fade;
             const float l = left[i] * g;
             const float r = right[i] * g;
             peak = std::max (peak, std::max (std::abs (l), std::abs (r)));
@@ -435,6 +508,7 @@ void Player::renderChunk (float* const* outputs, int numOutputs, int offset, int
         }
 
         track.appliedGain = target;
+        track.planGain = planGain;
         storeMax (track.peak, peak);
     }
 
@@ -470,7 +544,7 @@ void Player::renderChunk (float* const* outputs, int numOutputs, int offset, int
         finishFade();
 
     // End of the song: return to the start, stopped (PB-25 without a transition).
-    if (transport_ == TransportState::playing && ! waiting_ && position_frames_ >= song_->lengthFrames)
+    if (transport_ == TransportState::playing && ! waiting_ && position_frames_ >= planLength())
     {
         transport_ = TransportState::stopped;
         after_ = AfterFade::none;

@@ -21,6 +21,19 @@ float decibelsToGain (float db) noexcept
     return db <= -100.0f ? 0.0f : std::pow (10.0f, db / 20.0f);
 }
 
+SourceStream::SourceStream() = default;
+SourceStream::~SourceStream() = default;
+
+void SourceStream::clear()
+{
+    for (auto& r : resamplers)
+        if (r != nullptr)
+            r->clear();
+    for (auto& p : pending)
+        p.clear();
+    valid = false;
+}
+
 Track::Track (TrackSpec s, std::size_t queueCapacity) : spec (std::move (s)), queue (queueCapacity) {}
 Track::~Track() = default;
 
@@ -35,6 +48,26 @@ StreamRequest Song::requestFrame (std::int64_t frame) noexcept
         next.frame = frame < 0 ? 0 : frame;
     } while (! request.compare_exchange_weak (current, StreamRequest::pack (next)));
     return next;
+}
+
+const Plan* Song::publishPlan (std::unique_ptr<Plan> next)
+{
+    const auto* raw = next.get();
+    plans.push_back (std::move (next));
+    plan.store (raw, std::memory_order_release);
+    return raw;
+}
+
+std::unique_ptr<Plan> identityPlan (std::int64_t lengthFrames)
+{
+    auto plan = std::make_unique<Plan>();
+    plan->lengthFrames = lengthFrames;
+    PlanSegment all;
+    all.start = 0;
+    all.end = lengthFrames;
+    all.src = 0;
+    plan->segments.push_back (all);
+    return plan;
 }
 
 bool Song::isBuffered() const noexcept
@@ -81,11 +114,15 @@ std::unique_ptr<Song> loadSong (std::string id, std::vector<TrackSpec> specs, do
                 std::ceil (static_cast<double> (reader->lengthInSamples) * engineRate / reader->sampleRate));
             song->lengthFrames = std::max (song->lengthFrames, songFrames);
 
+            track->resampling = std::abs (reader->sampleRate - engineRate) > 0.5;
             for (int c = 0; c < track->channels; ++c)
             {
                 track->readBuffer[c].resize (kBlockFrames);
-                if (std::abs (reader->sampleRate - engineRate) > 0.5)
-                    track->resamplers[c] = std::make_unique<r8b::CDSPResampler24> (reader->sampleRate, engineRate, kBlockFrames);
+                track->mainBuffer[c].resize (kBlockFrames);
+                track->tailBuffer[c].resize (kBlockFrames);
+                if (track->resampling)
+                    for (auto& stream : track->streams)
+                        stream.resamplers[c] = std::make_unique<r8b::CDSPResampler24> (reader->sampleRate, engineRate, kBlockFrames);
             }
             track->resampleInput.resize (kBlockFrames);
         }
@@ -98,6 +135,7 @@ std::unique_ptr<Song> loadSong (std::string id, std::vector<TrackSpec> specs, do
         song->tracks.push_back (std::move (track));
     }
 
+    song->publishPlan (identityPlan (song->lengthFrames));
     song->request.store (StreamRequest::pack ({ 1, std::clamp<std::int64_t> (startFrame, 0, song->lengthFrames) }));
     return song;
 }

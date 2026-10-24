@@ -34,13 +34,15 @@ struct Command
         pause,
         stop,
         seek,
-        setSong
+        setSong,
+        setPlan // like a seek to `frame`, and the plan takes effect there (PB-40)
     };
 
     Type type = Type::play;
     std::int64_t frame = 0;
     std::uint32_t generation = 0;
     Song* song = nullptr;
+    const Plan* plan = nullptr; // setPlan: owned by the song
 };
 
 class Player
@@ -94,6 +96,10 @@ private:
     void dropStaleBlocks() noexcept;
     bool allTracksReady() noexcept;
     void renderChunk (float* const* outputs, int numOutputs, int offset, int frames, bool offline) noexcept;
+    void adoptPendingPlan() noexcept;
+    std::int64_t planLength() const noexcept;
+    const PlanSegment* locateSegment() noexcept;
+    void seekTo (std::int64_t frame, std::uint32_t generation) noexcept;
     int pullFrames (Track& track, std::int64_t from, int frames, bool offline) noexcept;
     void publish() noexcept;
 
@@ -119,6 +125,9 @@ private:
     std::uint32_t seekGeneration_ = 0;
     std::int64_t seekFrame_ = 0;
     double sampleRate_ = 48000.0;
+    const Plan* plan_ = nullptr;        // the plan in play
+    const Plan* pendingPlan_ = nullptr; // takes effect when the pending seek lands
+    std::size_t segmentIndex_ = 0;
 
     std::vector<float> scratch_[kMaxTrackChannels];
     std::vector<float> mixScratch_;

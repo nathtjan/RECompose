@@ -3,6 +3,7 @@
 
 #include "message_handler.h"
 
+#include <algorithm>
 #include <cmath>
 
 namespace rec
@@ -95,6 +96,7 @@ juce::var Engine::handle (const juce::String& type, const juce::var& message)
         return transport (type, message);
     if (type == "setTrack")     return setTrack (message);
     if (type == "setMaster")    return setMaster (message);
+    if (type == "setPlan")      return setPlan (message);
     if (type == "getState")     return getState();
     if (type == "renderOffline") return renderOffline (message);
 
@@ -297,6 +299,8 @@ juce::var Engine::loadSong (const juce::var& message)
         song->masterGain.store (audio::decibelsToGain (static_cast<float> (static_cast<double> (master))));
 
     specs_ = std::move (specs);
+    planSpec_.clear(); // a new song plays as written until the app sends its plan
+    hasPlan_ = false;
     replaceSong (std::move (song));
 
     for (std::size_t i = 0; i < song_->tracks.size(); ++i)
@@ -311,6 +315,8 @@ juce::var Engine::loadSong (const juce::var& message)
 juce::var Engine::unloadSong()
 {
     specs_.clear();
+    planSpec_.clear();
+    hasPlan_ = false;
     replaceSong (nullptr);
     return Obj().set ("type", "ok");
 }
@@ -326,6 +332,13 @@ void Engine::reloadAtRate (double rate)
 
     auto song = audio::loadSong (song_->id, specs_, rate, position, formats_);
     song->masterGain.store (master);
+    if (hasPlan_)
+    {
+        auto plan = buildPlan (rate);
+        const auto length = plan->lengthFrames;
+        song->publishPlan (std::move (plan));
+        song->request.store (audio::StreamRequest::pack ({ 1, std::clamp<std::int64_t> (position, 0, length) }));
+    }
     replaceSong (std::move (song));
 
     auto event = songInfo();
@@ -348,7 +361,7 @@ juce::var Engine::transport (const juce::String& type, const juce::var& message)
     else
     {
         command.type = audio::Command::Type::seek;
-        command.frame = std::clamp<std::int64_t> (static_cast<std::int64_t> (number (message, "frame", 0.0)), 0, song_->lengthFrames);
+        command.frame = std::clamp<std::int64_t> (static_cast<std::int64_t> (number (message, "frame", 0.0)), 0, song_->planFrames());
         command.generation = song_->requestFrame (command.frame).generation; // start buffering now (PB-56)
     }
 
@@ -397,6 +410,92 @@ juce::var Engine::setMaster (const juce::var& message)
         return makeError ({}, "noSong", "No song is loaded.");
     song_->masterGain.store (audio::decibelsToGain (static_cast<float> (number (message, "gainDb", 0.0))));
     return Obj().set ("type", "ok");
+}
+
+std::unique_ptr<audio::Plan> Engine::buildPlan (double rate) const
+{
+    auto plan = std::make_unique<audio::Plan>();
+    const auto frames = [rate] (double seconds) { return static_cast<std::int64_t> (std::llround (seconds * rate)); };
+
+    for (const auto& spec : planSpec_)
+    {
+        audio::PlanSegment segment;
+        segment.start = frames (spec.start);
+        segment.end = frames (spec.end);
+        if (segment.end <= segment.start)
+            continue;
+
+        const auto length = segment.end - segment.start;
+        segment.src = spec.silent ? -1 : std::max<std::int64_t> (0, frames (spec.src));
+        segment.fadeIn = std::min (length, frames (spec.fadeIn));
+        segment.fadeOut = std::min (length, frames (spec.fadeOut));
+        segment.muted.assign (specs_.size(), 0);
+        for (const auto& id : spec.mute)
+            for (std::size_t i = 0; i < specs_.size(); ++i)
+                if (specs_[i].id == id)
+                    segment.muted[i] = 1;
+
+        plan->lengthFrames = std::max (plan->lengthFrames, segment.end);
+        plan->segments.push_back (std::move (segment));
+    }
+
+    return plan;
+}
+
+// PB-40: the arrangement as contiguous timed segments. The app builds the plan (RECompose.Core);
+// the engine only executes it. The playhead stays where `position` says (plan seconds), or where it was.
+juce::var Engine::setPlan (const juce::var& message)
+{
+    if (song_ == nullptr)
+        return makeError ({}, "noSong", "No song is loaded.");
+
+    const auto* segments = message.getProperty ("segments", {}).getArray();
+    if (segments == nullptr)
+        return makeError ({}, "badMessage", "setPlan needs segments.");
+
+    std::vector<PlanSegmentSpec> parsed;
+    double previousEnd = 0.0;
+    for (const auto& s : *segments)
+    {
+        PlanSegmentSpec spec;
+        spec.start = number (s, "start", -1.0);
+        spec.end = number (s, "end", -1.0);
+        if (spec.start < 0.0 || spec.end < spec.start)
+            return makeError ({}, "badMessage", "A plan segment needs start and end, in order.");
+        if (! parsed.empty() && std::abs (spec.start - previousEnd) > 1e-6)
+            return makeError ({}, "badMessage", "Plan segments must be contiguous.");
+        previousEnd = spec.end;
+
+        const auto src = s.getProperty ("src", {});
+        spec.silent = src.isVoid() || ! (src.isInt() || src.isInt64() || src.isDouble());
+        spec.src = spec.silent ? 0.0 : static_cast<double> (src);
+        spec.fadeIn = std::max (0.0, number (s, "fadeIn", 0.0));
+        spec.fadeOut = std::max (0.0, number (s, "fadeOut", 0.0));
+        if (const auto* mute = s.getProperty ("mute", {}).getArray())
+            for (const auto& id : *mute)
+                if (id.isString())
+                    spec.mute.push_back (id.toString().toStdString());
+        parsed.push_back (std::move (spec));
+    }
+
+    planSpec_ = std::move (parsed);
+    hasPlan_ = true;
+
+    auto plan = buildPlan (song_->sampleRate);
+    const auto length = plan->lengthFrames;
+    const auto position = message.getProperty ("position", {});
+    const auto wanted = position.isVoid() ? player_.position()
+                                          : static_cast<std::int64_t> (std::llround (number (message, "position", 0.0) * song_->sampleRate));
+    const auto frame = std::clamp<std::int64_t> (wanted, 0, length);
+
+    audio::Command command;
+    command.type = audio::Command::Type::setPlan;
+    command.plan = song_->publishPlan (std::move (plan)); // before the request, so the disk thread sees both
+    command.frame = frame;
+    command.generation = song_->requestFrame (frame).generation;
+    post (command);
+
+    return Obj().set ("type", "plan").set ("frames", static_cast<juce::int64> (length));
 }
 
 juce::var Engine::getState()
@@ -475,7 +574,7 @@ juce::var Engine::snapshot()
     juce::Array<juce::var> meters;
     float master[2] { 0.0f, 0.0f };
     juce::var songId;
-    juce::int64 length = 0;
+    juce::int64 length = 0, planLength = 0;
     bool buffered = false;
     double rate = engineRate();
 
@@ -483,6 +582,7 @@ juce::var Engine::snapshot()
     {
         songId = juce::String (song_->id);
         length = song_->lengthFrames;
+        planLength = song_->planFrames();
         buffered = song_->isBuffered();
         rate = song_->sampleRate;
         for (std::size_t i = 0; i < song_->tracks.size(); ++i)
@@ -506,6 +606,7 @@ juce::var Engine::snapshot()
         .set ("sampleRate", rate)
         .set ("songId", songId)
         .set ("lengthFrames", length)
+        .set ("planFrames", planLength)
         .set ("buffered", buffered)
         .set ("waiting", player_.waitingForData())
         .set ("starved", static_cast<juce::int64> (player_.starvedBlocks()))

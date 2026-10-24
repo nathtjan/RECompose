@@ -3,7 +3,7 @@ using RECompose.Core.Audio;
 
 namespace RECompose.Engine.Tests;
 
-// Protocol 2 against the real engine process, rendering offline (no audio device needed).
+// Protocol 3 against the real engine process, rendering offline (no audio device needed).
 public class EngineClientTests
 {
     private static string Executable()
@@ -116,6 +116,55 @@ public class EngineClientTests
         Assert.Equal(0.5f, peaks.Max[10], 3);
 
         Directory.Delete(folder, true);
+    }
+
+    [Fact]
+    public async Task Plays_a_plan_with_a_repeat_a_mute_and_ends_at_the_end_of_the_plan()
+    {
+        var folder = Folder();
+        var a = TestWav.Write(Path.Combine(folder, "A.wav"), 48000, 1, 48000 * 4, (_, _) => 0.5);
+        var b = TestWav.Write(Path.Combine(folder, "B.wav"), 48000, 1, 48000 * 4, (_, _) => 0.25);
+        var ct = TestContext.Current.CancellationToken;
+
+        await using var client = await StartAsync();
+        await client.LoadSongAsync("song-2",
+        [
+            new EngineTrack("a", a, 0, 1, 0, false, false, false),
+            new EngineTrack("b", b, 1, 1, 0, false, false, false),
+        ], 0, 0, ct);
+
+        // Plan seconds 0–1 from source 0, then 1–2 from source 3 (a jump) with track a muted: PB-40, AT-12.
+        var frames = await client.SetPlanAsync(
+        [
+            new RECompose.Core.Planning.PlanSegment(0, 1, 0, 0, 0, []),
+            new RECompose.Core.Planning.PlanSegment(1, 2, 3, 0, 0, ["a"]),
+        ], 0, ct);
+        Assert.Equal(96000, frames);
+
+        await client.PlayAsync(ct);
+        var (peak, _, snapshot) = await client.RenderOfflineAsync(24000, 2, ct: ct);
+        Assert.Equal(0.5, peak[0], 2);
+        Assert.Equal(0.25, peak[1], 2);
+        Assert.Equal(96000, snapshot.PlanFrames);
+        Assert.Equal(48000 * 4, snapshot.LengthFrames);
+
+        await client.RenderOfflineAsync(24000 + 4800, 2, ct: ct); // to 1.1 s: past the 10 ms mute ramp
+        (peak, _, _) = await client.RenderOfflineAsync(24000, 2, ct: ct);
+        Assert.Equal(0, peak[0], 3);
+        Assert.Equal(0.25, peak[1], 2);
+
+        // The plan ends at 2 s: stopped, back at the start.
+        (_, _, snapshot) = await client.RenderOfflineAsync(48000, 2, ct: ct);
+        Assert.Equal(TransportState.Stopped, snapshot.State);
+        Assert.Equal(0, snapshot.Frame);
+
+        // A plan whose segments leave a gap is refused.
+        var error = await Assert.ThrowsAsync<EngineErrorException>(() => client.SetPlanAsync(
+        [
+            new RECompose.Core.Planning.PlanSegment(0, 1, 0, 0, 0, []),
+            new RECompose.Core.Planning.PlanSegment(1.5, 2, 0, 0, 0, []),
+        ], ct: ct));
+        Assert.Equal("badMessage", error.Code);
     }
 }
 
