@@ -383,8 +383,6 @@ int transcribe (int argc, char* argv[])
         params.print_special = false;
         params.print_timestamps = false;
         params.token_timestamps = true;
-        params.max_len = 1;
-        params.split_on_word = true;
         params.suppress_blank = true;
         params.suppress_nst = true;
         params.temperature = 0.0f;
@@ -396,10 +394,44 @@ int transcribe (int argc, char* argv[])
         if (whisper_full (context.get(), params, chunk.data(), static_cast<int> (chunk.size())) != 0)
             continue;
 
+        // Words from the tokens: a token that starts with a space starts a word; the
+        // others (word pieces, punctuation) continue it. Times are the tokens' own.
+        struct Word
+        {
+            std::string text;
+            double start = 0, end = 0, p = 0;
+            int tokens = 0;
+        };
+        std::vector<Word> found;
         const int segments = whisper_full_n_segments (context.get());
         for (int s = 0; s < segments; ++s)
         {
-            const auto text = trim (whisper_full_get_segment_text (context.get(), s));
+            for (int t = 0; t < whisper_full_n_tokens (context.get(), s); ++t)
+            {
+                const auto data = whisper_full_get_token_data (context.get(), s, t);
+                if (data.id >= eot)
+                    continue; // special and timestamp tokens
+                std::string piece = whisper_token_to_str (context.get(), data.id);
+                if (piece.empty())
+                    continue;
+                const bool startsWord = piece[0] == ' ' || found.empty();
+                if (startsWord)
+                {
+                    Word w;
+                    w.start = data.t0 / 100.0;
+                    found.push_back (w);
+                }
+                auto& word = found.back();
+                word.text += piece;
+                word.end = std::max (word.end, data.t1 / 100.0);
+                word.p += data.p;
+                ++word.tokens;
+            }
+        }
+
+        for (auto& w : found)
+        {
+            const auto text = trim (w.text);
             if (text.empty() || text[0] == '[' || text[0] == '(' || text[0] == '*')
                 continue; // [BLANK_AUDIO], (music)
             bool hasLetters = false;
@@ -408,22 +440,10 @@ int transcribe (int argc, char* argv[])
             if (! hasLetters)
                 continue;
 
-            double p = 0;
-            int tokens = 0;
-            for (int t = 0; t < whisper_full_n_tokens (context.get(), s); ++t)
-            {
-                if (whisper_full_get_token_id (context.get(), s, t) >= eot)
-                    continue; // special and timestamp tokens
-                p += whisper_full_get_token_p (context.get(), s, t);
-                ++tokens;
-            }
-
-            const double t0 = whisper_full_get_segment_t0 (context.get(), s) / 100.0;
-            const double t1 = whisper_full_get_segment_t1 (context.get(), s) / 100.0;
-            const double start = std::clamp (span.start + t0, span.start, span.end);
-            const double end = std::clamp (span.start + std::max (t1, t0 + 0.05), start, span.end);
+            const double start = std::clamp (span.start + w.start, span.start, span.end);
+            const double end = std::clamp (span.start + std::max (w.end, w.start + 0.05), start, span.end);
             juce::Array<juce::var> row { juce::String::fromUTF8 (text.c_str()), number (start), number (end),
-                                         number (tokens > 0 ? p / tokens : 0.0) };
+                                         number (w.tokens > 0 ? w.p / w.tokens : 0.0) };
             words.add (row);
         }
 

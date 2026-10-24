@@ -228,11 +228,18 @@ public sealed class SectionsViewModel : ObservableObject
             row.Name = row.Info.Section.Name;
             return;
         }
+        // A row from before the last refresh may commit again as its field loses focus.
+        if (Current.FirstOrDefault(s => s.Id == row.Id) is not { } section || section.Name == name.Trim())
+            return;
         _main.CommitSections(SectionList.Rename(Current, row.Id, name), $"Renamed {row.Label} to {name.Trim()}");
     }
 
-    internal void SetType(SectionRowViewModel row, SectionType type) =>
+    internal void SetType(SectionRowViewModel row, SectionType type)
+    {
+        if (Current.FirstOrDefault(s => s.Id == row.Id) is not { } section || section.Type == type)
+            return;
         _main.CommitSections(SectionList.SetType(Current, row.Id, type), $"{row.Label} is now a {SectionTypes.DisplayName(type)} section");
+    }
 
     internal void SetStart(SectionRowViewModel row, double seconds)
     {

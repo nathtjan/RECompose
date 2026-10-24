@@ -2,7 +2,7 @@
 
 Live multitrack stem playback for a church music director, on Windows and macOS. The MD shapes each song's arrangement for this week's service, rehearses it with the band, and runs it live, hands-free, by voice or foot pedal.
 
-**Status:** milestone 1 (engine and import) is ready to test: import a stems folder, play it through the audio interface with a mixer, Main and Cue routing, transport, timeline and readouts. The engine runs as its own process, so the music keeps playing if the app closes. How to try it: [docs/testing/M1-test-guide.md](docs/testing/M1-test-guide.md). Plan and status: [docs/milestones/M1-engine-and-import.md](docs/milestones/M1-engine-and-import.md).
+**Status:** milestone 2 (sections and analysis) is ready to test: after import the click track sets the tempo grid and the guide track is transcribed offline, Detect from guide finds the sections, and the MD reviews and edits them; the header shows NOW and NEXT. Milestone 1 brought the engine, import, mixer, routing, transport and timeline. How to try it: [docs/testing/M2-test-guide.md](docs/testing/M2-test-guide.md) (and [M1](docs/testing/M1-test-guide.md)). Plans: [M1](docs/milestones/M1-engine-and-import.md), [M2](docs/milestones/M2-sections-and-analysis.md).
 
 ## Stack
 
@@ -37,7 +37,9 @@ docs/              decisions, the engine protocol, milestone plans
 | .NET | [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0) | same |
 | Git | Git for Windows | included with the command line tools |
 
-The first engine build downloads JUCE 9.0.4 (about 130 MB) and takes a few minutes.
+The first engine build downloads JUCE 9.0.4 (about 130 MB) and whisper.cpp 1.9.5 and takes a few minutes.
+
+Guide transcription needs the speech model `ggml-base.en.bin` (142 MiB, MIT). The CI builds ship it in `models/` next to the app. A development build downloads it on first use into `<data folder>/models/`, or set `RECOMPOSE_SPEECH_MODEL` to a copy.
 
 ### Build, test and run
 

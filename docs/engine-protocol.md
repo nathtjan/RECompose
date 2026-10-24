@@ -73,7 +73,9 @@ Frames are at the **engine rate**: the open device's sample rate (48 000 when no
 
 ### Tool modes
 
-The import jobs run the same executable as short-lived processes (PB-92), never the playback engine:
+The import and analysis jobs run the same executable as short-lived, low-priority processes (PB-92), never the playback engine. They print one JSON line on stdout and exit non-zero on failure with `{ok: false, problem}`:
 
 - `recompose-engine probe <file>` prints `{ok, channels, sampleRate, frames, durationSec, bitsPerSample, format}` or `{ok: false, problem}`.
 - `recompose-engine peaks <file> <out> [framesPerBucket]` writes a peaks file: `RECP`, u32 version 1, u32 framesPerBucket, u32 bucketCount, f64 sampleRate, then bucketCount × (f32 min, f32 max) over all channels; little-endian.
+- `recompose-engine onsets <file>` prints `{ok, sampleRate, durationSec, onsets: [[timeSec, peakDb, centroidHz], …]}`: the attacks of a click track with their level in the first 30 ms and the spectral centroid of the first 1024 samples (SEC-1). The fit, accents and downbeat are computed in `RECompose.Core` (`ClickFit`).
+- `recompose-engine transcribe <file> <model> [--prompt <text>] [--threads N]` prints `{ok, model, chunks, words: [[text, startSec, endSec, confidence], …]}`: the guide's words with whisper.cpp (SEC-11/12). Only the stretches above the level threshold are transcribed, each separately; times are source seconds. Progress lines `progress 0.42` go to stderr. Section detection is in `RECompose.Core` (`SectionDetector`).
