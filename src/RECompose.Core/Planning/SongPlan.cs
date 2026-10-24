@@ -108,6 +108,7 @@ public sealed class SongPlan
         // Without sections the plan is the whole file and bar 1 is the first downbeat, as in milestone 1.
         P0 = first is null ? 0 : first.Kind == PlanItemKind.Song ? chartGrid.FirstDownbeatSec : first.PlanStart;
         SongGrid = chartGrid.WithOrigin(P0);
+        SourceGrid = chartGrid.WithOrigin(sections.Count > 0 ? sections.Min(x => x.StartSec) : chartGrid.FirstDownbeatSec);
 
         var lastBody = items.LastOrDefault(i => i.Kind != PlanItemKind.Tail);
         TotalBars = first is null || lastBody is null
@@ -120,6 +121,9 @@ public sealed class SongPlan
 
     /// <summary>The grid with bar 1 at the first section item: the ruler and the song bar use it (PB-32).</summary>
     public TempoGrid SongGrid { get; }
+
+    /// <summary>The same bars on the source clock (bar 1 at the first written section): the as-written timeline's ruler.</summary>
+    public TempoGrid SourceGrid { get; }
 
     public IReadOnlyList<SectionInfo> Sections { get; }
     public IReadOnlyList<PlanItem> Items { get; }

@@ -339,7 +339,7 @@ public sealed class TimelineView : Control
             context.FillRectangle(owner.Brush("bg-app"), new Rect(0, 0, width, RulerHeight));
             context.DrawLine(new Pen(owner.Brush("border")), new Point(0, RulerHeight - 0.5), new Point(width, RulerHeight - 0.5));
 
-            var grid = song.Plan.SongGrid; // song bars, the same numbers as the readout (PB-32)
+            var grid = song.Plan.SourceGrid; // song bars on the written clock, the same numbers as the readout (PB-32)
             var pxPerBar = grid.BarLength * owner.PixelsPerSecond;
             var step = 1;
             while (step * pxPerBar < 55 && step < 1024) // labels at least 55 px apart (UI-15)

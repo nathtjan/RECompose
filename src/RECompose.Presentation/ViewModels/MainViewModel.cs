@@ -5,6 +5,7 @@ using RECompose.Core.Audio;
 using RECompose.Core.Commands;
 using RECompose.Core.Import;
 using RECompose.Core.Library;
+using RECompose.Core.Planning;
 using RECompose.Core.Music;
 using RECompose.Core.Persistence;
 using RECompose.Core.Sections;
@@ -40,7 +41,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private string _search = string.Empty;
     private string _status = "READY";
     private TransportState _state = TransportState.Stopped;
-    private double _position;
+    private double _planPosition;   // plan seconds: what the engine position means (as heard)
+    private double _sourcePosition; // source seconds: where the stems are (as written, sections, review)
     private string _songBar = string.Empty;
     private string _time = string.Empty;
     private string _chartBar = string.Empty;
@@ -161,15 +163,36 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public bool IsPlaying => _state == TransportState.Playing;
     public string PlayLabel => IsPlaying ? "Pause" : "Play";
 
-    /// <summary>The position being heard, in source seconds.</summary>
-    public double PositionSec
+    /// <summary>The position being heard, in plan seconds: the arrangement's own clock (PB-40).</summary>
+    public double PlanPositionSec
     {
-        get => _position;
+        get => _planPosition;
         private set
         {
-            if (Set(ref _position, value))
+            if (Set(ref _planPosition, value))
+            {
+                UpdateSourcePosition();
                 UpdateReadouts();
+            }
         }
+    }
+
+    /// <summary>
+    /// The source second being heard: where the playhead is on the as-written timeline, and the time that
+    /// sections, marks and review work in. Over a click, a pad or a hold it stays at the last source time.
+    /// </summary>
+    public double PositionSec => _sourcePosition;
+
+    private void UpdateSourcePosition()
+    {
+        if (_song is null)
+        {
+            Set(ref _sourcePosition, 0.0, nameof(PositionSec));
+            return;
+        }
+
+        if (_song.Plan.SourceAt(_planPosition) is { } source)
+            Set(ref _sourcePosition, source, nameof(PositionSec));
     }
 
     /// <summary>"bar 32.2 / 124" (PB-32).</summary>
@@ -313,6 +336,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             // The app restarted while the engine kept the song: pick it up as it is.
             BindSong(model, loaded);
             ApplySnapshot(snapshot);
+            await SendPlanAsync(null); // the engine may hold another variant's plan: send this one, keep the frame
             if (snapshot.State == TransportState.Playing)
                 ShowToast($"Reconnected. {model.Title} kept playing.");
         }
@@ -524,6 +548,10 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
 
         BindSong(model, loaded);
+        var resumeSec = startFrame > 0 ? startFrame / (loaded?.SampleRate ?? 48000.0) : 0.0;
+        if (resumeSec > 0)
+            PlanPositionSec = resumeSec; // after an engine restart the plan clock continues where it was
+        await SendPlanAsync(resumeSec);
         AppLog.Write("Transport", $"Loaded {model.Title}");
         _settings = _settings with { LastSongId = id };
         _store.SaveSettings(_settings);
@@ -543,9 +571,11 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         vm.Master.Changed += OnTrackChanged;
         _committed["master"] = (vm.Master.GainDb, false, false);
 
+        vm.PlanChanged += OnPlanChanged;
         Song = vm;
         SelectedSong ??= _allSongs.FirstOrDefault(s => s.Id == model.Id);
-        PositionSec = 0;
+        PlanPositionSec = 0;
+        UpdateSourcePosition();
         UpdateReadouts();
         if (_engine is null)
             Status = "READY";
@@ -585,15 +615,28 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             await _engine.StopAsync();
     }
 
-    /// <summary>Seeks to a source time (click on the ruler, PB-26).</summary>
-    public async Task SeekAsync(double seconds)
+    /// <summary>Seeks to a source time (click on the as-written ruler, section jumps, PB-26). Does nothing when the arrangement doesn't play that moment.</summary>
+    public Task SeekAsync(double sourceSeconds)
+    {
+        if (_song is null)
+            return Task.CompletedTask;
+        sourceSeconds = Math.Clamp(sourceSeconds, 0, _song.DurationSec);
+        var plan = _song.Plan;
+        var planSec = plan.PlanAt(sourceSeconds, _planPosition);
+        if (planSec is null && plan.Items.FirstOrDefault(i => i.HasSource) is { } first && sourceSeconds <= first.SrcStart)
+            planSec = 0; // before the first section, when the lead-in was dropped
+        return planSec is { } t ? SeekPlanAsync(t) : Task.CompletedTask;
+    }
+
+    /// <summary>Seeks to a plan time (click on the as-heard ruler, bar steps, PB-26).</summary>
+    public async Task SeekPlanAsync(double planSeconds)
     {
         if (_song is null)
             return;
-        seconds = Math.Clamp(seconds, 0, _song.DurationSec);
-        var frame = (long)Math.Round(seconds * _song.SampleRate);
+        planSeconds = Math.Clamp(planSeconds, 0, Math.Max(0, _song.Plan.DurationSec));
+        var frame = (long)Math.Round(planSeconds * _song.SampleRate);
         if (!IsPlaying)
-            PositionSec = seconds; // show it at once; the engine confirms
+            PlanPositionSec = planSeconds; // show it at once; the engine confirms
         if (_engine is not null)
         {
             // Until the engine reports this frame, older snapshots must not move the playhead back.
@@ -603,12 +646,46 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
-    /// <summary>← and → when stopped: one bar back or forward (KEY-1).</summary>
+    /// <summary>← and → when stopped: one bar back or forward in the song's own bars (KEY-1).</summary>
     public Task StepBarAsync(int bars)
     {
         if (_song is null || IsPlaying)
             return Task.CompletedTask;
-        return SeekAsync(Readouts.StepBars(_song.Plan.SongGrid, PositionSec, bars, _song.DurationSec));
+        var plan = _song.Plan;
+        return SeekPlanAsync(Readouts.StepBars(plan.SongGrid, _planPosition, bars, plan.DurationSec));
+    }
+
+    // ---- The plan on the engine (PB-40) ------------------------------------------------
+
+    private void OnPlanChanged(SongPlan previous, bool sameArrangement)
+    {
+        if (_song is null)
+            return;
+        var position = SongPlan.Remap(previous, _planPosition, _song.Plan, sameArrangement);
+        PlanPositionSec = position;
+        Sections.Refresh();
+        _ = SendPlanAsync(position);
+    }
+
+    /// <summary>Sends the current plan to the engine; <paramref name="positionSec"/> null keeps the engine's frame.</summary>
+    private async Task SendPlanAsync(double? positionSec)
+    {
+        if (_engine is not { } engine || _song is not { } song)
+            return;
+        try
+        {
+            if (positionSec is { } position && !IsPlaying)
+            {
+                _seekFrame = (long)Math.Round(position * song.SampleRate);
+                _seekSentAt = DateTime.UtcNow;
+            }
+
+            await engine.SetPlanAsync(song.Plan.Segments(), positionSec);
+        }
+        catch (Exception ex) when (ex is EngineErrorException or EngineDisconnectedException or OperationCanceledException)
+        {
+            AppLog.Error("Engine", ex);
+        }
     }
 
     private void ApplySnapshot(EngineSnapshot s)
@@ -633,7 +710,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                 _seekFrame = null;
         }
         if (_seekFrame is null && s.SampleRate > 0)
-            PositionSec = s.HeardFrame / s.SampleRate;
+            PlanPositionSec = s.HeardFrame / s.SampleRate;
         CheckRangeEnd(s.State);
 
         Status = s.State == TransportState.Playing
@@ -667,7 +744,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             return;
         }
 
-        var r = _song.Plan.At(PositionSec);
+        var r = _song.Plan.At(_planPosition);
         SongBarText = r.SongBar;
         TimeText = r.Time;
         ChartBarText = r.ChartBar;

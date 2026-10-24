@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 using System.Collections.ObjectModel;
 using System.Globalization;
+using RECompose.Core.Arrangements;
 using RECompose.Core.Library;
 using RECompose.Core.Music;
+using RECompose.Core.Planning;
 using RECompose.Core.Sections;
 using RECompose.Core.Timing;
 using RECompose.Engine;
@@ -73,7 +75,8 @@ public sealed class SongViewModel : ObservableObject
     private string _meterText;
     private string _downbeatText;
     private List<SectionInfo> _sections = [];
-    private AsWrittenPlan _plan = null!;
+    private SongPlan _plan = null!;
+    private string? _activeVariantId;
     private int _sectionsVersion;
 
     public SongViewModel(Song model, LoadedSong? loaded, AudioSettingsResolver outputs)
@@ -102,7 +105,8 @@ public sealed class SongViewModel : ObservableObject
             Tracks.Add(vm);
         }
 
-        RefreshSections();
+        _activeVariantId = model.ActiveArrangement?.Id;
+        RefreshSections(notify: false);
         _titleText = model.Title;
         _keyText = Key.TryParse(model.OriginalKey, out var k) ? k.ToDisplayString() : string.Empty;
         _bpmText = Format.Bpm(model.Bpm);
@@ -116,12 +120,18 @@ public sealed class SongViewModel : ObservableObject
         set
         {
             _model = value;
+            var activeBefore = _activeVariantId;
             OnPropertyChanged(nameof(Title));
             OnPropertyChanged(nameof(HeaderLine));
             OnPropertyChanged(nameof(Grid));
             OnPropertyChanged(nameof(DurationSec));
             OnPropertyChanged(nameof(SourceFolder));
-            RefreshSections();
+            if (_activeVariantId is not null && _model.Arrangements.All(a => a.Id != _activeVariantId))
+                _activeVariantId = null; // the variant was deleted: back to as written
+            OnPropertyChanged(nameof(ActiveVariantId));
+            OnPropertyChanged(nameof(Variants));
+            OnPropertyChanged(nameof(ActiveVariant));
+            RefreshSections(sameArrangement: _activeVariantId == activeBefore);
             WaveformVersion++;
         }
     }
@@ -131,20 +141,50 @@ public sealed class SongViewModel : ObservableObject
 
     public bool HasSections => _sections.Count > 0;
 
-    /// <summary>The as-written plan: NOW, NEXT and song bars (PB-30…35).</summary>
-    public AsWrittenPlan Plan => _plan;
+    /// <summary>The plan being played: as written, or the active variant (PB-40, PB-30…35).</summary>
+    public SongPlan Plan => _plan;
+
+    /// <summary>The variant being played; null plays the song as written (ARR-1).</summary>
+    public string? ActiveVariantId => _activeVariantId;
+
+    public Arrangement? ActiveVariant => _model.Arrangements.FirstOrDefault(a => a.Id == _activeVariantId);
+
+    public bool IsAsWritten => ActiveVariant is null;
+
+    public IReadOnlyList<Arrangement> Variants => _model.Arrangements;
+
+    /// <summary>Raised after the plan was rebuilt: the previous plan and whether it was the same variant.</summary>
+    public event Action<SongPlan, bool>? PlanChanged;
+
+    /// <summary>Switches the variant that plays (null = as written). Raises <see cref="PlanChanged"/>.</summary>
+    public void SelectVariant(string? id)
+    {
+        if (id is not null && _model.Arrangements.All(a => a.Id != id))
+            id = null;
+        if (id == _activeVariantId)
+            return;
+        _activeVariantId = id;
+        OnPropertyChanged(nameof(ActiveVariantId));
+        OnPropertyChanged(nameof(ActiveVariant));
+        OnPropertyChanged(nameof(IsAsWritten));
+        RefreshSections(sameArrangement: false);
+    }
 
     /// <summary>Bumped when the sections lane needs redrawing.</summary>
     public int SectionsVersion { get => _sectionsVersion; private set => Set(ref _sectionsVersion, value); }
 
-    private void RefreshSections()
+    private void RefreshSections(bool notify = true, bool sameArrangement = true)
     {
+        var previous = _plan;
         _sections = SectionList.Describe(_model.Sections, _model.Grid, DurationSec);
-        _plan = new AsWrittenPlan(_model.Grid, _sections, DurationSec);
+        _plan = PlanBuilder.Build(_model.Grid, _sections, DurationSec, ActiveVariant, _model.Tracks.Where(t => !t.Hidden).ToList());
         OnPropertyChanged(nameof(Sections));
         OnPropertyChanged(nameof(HasSections));
         OnPropertyChanged(nameof(Plan));
+        OnPropertyChanged(nameof(IsAsWritten));
         SectionsVersion++;
+        if (notify && previous is not null)
+            PlanChanged?.Invoke(previous, sameArrangement);
     }
 
     public LoadedSong? Loaded
@@ -155,7 +195,7 @@ public sealed class SongViewModel : ObservableObject
             _loaded = value;
             OnPropertyChanged(nameof(DurationSec));
             OnPropertyChanged(nameof(SampleRate));
-            RefreshSections();
+            RefreshSections(notify: false); // the engine derives its plan again at the new rate
         }
     }
 

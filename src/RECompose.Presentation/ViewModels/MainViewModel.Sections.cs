@@ -2,6 +2,7 @@
 using System.Globalization;
 using RECompose.Core.Analysis;
 using RECompose.Core.Commands;
+using RECompose.Core.Arrangements;
 using RECompose.Core.Library;
 using RECompose.Core.Sections;
 using RECompose.Core.Timing;
@@ -298,7 +299,7 @@ public sealed partial class MainViewModel
         var result = _analysis.Detect(song);
         var summary = SectionDetector.Summary(song.Title, result.Sections, song.Grid, result);
         CommitSections(result.Sections, "Detect from guide", toast: null,
-            guide: song.GuideAnalysis! with { Calls = result.Calls });
+            guide: song.GuideAnalysis! with { Calls = result.Calls }, redetect: true);
         Sections.ResultText = summary;
         SelectedTab = 0;
         AppLog.Write("Sections", $"{song.Title}: {summary}");
@@ -339,20 +340,36 @@ public sealed partial class MainViewModel
         }
     }
 
-    /// <summary>Replaces the song's sections as one undo step (and stores the guide calls with them).</summary>
-    internal void CommitSections(List<Section> sections, string description, string? toast = "", GuideAnalysis? guide = null)
+    /// <summary>
+    /// Replaces the song's sections as one undo step (and stores the guide calls with them). The variants follow
+    /// the sections: a merge points the removed section's entries at the one that stays (SEC-54), and a re-detect
+    /// maps every entry to the new section with the same label (SEC-17). A deleted section's entries stay and are
+    /// flagged "Section removed" until the user chooses a replacement (ARR-50).
+    /// </summary>
+    internal void CommitSections(List<Section> sections, string description, string? toast = "", GuideAnalysis? guide = null,
+        (string Removed, string Kept)? merged = null, bool redetect = false)
     {
         if (_song is null)
             return;
         var songId = _song.Id;
         var before = _song.Model.Sections;
         var beforeGuide = _song.Model.GuideAnalysis;
+        var variantsBefore = _song.Model.Arrangements;
+        var variantsAfter = variantsBefore;
+        if (variantsBefore.Count > 0)
+        {
+            if (merged is { } m)
+                variantsAfter = ArrangementEdit.RemapSection(variantsBefore, m.Removed, m.Kept);
+            else if (redetect)
+                variantsAfter = ArrangementEdit.RemapAfterRedetect(variantsBefore, _song.Sections,
+                    SectionList.Describe(sections, _song.Grid, _song.DurationSec));
+        }
 
-        void Apply(List<Section> value, GuideAnalysis? g) =>
-            UpdateSong(songId, s => s with { Sections = value, GuideAnalysis = g ?? s.GuideAnalysis, UpdatedAt = DateTimeOffset.UtcNow });
+        void Apply(List<Section> value, GuideAnalysis? g, List<Arrangement> variants) =>
+            UpdateSong(songId, s => s with { Sections = value, GuideAnalysis = g ?? s.GuideAnalysis, Arrangements = variants, UpdatedAt = DateTimeOffset.UtcNow });
 
-        Apply(sections, guide);
-        _undo.Push(new UndoableChange(description, () => Apply(before, beforeGuide), () => Apply(sections, guide)));
+        Apply(sections, guide, variantsAfter);
+        _undo.Push(new UndoableChange(description, () => Apply(before, beforeGuide, variantsBefore), () => Apply(sections, guide, variantsAfter)));
         AppLog.Write("Sections", description);
         if (toast is not null)
             ShowToast(toast.Length == 0 ? description : toast, canUndo: true);

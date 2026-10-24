@@ -33,7 +33,7 @@ public sealed class SectionRowViewModel : ObservableObject
         _name = info.Section.Name;
         _startText = info.StartSec.ToString("0.000", CultureInfo.InvariantCulture);
         _type = SectionTypeChoice.All.First(c => c.Type == info.Type);
-        PlayCallCommand = new RelayCommand(() => owner.PlayCallAsync(this), () => Call is not null);
+        PlayCallCommand = new RelayCommand(() => owner.PlayCallAsync(this), () => Call is not null && owner.CanPlayRanges);
         ToPlayheadCommand = new RelayCommand(() => owner.SetStartToPlayhead(this));
         DeleteCommand = new RelayCommand(() => owner.Delete(this));
     }
@@ -109,7 +109,7 @@ public sealed class SectionsViewModel : ObservableObject
     {
         _main = main;
         DetectCommand = new RelayCommand(() => _main.DetectSectionsAsync(), () => CanDetect && !IsBusy);
-        ReviewCommand = new RelayCommand(StartReviewAsync, () => Rows.Any(r => r.NeedsReview));
+        ReviewCommand = new RelayCommand(StartReviewAsync, () => Rows.Any(r => r.NeedsReview) && CanPlayRanges);
         AddAtPlayheadCommand = new RelayCommand(() => AddAtPlayhead(), () => _main.Song is not null);
         AcceptCommand = new RelayCommand(Accept, () => IsReviewing);
         EarlierCommand = new RelayCommand(() => NudgeAsync(-1), () => IsReviewing);
@@ -195,6 +195,8 @@ public sealed class SectionsViewModel : ObservableObject
         OnPropertyChanged(nameof(DetectHint));
         OnPropertyChanged(nameof(ReviewCount));
         OnPropertyChanged(nameof(ReviewLabel));
+        OnPropertyChanged(nameof(CanPlayRanges));
+        OnPropertyChanged(nameof(PlayRangesBlockedReason));
         DetectCommand.Refresh();
         ReviewCommand.Refresh();
         AddAtPlayheadCommand.Refresh();
@@ -205,6 +207,11 @@ public sealed class SectionsViewModel : ObservableObject
             OnReviewChanged();
         }
     }
+
+    /// <summary>Review and the call button play stretches of the written song, so they wait for As written.</summary>
+    public bool CanPlayRanges => _main.Song?.IsAsWritten ?? true;
+
+    public string? PlayRangesBlockedReason => CanPlayRanges ? null : "Switch to As written to review sections";
 
     public void Select(string id) => Selected = Rows.FirstOrDefault(r => r.Id == id);
 
@@ -309,7 +316,8 @@ public sealed class SectionsViewModel : ObservableObject
         var index = row is null ? -1 : Rows.IndexOf(row);
         if (row is null || index + 1 >= Rows.Count)
             return;
-        _main.CommitSections(SectionList.MergeWithNext(Current, id), $"Merged {Rows[index + 1].Label} into {row.Label}");
+        _main.CommitSections(SectionList.MergeWithNext(Current, id), $"Merged {Rows[index + 1].Label} into {row.Label}",
+            merged: (Rows[index + 1].Id, id));
     }
 
     public void RequestRename(string id)
