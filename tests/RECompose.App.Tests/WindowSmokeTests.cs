@@ -21,6 +21,9 @@ public static class HeadlessApp
         AppBuilder.Configure<App>()
             .UseSkia()
             .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false });
+
+    /// <summary>One session for every window test: Avalonia can be set up only once per process.</summary>
+    public static HeadlessUnitTestSession Session { get; } = HeadlessUnitTestSession.StartNew(typeof(HeadlessApp));
 }
 
 /// <summary>Collects warnings and errors that Avalonia logs (binding errors among them).</summary>
@@ -45,7 +48,7 @@ internal sealed class CollectingSink : ILogSink
 
 public sealed class WindowSmokeTests : IDisposable
 {
-    private static readonly HeadlessUnitTestSession Session = HeadlessUnitTestSession.StartNew(typeof(HeadlessApp));
+    private static HeadlessUnitTestSession Session => HeadlessApp.Session;
 
     private readonly string _root = Path.Combine(Path.GetTempPath(), "rec-app-" + Guid.NewGuid().ToString("N"));
     private readonly string _endpoint = Path.Combine(Path.GetTempPath(), $"rec-{Guid.NewGuid():N}"[..14] + ".sock");

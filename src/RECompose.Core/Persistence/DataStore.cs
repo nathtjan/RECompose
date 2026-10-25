@@ -102,16 +102,29 @@ public sealed class DataStore(string root)
 
     private static T? Read<T>(string path, System.Text.Json.Serialization.Metadata.JsonTypeInfo<T> type) where T : class
     {
-        if (!File.Exists(path))
-            return null;
-        try
+        // Readers share delete access so an atomic replace (Write) never fails because of them, and on
+        // Windows a read that lands in the instant of a replace is a sharing violation: try again shortly.
+        for (var attempt = 1; ; attempt++)
         {
-            using var stream = File.OpenRead(path);
-            return JsonSerializer.Deserialize(stream, type);
-        }
-        catch (JsonException)
-        {
-            return null; // a damaged file reads as missing rather than crashing the app
+            if (!File.Exists(path))
+                return null;
+            try
+            {
+                using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+                return JsonSerializer.Deserialize(stream, type);
+            }
+            catch (JsonException)
+            {
+                return null; // a damaged file reads as missing rather than crashing the app
+            }
+            catch (FileNotFoundException)
+            {
+                return null;
+            }
+            catch (IOException) when (attempt < 5)
+            {
+                Thread.Sleep(10 * attempt);
+            }
         }
     }
 

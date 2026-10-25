@@ -21,7 +21,7 @@ namespace RECompose.App.Tests;
 // UI-16, SL-21, PB-81) render without binding errors. No engine is needed: the view model runs without audio.
 public sealed class ServiceWindowTests : IDisposable
 {
-    private static readonly HeadlessUnitTestSession Session = HeadlessUnitTestSession.StartNew(typeof(HeadlessApp));
+    private static HeadlessUnitTestSession Session => HeadlessApp.Session;
     private readonly string _root = Path.Combine(Path.GetTempPath(), "rec-app-svc-" + Guid.NewGuid().ToString("N"));
 
     public void Dispose()
