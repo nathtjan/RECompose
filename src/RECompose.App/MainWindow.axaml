@@ -730,8 +730,8 @@
                 </ScrollViewer>
               </Border>
 
-              <!-- The entry list (ARR-12) -->
-              <Grid>
+              <!-- The entry list (ARR-12), with the as-written note under it rather than over it -->
+              <StackPanel>
                 <ListBox x:Name="EntryRows" ItemsSource="{Binding Rows}" SelectedItem="{Binding Selected}" Background="Transparent">
                   <ListBox.ItemTemplate>
                     <DataTemplate x:DataType="vm:EntryRowViewModel">
@@ -752,8 +752,8 @@
                     </DataTemplate>
                   </ListBox.ItemTemplate>
                 </ListBox>
-                <TextBlock Text="{Binding AsWrittenNote}" Classes="meta" Margin="12,4" VerticalAlignment="Bottom" IsVisible="{Binding IsAsWritten}" />
-              </Grid>
+                <TextBlock Text="{Binding AsWrittenNote}" Classes="meta" Margin="12,4" TextWrapping="Wrap" IsVisible="{Binding IsAsWritten}" />
+              </StackPanel>
             </DockPanel>
             </DockPanel>
             </ScrollViewer>
