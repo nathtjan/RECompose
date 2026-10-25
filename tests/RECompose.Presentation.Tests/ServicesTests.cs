@@ -468,6 +468,15 @@ internal sealed class ServiceDialogs : IDialogs
     public Task<bool> EditAudioSettingsAsync(AudioSettingsViewModel settings) => Task.FromResult(false);
 
     public Task EditControlsAsync(ControlsViewModel controls) => Task.CompletedTask;
+
+    public ResumeChoice ResumeAnswer { get; set; } = ResumeChoice.DontResume;
+    public ResumeQuestion? ResumeAsked { get; private set; }
+
+    public Task<ResumeChoice> AskResumeAsync(ResumeQuestion question)
+    {
+        ResumeAsked = question;
+        return Task.FromResult(ResumeAnswer);
+    }
     public Task<ServiceDetails?> AskServiceDetailsAsync(string title, string confirmLabel, ServiceDetails initial) => Task.FromResult(Details);
 
     public Task<VariantScopeAnswer?> AskVariantScopeAsync(string variantName, int otherEntries)

@@ -157,12 +157,21 @@
     </Border>
 
     <!-- Banners push the body down (UI-70) -->
-    <Border Grid.Row="1" Classes="banner" IsVisible="{Binding HasBanner}">
-      <DockPanel>
-        <Button DockPanel.Dock="Right" Classes="ghost" Content="Dismiss" Command="{Binding DismissBannerCommand}" />
-        <TextBlock Text="{Binding Banner}" TextWrapping="Wrap" VerticalAlignment="Center" />
-      </DockPanel>
-    </Border>
+    <StackPanel Grid.Row="1">
+      <Border Classes="banner" IsVisible="{Binding HasBanner}">
+        <DockPanel>
+          <Button DockPanel.Dock="Right" Classes="ghost" Content="Dismiss" Command="{Binding DismissBannerCommand}" />
+          <TextBlock Text="{Binding Banner}" TextWrapping="Wrap" VerticalAlignment="Center" />
+        </DockPanel>
+      </Border>
+      <!-- After PANIC the song is still loaded: resume where it stopped (REL-41) -->
+      <Border x:Name="PanicBar" Classes="banner" IsVisible="{Binding HasPanicResume}">
+        <DockPanel>
+          <Button DockPanel.Dock="Right" Classes="primary" Content="Resume" Command="{Binding ResumeAfterPanicCommand}" />
+          <TextBlock Text="{Binding PanicResumeText}" VerticalAlignment="Center" FontWeight="SemiBold" />
+        </DockPanel>
+      </Border>
+    </StackPanel>
 
     <!-- Body -->
     <Grid Grid.Row="2" ColumnDefinitions="248,*">

@@ -84,6 +84,46 @@ public sealed class AvaloniaDialogs(Window owner) : IDialogs
         return await window.ShowDialog<bool>(owner);
     }
 
+    /// <summary>REL-31: what happened, and four ways on.</summary>
+    public async Task<ResumeChoice> AskResumeAsync(ResumeQuestion question)
+    {
+        var window = new Window
+        {
+            Title = "RECompose closed unexpectedly",
+            Width = 560,
+            SizeToContent = SizeToContent.Height,
+            CanResize = false,
+            ShowInTaskbar = false,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+        };
+
+        var buttons = new StackPanel { Orientation = Orientation.Vertical, Spacing = 8, Margin = new Thickness(0, 12, 0, 0) };
+        void Add(string text, ResumeChoice choice, bool primary = false, bool enabled = true)
+        {
+            var button = new Button { Content = text, HorizontalAlignment = HorizontalAlignment.Stretch, IsEnabled = enabled };
+            if (primary)
+                button.Classes.Add("primary");
+            button.Click += (_, _) => window.Close(choice);
+            AutomationProperties.SetName(button, text);
+            buttons.Children.Add(button);
+        }
+
+        if (question.CurrentLabel is not null)
+            Add($"Resume at {question.CurrentLabel}", ResumeChoice.ResumeCurrent, primary: true);
+        if (question.NextLabel is not null)
+            Add($"Resume at the next section ({question.NextLabel})", ResumeChoice.ResumeNext);
+        if (question.CanOpenService)
+            Add("Open the service", ResumeChoice.OpenService);
+        Add("Don't resume", ResumeChoice.DontResume);
+
+        window.Content = new StackPanel
+        {
+            Margin = new Thickness(20),
+            Children = { new TextBlock { Text = question.Message, TextWrapping = Avalonia.Media.TextWrapping.Wrap }, buttons },
+        };
+        return await window.ShowDialog<ResumeChoice>(owner);
+    }
+
     public async Task EditControlsAsync(ControlsViewModel controls)
     {
         var window = new ControlsWindow { DataContext = controls };

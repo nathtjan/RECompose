@@ -172,6 +172,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             {
                 OnPropertyChanged(nameof(IsPlaying));
                 OnPropertyChanged(nameof(PlayLabel));
+                if (value == TransportState.Playing)
+                    _panicJournal = null;
+                OnPropertyChanged(nameof(HasPanicResume));
                 Setlist.UpdatePlaying();
             }
         }
@@ -414,12 +417,14 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     public async Task InitializeAsync()
     {
+        ReadRecovery();
         foreach (var summary in _store.LoadLibrary().Songs.OrderBy(s => s.Title, NaturalComparer.Instance))
             _allSongs.Add(new SongItemViewModel(summary));
         RefreshLibrary();
         LoadServices();
         LoadPads();
         await ConnectEngineAsync(afterCrash: false);
+        await OfferResumeAsync();
     }
 
     private async Task ConnectEngineAsync(bool afterCrash)
@@ -747,6 +752,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
         vm.PlanChanged += OnPlanChanged;
         _live = null;
+        _panicJournal = null;
         ResetRehearsal();
         TimelineAsHeard = !vm.IsAsWritten;
         Song = vm;
@@ -936,6 +942,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             OnHoldChanged();
         TickLive();
         _controls?.Tick();
+        JournalTick(s.State);
         CheckRangeEnd(s.State);
 
         Status = s.State == TransportState.Playing
@@ -1288,6 +1295,15 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public async Task ShutdownEngineAsync()
     {
         _shuttingDown = true;
+        try
+        {
+            await FlushJournalAsync();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or AggregateException)
+        {
+        }
+
+        MarkCleanShutdown();
         if (_engine is { } engine)
         {
             try

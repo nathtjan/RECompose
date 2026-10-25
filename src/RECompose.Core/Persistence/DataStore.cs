@@ -19,6 +19,8 @@ namespace RECompose.Core.Persistence;
 [JsonSerializable(typeof(Service))]
 [JsonSerializable(typeof(PadLibrary))]
 [JsonSerializable(typeof(AppSettings))]
+[JsonSerializable(typeof(Recovery.Journal))]
+[JsonSerializable(typeof(Recovery.AppState))]
 public sealed partial class RecomposeJsonContext : JsonSerializerContext;
 
 /// <summary>
@@ -93,6 +95,23 @@ public sealed class DataStore(string root)
 
     public void SaveSettings(AppSettings settings) =>
         Write(Path.Combine(Root, "settings.json"), settings, RecomposeJsonContext.Default.AppSettings);
+
+    /// <summary>The journal of the last session (DM-80, REL-30), or null when there is none or it cannot be read.</summary>
+    public Recovery.Journal? LoadJournal() => Read(Path.Combine(Root, "journal.json"), RecomposeJsonContext.Default.Journal);
+
+    public void SaveJournal(Recovery.Journal journal) => Write(Path.Combine(Root, "journal.json"), journal, RecomposeJsonContext.Default.Journal);
+
+    public void DeleteJournal()
+    {
+        var path = Path.Combine(Root, "journal.json");
+        if (File.Exists(path))
+            File.Delete(path);
+    }
+
+    /// <summary>state.json (DM-80): the mode, the lock and whether the last run ended cleanly.</summary>
+    public Recovery.AppState LoadState() => Read(Path.Combine(Root, "state.json"), RecomposeJsonContext.Default.AppState) ?? new Recovery.AppState();
+
+    public void SaveState(Recovery.AppState state) => Write(Path.Combine(Root, "state.json"), state, RecomposeJsonContext.Default.AppState);
 
     public string PeaksPath(string songId, string trackId) => Path.Combine(PeaksFolder, songId, trackId + ".peaks");
 

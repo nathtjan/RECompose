@@ -136,6 +136,7 @@ public sealed partial class MainViewModel
         AppLog.Write("Perform", "Panic");
         ShowToast("Stopped.");
         UpdateReadouts();
+        RememberPanic();
     }
 
     /// <summary>

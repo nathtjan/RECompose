@@ -81,6 +81,9 @@ public sealed class PadsViewModel : ObservableObject
     public RelayCommand PlayStopCommand { get; }
 
     public bool IsPlaying => _playing is not null;
+
+    /// <summary>The pitch class that sounds, or null (the journal keeps it, DM-80).</summary>
+    public int? PlayingKey => _playing;
     public string PlayStopLabel => IsPlaying ? "Stop" : "Play";
 
     /// <summary>The pad follows the loaded entry's key, key lifts included (SL-44).</summary>
@@ -148,7 +151,7 @@ public sealed class PadsViewModel : ObservableObject
         return PlayAsync(key);
     }
 
-    private Task PlayAsync(int pitchClass)
+    internal Task PlayAsync(int pitchClass)
     {
         _lastKey = pitchClass;
         ShowPlaying(pitchClass);

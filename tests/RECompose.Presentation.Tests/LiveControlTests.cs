@@ -86,13 +86,19 @@ public sealed class LiveControlTests : IDisposable
         store.SaveSong(song);
         store.SaveLibrary(new LibraryIndex { Songs = [SongSummary.From(song)] });
 
-        var vm = new MainViewModel(store, new EngineHostOptions(executable, _endpoint) { IdleExitSeconds = 3 }, new EngineTools(executable), new LockedDispatcher(),
-            new ServiceDialogs(), new SpeechModel(store.Root, allowDownload: false));
+        var vm = Open(store, new ServiceDialogs(), executable);
         await vm.InitializeAsync();
         await vm.LoadSongAsync("live");
         if (arrangementOrder is not null)
             vm.SelectVariant("arr");
         return (vm, song);
+    }
+
+    private MainViewModel Open(DataStore store, ServiceDialogs dialogs, string? executable = null)
+    {
+        executable ??= Path.Combine(AppContext.BaseDirectory, EnginePaths.ExecutableFileName);
+        return new MainViewModel(store, new EngineHostOptions(executable, _endpoint) { IdleExitSeconds = 3 }, new EngineTools(executable), new LockedDispatcher(),
+            dialogs, new SpeechModel(store.Root, allowDownload: false));
     }
 
     private static async Task Eventually(Func<bool> condition, int timeoutMs = 10000)
@@ -383,6 +389,93 @@ public sealed class LiveControlTests : IDisposable
             Assert.Equal(RECompose.Engine.TransportState.Playing, vm.State);
             Assert.InRange(vm.PlanPositionSec, positionBefore + 0.8, positionBefore + 1.3);
             Assert.Equal(0.2, await RenderAsync(vm, 1), 2); // still Verse 1
+        }
+        finally
+        {
+            await FinishAsync(vm);
+        }
+    }
+
+    [Fact]
+    public async Task AT44_after_a_crash_the_dialog_resumes_the_section_with_a_count_in_and_the_live_changes()
+    {
+        var (vm, song) = await StartAsync();
+        var store = new DataStore(Path.Combine(_root, "data"));
+        string journalText;
+        try
+        {
+            await vm.EngineForTests!.PlayAsync();
+            await RenderAsync(vm, 10);                 // in the chorus
+            await Eventually(() => vm.NowLabel == "CHORUS");
+            await vm.LiveAsync(LiveActionKind.Vamp);   // the chorus repeats until moved on
+            await RenderAsync(vm, 6.5);                // the vamp is the plan now (16 s), in its second pass
+            await Eventually(() => vm.NextState == NextState.Repeating);
+
+            vm.WriteJournal();
+            await vm.FlushJournalAsync();
+            journalText = File.ReadAllText(Path.Combine(_root, "data", "journal.json"));
+            Assert.Contains("\"transport\": \"playing\"", journalText);
+        }
+        finally
+        {
+            await FinishAsync(vm);
+        }
+
+        // A kill leaves the journal and an unclean state behind; a normal quit would have removed them.
+        Assert.Null(store.LoadJournal());
+        File.WriteAllText(Path.Combine(_root, "data", "journal.json"), journalText);
+        store.SaveState(new RECompose.Core.Recovery.AppState { CleanShutdown = false });
+
+        var dialogs = new ServiceDialogs { ResumeAnswer = ResumeChoice.ResumeCurrent };
+        var again = Open(store, dialogs);
+        try
+        {
+            await again.InitializeAsync();
+            await Eventually(() => again.Song is not null);
+
+            Assert.NotNull(dialogs.ResumeAsked);
+            Assert.Contains("closed unexpectedly", dialogs.ResumeAsked!.Message);
+            Assert.Contains("Live", dialogs.ResumeAsked.Message);
+            Assert.Equal("Chorus", dialogs.ResumeAsked.CurrentLabel);
+            Assert.Equal("Verse 2", dialogs.ResumeAsked.NextLabel);
+
+            // The vamp from before the crash is still in the plan, and a bar of click leads in.
+            Assert.Contains(again.Song!.Plan.Items, i => i.Id.StartsWith("resume-count-in", StringComparison.Ordinal));
+            Assert.True(again.Song.Plan.Items.Count(i => i.Label == "Chorus" && i.IsOpen) >= 2);
+
+            // Playing: two seconds of click (the count-in), then the chorus.
+            await Eventually(() => again.State == RECompose.Engine.TransportState.Playing);
+            var click = await RenderAsync(again, 1.8);
+            Assert.Equal(0.501, click, 2);
+            await RenderAsync(again, 0.4);
+            Assert.Equal(0.4, await RenderAsync(again, 1.5), 2);
+        }
+        finally
+        {
+            await FinishAsync(again);
+        }
+    }
+
+    [Fact]
+    public async Task REL41_panic_leaves_the_song_loaded_and_offers_to_resume_where_it_stopped()
+    {
+        var (vm, _) = await StartAsync();
+        try
+        {
+            await vm.EngineForTests!.PlayAsync();
+            await RenderAsync(vm, 10);
+            await Eventually(() => vm.NowLabel == "CHORUS");
+
+            await vm.PanicAsync();
+            await RenderAsync(vm, 0.5);
+            await Eventually(() => vm.State == RECompose.Engine.TransportState.Stopped);
+            Assert.True(vm.HasPanicResume);
+            Assert.Equal("Stopped by PANIC · Resume at Chorus", vm.PanicResumeText);
+            Assert.NotNull(vm.Song);
+
+            vm.ResumeAfterPanicCommand.Execute(null);
+            await Eventually(() => vm.State == RECompose.Engine.TransportState.Playing);
+            Assert.False(vm.HasPanicResume);
         }
         finally
         {

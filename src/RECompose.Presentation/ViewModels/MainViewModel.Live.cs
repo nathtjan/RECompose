@@ -120,6 +120,7 @@ public sealed partial class MainViewModel
             return;
 
         song.AdoptLivePlan(live.Committed);
+        WriteJournal();
         Sections.Refresh();
         if (song.Entry is not null)
             _ = SendTransitionAsync(live.Committed);
@@ -147,6 +148,7 @@ public sealed partial class MainViewModel
                 AppLog.Write("Live", $"{kind} ({SourceName(source)}) → {result.Pending!.Target} at {result.Pending.ExecuteAt:0.000}");
                 await SendPlanAsync(null, result.Pending.Plan, result.Pending.ExecuteAt);
                 UpdateReadouts();
+                WriteJournal();
                 break;
             default:
                 if (result.Message.Length > 0)

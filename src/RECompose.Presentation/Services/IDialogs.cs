@@ -42,6 +42,9 @@ public interface IDialogs
     /// <summary>Settings › Audio. True = Apply.</summary>
     Task<bool> EditAudioSettingsAsync(AudioSettingsViewModel settings);
 
+    /// <summary>"RECompose closed unexpectedly…" with the choices of REL-31.</summary>
+    Task<ResumeChoice> AskResumeAsync(ResumeQuestion question);
+
     /// <summary>Settings › Playback and › Controls (SET-20, SET-28). Edits the view model in place.</summary>
     Task EditControlsAsync(ControlsViewModel controls);
 
