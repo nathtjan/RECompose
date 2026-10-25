@@ -191,6 +191,11 @@ public static class PlanBuilder
                     }
 
                     case EntryKind.Hold:
+                    {
+                        // PB-52: the previous section rings out first (unless it is cut), then the clock waits for GO.
+                        AddTail(items, options, chartGrid, durationSec, $"tail:{entry.Id}");
+                        var before = items.LastOrDefault();
+                        cursor = before?.PlanEnd ?? cursor;
                         items.Add(new PlanItem
                         {
                             Id = $"{entry.Id}:1",
@@ -201,10 +206,36 @@ public static class PlanBuilder
                             PlanStart = cursor,
                             PlanEnd = cursor,
                             Note = entry.Note,
-                            KeyTotal = options.KeyOffset,
-                            SongPitchClass = options.PitchClassAt(options.KeyOffset),
+                            KeyTotal = before?.KeyTotal ?? options.KeyOffset,
+                            SongPitchClass = before is null ? options.PitchClassAt(options.KeyOffset) : before.SongPitchClass,
+                            HoldPad = entry.Hold.Pad,
+                            HoldClick = entry.Hold.Click,
                         });
+
+                        // GO starts with a count-in of click, if the hold asks for one (ARR-38).
+                        if (entry.Hold.CountInBars > 0)
+                        {
+                            var bars = entry.Hold.CountInBars;
+                            items.Add(new PlanItem
+                            {
+                                Id = $"{entry.Id}:count-in",
+                                Kind = PlanItemKind.CountIn,
+                                Label = "Count-in",
+                                EntryId = entry.Id,
+                                EntryIndex = index,
+                                PlanStart = cursor,
+                                PlanEnd = cursor + bars * barLen,
+                                LengthBars = bars,
+                                ToBar = bars,
+                                AfterHold = true,
+                                KeyTotal = before?.KeyTotal ?? options.KeyOffset,
+                                SongPitchClass = before is null ? options.PitchClassAt(options.KeyOffset) : before.SongPitchClass,
+                            });
+                            cursor += bars * barLen;
+                        }
+
                         break;
+                    }
                 }
             }
         }
@@ -227,8 +258,10 @@ public static class PlanBuilder
         srcEnd = Math.Max(srcStart, srcEnd);
         var partial = from > 1 || to < sectionBars;
 
+        // An open repeat is built as all its passes (up to MaxPasses, PB-51); moving on ends it at the end of the pass
+        // that plays. Its readouts count it once (SongPlan).
         var open = entry.Repeat.UntilCued;
-        var passes = open ? 1 : Math.Max(1, entry.Repeat.Count);
+        var passes = open ? Math.Max(1, entry.Repeat.MaxPasses) : Math.Max(1, entry.Repeat.Count);
         for (var pass = 1; pass <= passes; pass++)
         {
             var first = pass == 1;
@@ -308,7 +341,7 @@ public static class PlanBuilder
     /// keeps going for <see cref="PlanOptions.TailBars"/> with a fade-out. It is shortened to the audio left
     /// in the file and left out when that is under half a beat (an Ending that reaches the end of the file).
     /// </summary>
-    private static void AddTail(List<PlanItem> items, PlanOptions options, TempoGrid grid, double durationSec)
+    private static void AddTail(List<PlanItem> items, PlanOptions options, TempoGrid grid, double durationSec, string id = "tail")
     {
         var last = items.LastOrDefault();
         if (last is null || last.Kind != PlanItemKind.Section || last.Ending == EndingMode.Cut || options.TailBars <= 0)
@@ -326,7 +359,7 @@ public static class PlanBuilder
 
         items.Add(new PlanItem
         {
-            Id = "tail",
+            Id = id,
             Kind = PlanItemKind.Tail,
             Label = "Ending",
             HasSource = true,

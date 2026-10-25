@@ -17,17 +17,17 @@ public class ArrangementTests
     private static readonly TempoGrid B = SectionTests.B;
     private const double DurationB = SectionTests.DurationB;
 
-    private static List<SectionInfo> InfosA() => SectionList.Describe(SectionTests.FixtureASections(), A, DurationA);
+    internal static List<SectionInfo> InfosA() => SectionList.Describe(SectionTests.FixtureASections(), A, DurationA);
 
     // Fixture B after Detect (AT-35): Verse 1…5, Chorus ×4, Tag, Outro, Ending.
-    private static List<SectionInfo> InfosB() => SectionList.Describe(
+    internal static List<SectionInfo> InfosB() => SectionList.Describe(
         new (string Name, int Bar)[]
         {
             ("Verse 1", 2), ("Chorus", 11), ("Verse 2", 19), ("Verse 3", 27), ("Chorus", 35), ("Verse 4", 43),
             ("Verse 5", 51), ("Chorus", 59), ("Chorus", 67), ("Tag", 75), ("Outro", 77), ("Ending", 80),
         }.Select(s => Section.Create(s.Name, B.BarToTime(s.Bar), SectionOrigin.Guide)), B, DurationB);
 
-    private static SectionInfo Find(List<SectionInfo> infos, string label) => infos.Single(i => i.Label == label);
+    internal static SectionInfo Find(List<SectionInfo> infos, string label) => infos.Single(i => i.Label == label);
 
     // Fixture A's "Demo" variant: Intro, then Chorus 1 twice.
     private static Arrangement Demo(List<SectionInfo> infos) => new()
@@ -234,8 +234,10 @@ public class ArrangementTests
         };
         var plan = PlanBuilder.Build(A, infos, DurationA, arrangement);
         Assert.True(plan.Items[0].IsOpen);
-        Assert.Equal(1, plan.Items.Count(i => i.EntryId == arrangement.Entries[0].Id));
+        Assert.Equal(16, plan.Items.Count(i => i.EntryId == arrangement.Entries[0].Id)); // built as every pass, 16 at most (PB-51)
+        Assert.Equal([1, 2, 3], plan.Items.Take(3).Select(i => i.Pass));
         Assert.True(plan.HasOpenEnd);
+        Assert.Equal(15 * 35.0, plan.ExtraOpenSec, 6); // the 15 further passes of a 14-bar chorus
         Assert.EndsWith("+", plan.At(0).Time);
         Assert.Equal("until cued", plan.At(0).NowPass);
         Assert.EndsWith("+", ArrangementSummary.Totals(plan));
@@ -259,11 +261,12 @@ public class ArrangementTests
             ],
         };
         var plan = PlanBuilder.Build(A, infos, DurationA, arrangement);
-        Assert.Equal([PlanItemKind.Click, PlanItemKind.Section, PlanItemKind.Hold, PlanItemKind.Pad, PlanItemKind.Section],
+        // The intro rings out before the hold, and GO starts with a 1-bar count-in (PB-41, PB-52).
+        Assert.Equal([PlanItemKind.Click, PlanItemKind.Section, PlanItemKind.Tail, PlanItemKind.Hold, PlanItemKind.CountIn, PlanItemKind.Pad, PlanItemKind.Section],
             plan.Items.Select(i => i.Kind));
         Assert.False(plan.Items[0].HasSource);
         Assert.Equal(10.0, plan.Items[0].Length, 6);
-        Assert.Equal(0.0, plan.Items[2].Length);
+        Assert.Equal(0.0, plan.Items[3].Length);
         Assert.Null(plan.SourceAt(1));
         Assert.Equal("CLICK", plan.At(1).NowLabel);
         Assert.Equal("bar 1 / 4", plan.At(1).NowDetail);
@@ -271,14 +274,14 @@ public class ArrangementTests
 
         // The engine gets contiguous segments; the hold has no length and the click is silent.
         var segments = plan.Segments();
-        Assert.Equal(4, segments.Count);
+        Assert.Equal(6, segments.Count);
         Assert.Null(segments[0].Src);
         for (var i = 1; i < segments.Count; i++)
             Assert.Equal(segments[i - 1].End, segments[i].Start, 9);
 
         // The pad bars after the hold carry their note into the NEXT card (ARR-37).
-        Assert.Equal("HOLD", plan.At(10).NextLabel);
-        Assert.Equal("Pray", plan.At(10 + 25).NextNote == string.Empty ? plan.Items[3].Note : plan.At(10 + 25).NextNote);
+        Assert.Equal("HOLD", plan.At(10).NextLabel); // the ring-out belongs to the intro, not a card of its own
+        Assert.Equal("Pray", plan.Items.Single(i => i.Kind == PlanItemKind.Pad).Note);
     }
 
     [Fact]

@@ -75,6 +75,18 @@ public sealed record PlanItem
     public string? Note { get; init; }
     public EndingMode Ending { get; init; }
 
+    /// <summary>Hold: the pad fades in while it waits (ARR-38, PB-52).</summary>
+    public bool HoldPad { get; init; }
+
+    /// <summary>Hold: the click keeps running at the song tempo while it waits.</summary>
+    public bool HoldClick { get; init; }
+
+    /// <summary>The count-in that starts when GO releases a hold (PB-52).</summary>
+    public bool AfterHold { get; init; }
+
+    /// <summary>Added while playing (a vamp pass, a repeat once, a jump target) rather than by the arrangement (PB-40 origin).</summary>
+    public bool IsLive { get; init; }
+
     public double Length => PlanEnd - PlanStart;
     public bool IsOpen => Passes == 0;
 
@@ -103,6 +115,12 @@ public sealed record PlanSegment(double Start, double End, double? Src, double F
 
 /// <summary>The song grid in plan seconds, for the engine's click (PB-70): bar 1 beat 1, the beat length, beats per bar.</summary>
 public sealed record PlanGrid(double Origin, double Beat, int BeatsPerBar);
+
+/// <summary>
+/// Where the plan clock waits for GO (PB-52). <paramref name="AtSec"/> is the plan second; the pad, if any, plays the pitch
+/// class of the item before it; the click runs at the song tempo.
+/// </summary>
+public sealed record PlanHold(double AtSec, bool Pad, int? PadKey, bool Click);
 
 /// <summary>What the header shows at a position (PB-30…35, LIVE-20 rule 4, LIVE-10).</summary>
 public sealed record PlanReadout(
@@ -144,10 +162,14 @@ public sealed class SongPlan
         SongGrid = chartGrid.WithOrigin(P0);
         SourceGrid = chartGrid.WithOrigin(sections.Count > 0 ? sections.Min(x => x.StartSec) : chartGrid.FirstDownbeatSec);
 
+        // PB-33: an open repeat counts as one pass in every total; its further passes are only built so the engine can play them.
+        ExtraOpenSec = items.Where(i => i.IsOpen && i.Pass > 1).Sum(i => i.Length);
+        ExpectedDurationSec = DurationSec - ExtraOpenSec;
+
         var lastBody = items.LastOrDefault(i => i.Kind != PlanItemKind.Tail);
         TotalBars = first is null || lastBody is null
             ? 0
-            : Math.Max(1, (int)Math.Floor((lastBody.PlanEnd - P0) / SongGrid.BarLength + ToleranceSec / SongGrid.BarLength));
+            : Math.Max(1, (int)Math.Floor((lastBody.PlanEnd - ExtraOpenSec - P0) / SongGrid.BarLength + ToleranceSec / SongGrid.BarLength));
         HasOpenEnd = items.Any(i => i.IsOpen || i.Kind == PlanItemKind.Hold);
 
         // SL-30: the transition starts where the last section ends and the tail begins.
@@ -158,8 +180,14 @@ public sealed class SongPlan
     /// <summary>The entry tempo as a factor (PB-30 tf). Plan times stay in source-second units; only clock times divide by it.</summary>
     public double TempoFactor { get; }
 
-    /// <summary>The plan's length in seconds as heard at the entry tempo (PB-33, ARR-80).</summary>
-    public double HeardDurationSec => DurationSec / TempoFactor;
+    /// <summary>The plan's announced length as heard at the entry tempo, open repeats counted once (PB-33, ARR-80).</summary>
+    public double HeardDurationSec => ExpectedDurationSec / TempoFactor;
+
+    /// <summary>Plan seconds the further passes of open repeats add; not part of the announced length.</summary>
+    public double ExtraOpenSec { get; }
+
+    /// <summary>The plan length with open repeats counted once.</summary>
+    public double ExpectedDurationSec { get; }
 
     /// <summary>Plan time where the transition to the next entry starts: the start of the tail, or the end of the plan (SL-30).</summary>
     public double TransitionPointSec { get; }
@@ -250,6 +278,83 @@ public sealed class SongPlan
     public PlanGrid Grid => new(P0, SongGrid.BeatLength, SongGrid.BeatsPerBar);
 
     /// <summary>The plan as the engine plays it. Holds have no length and are left out (they arrive in M5).</summary>
+    /// <summary>
+    /// The items as the screen shows them: an open repeat as one block (its further passes hidden) and every time on the
+    /// effective clock (<see cref="EffectiveSec"/>), so the timeline and the plan strip agree with the song bars.
+    /// </summary>
+    public IReadOnlyList<PlanItem> DisplayItems => _display ??= BuildDisplay();
+
+    private IReadOnlyList<PlanItem>? _display;
+
+    private List<PlanItem> BuildDisplay()
+    {
+        var result = new List<PlanItem>(Items.Count);
+        var skipped = 0.0;
+        foreach (var item in Items)
+        {
+            if (item.IsOpen && item.Pass > 1)
+            {
+                skipped += item.Length;
+                continue;
+            }
+
+            result.Add(skipped == 0 ? item : item with { PlanStart = item.PlanStart - skipped, PlanEnd = item.PlanEnd - skipped });
+        }
+
+        return result;
+    }
+
+    /// <summary>The plan position of an effective position: in the first pass of an open repeat, never in a further one (seeking).</summary>
+    public double FromEffective(double effectiveSec)
+    {
+        double skipped = 0;
+        foreach (var item in Items)
+        {
+            if (item.IsOpen && item.Pass > 1)
+            {
+                skipped += item.Length;
+                continue;
+            }
+
+            var start = item.PlanStart - skipped;
+            if (effectiveSec < start + item.Length - 1e-9 || item.Kind == PlanItemKind.Hold && effectiveSec <= start + 1e-9)
+                return Math.Max(item.PlanStart, effectiveSec + skipped);
+        }
+
+        return DurationSec;
+    }
+
+    public IReadOnlyList<PlanHold> Holds() =>
+        Items.Select((item, index) => (item, index)).Where(x => x.item.Kind == PlanItemKind.Hold)
+            .Select(x => new PlanHold(x.item.PlanStart, x.item.HoldPad, x.item.HoldPad ? x.item.SongPitchClass : null, x.item.HoldClick))
+            .ToList();
+
+    /// <summary>
+    /// The plan position with open repeats counted once: inside a further pass it is the same place as in the first
+    /// pass, and everything after an open repeat is earlier by the extra passes. The song bar, the total and the
+    /// remaining time use it (PB-32, PB-33).
+    /// </summary>
+    public double EffectiveSec(double planSec)
+    {
+        if (Items.Count == 0 || ExtraOpenSec <= 0)
+            return planSec;
+
+        var index = ItemIndexAt(planSec);
+        var item = Items[index];
+        double SkipBefore(int upTo) => Items.Take(upTo).Where(i => i.IsOpen && i.Pass > 1).Sum(i => i.Length);
+
+        if (item.IsOpen && item.Pass > 1)
+        {
+            for (var first = 0; first < index; first++)
+            {
+                if (Items[first].EntryId == item.EntryId && Items[first].IsOpen && Items[first].Pass == 1)
+                    return Items[first].PlanStart - SkipBefore(first) + (planSec - item.PlanStart);
+            }
+        }
+
+        return planSec - SkipBefore(index);
+    }
+
     public IReadOnlyList<PlanSegment> Segments() =>
         Items.Where(i => i.Length > 0)
             .Select(i => new PlanSegment(i.PlanStart, i.PlanEnd, i.HasSource ? i.SrcStart : null, i.FadeInSec, i.FadeOutSec, i.MutedTrackIds)
@@ -266,14 +371,15 @@ public sealed class SongPlan
     public PlanReadout At(double planSec)
     {
         planSec = Math.Clamp(planSec, 0, Math.Max(0, DurationSec));
+        var effective = EffectiveSec(planSec);
         var songBar = TotalBars > 0 || Items.Count > 0
-            ? $"bar {Readouts.SongBar(SongGrid, planSec)} / {TotalBars.ToString(CultureInfo.InvariantCulture)}"
+            ? $"bar {Readouts.SongBar(SongGrid, effective)} / {TotalBars.ToString(CultureInfo.InvariantCulture)}"
             : string.Empty;
 
         var open = Items.Any(i => i.PlanStart + i.Length > planSec && (i.IsOpen || i.Kind == PlanItemKind.Hold));
         // PB-33: clock times at the entry tempo.
         var elapsed = Format.Clock(planSec / TempoFactor);
-        var remaining = "−" + Format.Clock(Math.Max(0, DurationSec - planSec) / TempoFactor) + (open ? "+" : string.Empty);
+        var remaining = "−" + Format.Clock(Math.Max(0, ExpectedDurationSec - effective) / TempoFactor) + (open ? "+" : string.Empty);
         var time = $"{elapsed} / {remaining}";
 
         var source = SourceAt(planSec);
@@ -305,7 +411,10 @@ public sealed class SongPlan
 
         var nowPass = item.IsOpen ? "until cued" : item.Passes > 1 ? $"pass {item.Pass.ToString(CultureInfo.InvariantCulture)} of {item.Passes.ToString(CultureInfo.InvariantCulture)}" : string.Empty;
 
-        var next = Items.Skip(index + 1).FirstOrDefault(i => i.Length > 0 || i.Kind == PlanItemKind.Hold);
+        var upcoming = Items.Skip(index + 1).Where(i => i.Length > 0 || i.Kind == PlanItemKind.Hold).Take(2).ToList();
+        var next = upcoming.FirstOrDefault();
+        if (next?.Kind == PlanItemKind.Tail && upcoming.Count > 1 && upcoming[1].Kind == PlanItemKind.Hold)
+            next = upcoming[1]; // the ring-out before a hold belongs to the section; the card says HOLD
         var nextLabel = NextLabel(item, next);
         var tag = IsAsWritten ? "AS WRITTEN" : "ARRANGEMENT";
         return new PlanReadout(

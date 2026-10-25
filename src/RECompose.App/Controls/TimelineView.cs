@@ -125,9 +125,15 @@ public sealed class TimelineView : Control
     internal string? DraggedSection => _boundaryDrag;
     internal double DragX => _boundaryX;
 
-    internal bool Heard => AsHeard && Song is not null && Song.Plan.Items.Count > 0;
+    internal bool Heard => AsHeard && Song is not null && Song.Plan.DisplayItems.Count > 0;
 
-    internal double Duration => Math.Max(1, Heard ? Song!.Plan.DurationSec : Song?.DurationSec ?? 1);
+    internal double Duration => Math.Max(1, Heard ? Song!.Plan.ExpectedDurationSec : Song?.DurationSec ?? 1);
+
+    /// <summary>The playhead on the timeline's clock: open repeats count once, so a vamp loops in place (PB-33).</summary>
+    internal double ShownPosition => Heard ? Song!.Plan.EffectiveSec(Position) : Position;
+
+    /// <summary>A click on the timeline as a plan time for the engine (the first pass of an open repeat).</summary>
+    private double SeekTime(double x) => Heard ? Song!.Plan.FromEffective(TimeAt(x)) : TimeAt(x);
 
     internal PlanItem? DraggedItem => _entryMode == EntryDragMode.None || !_entryMoved ? null : _entryItem;
     internal EntryDragMode DragMode => _entryMode;
@@ -227,10 +233,10 @@ public sealed class TimelineView : Control
     {
         if (!Follow || !IsPlaying || _pixelsPerSecond is null || _dragging)
             return;
-        var x = XAt(Position);
+        var x = XAt(ShownPosition);
         if (x < 0 || x > Bounds.Width * 0.9)
         {
-            _offsetSec = ClampOffset(Position - Bounds.Width * 0.1 / PixelsPerSecond);
+            _offsetSec = ClampOffset(ShownPosition - Bounds.Width * 0.1 / PixelsPerSecond);
             _waves.InvalidateVisual();
         }
     }
@@ -335,7 +341,7 @@ public sealed class TimelineView : Control
             return;
         _dragging = true;
         e.Pointer.Capture(this);
-        SeekRequested?.Invoke(TimeAt(p.X));
+        SeekRequested?.Invoke(SeekTime(p.X));
         e.Handled = true;
     }
 
@@ -368,7 +374,7 @@ public sealed class TimelineView : Control
             if (!_dragging || DateTime.UtcNow - _lastScrub < TimeSpan.FromMilliseconds(60))
                 return;
             _lastScrub = DateTime.UtcNow;
-            SeekRequested?.Invoke(TimeAt(p.X));
+            SeekRequested?.Invoke(SeekTime(p.X));
             return;
         }
 
@@ -376,7 +382,7 @@ public sealed class TimelineView : Control
         if (!_dragging || DateTime.UtcNow - _lastScrub < TimeSpan.FromMilliseconds(60))
             return;
         _lastScrub = DateTime.UtcNow;
-        SeekRequested?.Invoke(TimeAt(p.X)); // scrub
+        SeekRequested?.Invoke(SeekTime(p.X)); // scrub
     }
 
     protected override void OnPointerReleased(PointerReleasedEventArgs e)
@@ -433,7 +439,7 @@ public sealed class TimelineView : Control
             return;
         _dragging = false;
         e.Pointer.Capture(null);
-        SeekRequested?.Invoke(TimeAt(e.GetPosition(this).X));
+        SeekRequested?.Invoke(SeekTime(e.GetPosition(this).X));
     }
 
     protected override void OnPointerWheelChanged(PointerWheelEventArgs e)
@@ -461,11 +467,11 @@ public sealed class TimelineView : Control
         if (Song is null)
             return null;
         var t = TimeAt(x);
-        var hit = Song.Plan.Items.LastOrDefault(i => i.EntryId is not null && i.PlanStart <= t + 1e-6 && t < Math.Max(i.PlanEnd, i.PlanStart + 6 / PixelsPerSecond));
+        var hit = Song.Plan.DisplayItems.LastOrDefault(i => i.EntryId is not null && i.PlanStart <= t + 1e-6 && t < Math.Max(i.PlanEnd, i.PlanStart + 6 / PixelsPerSecond));
         if (hit is not null)
             return hit;
         // Edges are grabbed from just outside the block as well.
-        return Song.Plan.Items.Where(i => i.EntryId is not null && (Math.Abs(XAt(i.PlanStart) - x) <= GrabPixels || Math.Abs(XAt(i.PlanEnd) - x) <= GrabPixels))
+        return Song.Plan.DisplayItems.Where(i => i.EntryId is not null && (Math.Abs(XAt(i.PlanStart) - x) <= GrabPixels || Math.Abs(XAt(i.PlanEnd) - x) <= GrabPixels))
             .OrderBy(i => Math.Abs(XAt(i.PlanEnd) - x)).FirstOrDefault();
     }
 
@@ -473,7 +479,7 @@ public sealed class TimelineView : Control
     private List<EntrySpan> EntrySpans() =>
         Song is null
             ? []
-            : Song.Plan.Items.Where(i => i.EntryId is not null)
+            : Song.Plan.DisplayItems.Where(i => i.EntryId is not null)
                 .GroupBy(i => i.EntryIndex)
                 .OrderBy(g => g.Key)
                 .Select(g => new EntrySpan(g.Key, g.First().EntryId!, g.Min(i => i.PlanStart), g.Max(i => i.PlanEnd)))
@@ -632,7 +638,7 @@ public sealed class TimelineView : Control
             var onSection = owner.Brush("text-on-section");
             var neutralText = owner.Brush("text-secondary");
             var focus = new Pen(owner.Brush("focus-ring"), 2);
-            foreach (var item in song.Plan.Items)
+            foreach (var item in song.Plan.DisplayItems)
             {
                 var x0 = Math.Round(owner.XAt(item.PlanStart));
                 var x1 = Math.Round(owner.XAt(item.PlanEnd));
@@ -680,7 +686,7 @@ public sealed class TimelineView : Control
             var columnItems = new PlanItem?[heard ? (int)Math.Ceiling(width) : 0];
             if (heard)
             {
-                var items = song.Plan.Items;
+                var items = song.Plan.DisplayItems;
                 var k = 0;
                 for (var x = 0; x < columnItems.Length; x++)
                 {
@@ -828,7 +834,7 @@ public sealed class TimelineView : Control
                 }
             }
 
-            var x = Math.Round(owner.XAt(owner.Position)) + 0.5;
+            var x = Math.Round(owner.XAt(owner.ShownPosition)) + 0.5;
             if (x < 0 || x > Bounds.Width)
                 return;
 
