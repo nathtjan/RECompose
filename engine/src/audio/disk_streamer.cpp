@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "audio/disk_streamer.h"
 
+#include "audio/click.h"
+
 #include <CDSPResampler.h>
 
 #include <algorithm>
@@ -101,8 +103,50 @@ namespace
     }
 } // namespace
 
+// The generated click track: silence with a click on every beat that starts in a click segment.
+int DiskStreamer::fillClick (Song& song, Track& track, int maxBlocks)
+{
+    const auto request = song.currentRequest();
+    const auto* plan = song.plan.load (std::memory_order_acquire);
+    if (request.generation != track.diskGeneration)
+    {
+        track.diskGeneration = request.generation;
+        track.diskNextFrame = request.frame;
+    }
+
+    int written = 0;
+    while (written < maxBlocks)
+    {
+        if (song.currentRequest().generation != track.diskGeneration)
+            break;
+        auto* block = track.queue.writable();
+        if (block == nullptr)
+            break;
+
+        const auto position = track.diskNextFrame;
+        auto& buffer = track.mainBuffer[0];
+        std::fill (buffer.begin(), buffer.end(), 0.0f);
+        renderClick (*plan, position, kBlockFrames, song.sampleRate, buffer.data());
+        std::copy_n (buffer.begin(), kBlockFrames, block->data);
+        block->generation = track.diskGeneration;
+        block->startFrame = position;
+        block->frames = kBlockFrames;
+
+        if (song.currentRequest().generation != track.diskGeneration)
+            break;
+        track.queue.publish();
+        track.diskNextFrame = position + kBlockFrames;
+        track.bufferedGeneration.store (track.diskGeneration);
+        ++written;
+    }
+
+    return written;
+}
+
 int DiskStreamer::fillTrack (Song& song, Track& track, int maxBlocks)
 {
+    if (track.generatedClick)
+        return fillClick (song, track, maxBlocks);
     if (track.missing || track.reader == nullptr)
         return 0;
 

@@ -32,6 +32,8 @@ public:
     static int fillTrack (Song& song, Track& track, int maxBlocks);
 
 private:
+    static int fillClick (Song& song, Track& track, int maxBlocks);
+
     void run() override;
 
     std::mutex mutex_;

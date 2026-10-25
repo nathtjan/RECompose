@@ -709,7 +709,10 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                 var (channel, width) = _settings.Audio.Resolve(t.Output);
                 var m = mix.For(t.Id);
                 return new EngineTrack(t.Id, t.File, channel, width, m.GainDb <= TrackViewModel.MinimumDb ? -100 : m.GainDb, m.Mute, m.Solo, t.IsClickOrGuide);
-            });
+            }).ToList();
+            // The engine's click for count-ins and click bars, on the Cue output (PB-70, PB-85).
+            var (cueChannel, cueWidth) = _settings.Audio.Resolve("cue");
+            tracks.Add(EngineTrack.Click(cueChannel, cueWidth));
             loaded = await engine.LoadSongAsync(model.Id, tracks, mix.MasterGainDb, startFrame);
         }
 
@@ -853,7 +856,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                 _seekSentAt = DateTime.UtcNow;
             }
 
-            await engine.SetPlanAsync(song.Plan.Segments(), positionSec);
+            await engine.SetPlanAsync(song.Plan.Segments(), positionSec, song.Plan.Grid);
         }
         catch (Exception ex) when (ex is EngineErrorException or EngineDisconnectedException or OperationCanceledException)
         {
@@ -1175,6 +1178,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                 await engine.SetTrackAsync(track.Id, output: a.Resolve(track.Track.Output));
                 track.OutputLabel = Outputs.Label(track.Track.Output);
             }
+            await engine.SetTrackAsync(EngineTrack.ClickTrackId, output: a.Resolve("cue"));
             ShowToast($"Main on {OutputRef.Direct(a.MainChannel, a.MainWidth).Label}, Cue on {OutputRef.Direct(a.CueChannel, a.CueWidth).Label}");
         }
     }

@@ -5,6 +5,7 @@
 // quality (PB-2), missing files (REL-50).
 #include "check.h"
 
+#include "audio/click.h"
 #include "audio/disk_streamer.h"
 #include "audio/player.h"
 #include "audio/song.h"
@@ -524,4 +525,90 @@ TEST ("plan: a new plan keeps the playhead where it was told (PB-40)")
     for (int i = 800; i < 2000; ++i) // plan frame 5000 + i is source 10000 + 1000 + i
         exact = exact && decodeRamp (out[0][static_cast<std::size_t> (i)]) == 11000 + i;
     CHECK (exact);
+}
+
+namespace
+{
+// Sign changes of a click, a stand-in for its pitch: the accent (beat 1) is higher.
+int signChanges (const std::vector<float>& x, std::size_t from, std::size_t count)
+{
+    int n = 0;
+    for (auto i = from + 1; i < from + count; ++i)
+        if ((x[i - 1] < 0.0f) != (x[i] < 0.0f))
+            ++n;
+    return n;
+}
+
+bool silentBetween (const std::vector<float>& x, std::size_t from, std::size_t to)
+{
+    for (auto i = from; i < to; ++i)
+        if (std::abs (x[i]) > 1.0e-6f)
+            return false;
+    return true;
+}
+} // namespace
+
+TEST ("click: a count-in clicks on the grid to the sample, accented on beat 1 (PB-70, SL-36)")
+{
+    // 120 BPM in 4/4: a beat is 24000 frames. Bar 1 is at 120000; the count-in bar before it clicks.
+    const auto file = writeWav ("click-song.wav", kRate, 1, 200000, [] (int, int) { return 0.0f; });
+    TrackSpec click;
+    click.id = "generated-click";
+    click.generated = "click";
+    click.outputChannel = 0;
+    click.outputWidth = 1;
+    click.soloSafe = true;
+    Rig rig ({ spec (file, "music", 0, 1), click }, 1);
+
+    auto plan = makePlan ({ seg (0, 24000, 0), seg (24000, 120000, -1), seg (120000, 168000, 0) });
+    plan->segments[1].click = true;
+    plan->gridOrigin = 120000.0;
+    plan->beatFrames = 24000.0;
+    plan->beatsPerBar = 4;
+    rig.setPlan (std::move (plan));
+
+    rig.send (Command::Type::play);
+    const auto out = rig.render (168000);
+    const auto& x = out[0];
+    const auto clickLength = static_cast<std::size_t> (kClickMs * kRate / 1000.0);
+
+    // Each beat of the count-in starts on its frame at −6 dBFS; nothing comes before it.
+    for (const std::size_t beat : { 24000u, 48000u, 72000u, 96000u })
+    {
+        CHECK (near (x[beat], kClickPeak, 1.0e-4f));
+        CHECK (std::abs (x[beat - 1]) < 1.0e-6f);
+    }
+    CHECK (silentBetween (x, 0, 24000));                       // the segment before has no click
+    CHECK (silentBetween (x, 24000 + clickLength, 48000));     // between beats
+    CHECK (silentBetween (x, 96000 + clickLength, 168000));    // bar 1 is music: the click stops
+
+    // Beat 1 of the count-in bar is the accent.
+    CHECK (signChanges (x, 24000, clickLength) > signChanges (x, 48000, clickLength));
+}
+
+TEST ("click: rendering in pieces gives the same samples as in one go (PB-70)")
+{
+    Plan plan;
+    PlanSegment all;
+    all.start = 0;
+    all.end = 100000;
+    all.src = -1;
+    all.click = true;
+    plan.segments.push_back (all);
+    plan.lengthFrames = 100000;
+    plan.gridOrigin = 1000.5; // off the frame grid: each beat is rounded once
+    plan.beatFrames = 20833.333;
+    plan.beatsPerBar = 3;
+
+    std::vector<float> whole (100000, 0.0f), pieces (100000, 0.0f);
+    renderClick (plan, 0, 100000, kRate, whole.data());
+    for (int at = 0; at < 100000; at += 777)
+        renderClick (plan, at, std::min (777, 100000 - at), kRate, pieces.data() + at);
+
+    bool same = true;
+    for (std::size_t i = 0; i < whole.size(); ++i)
+        same = same && whole[i] == pieces[i];
+    CHECK (same);
+    CHECK (near (whole[static_cast<std::size_t> (beatFrame (plan, 0))], kClickPeak, 1.0e-4f));
+    CHECK (beatFrame (plan, 1) == 21834); // 1000.5 + 20833.333 = 21833.833, rounded once
 }

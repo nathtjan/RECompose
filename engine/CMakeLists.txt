@@ -143,6 +143,7 @@ add_library(recompose_engine_core STATIC
     src/tools.cpp
     src/analysis.cpp
     src/audio/song.cpp
+    src/audio/click.cpp
     src/audio/disk_streamer.cpp
     src/audio/player.cpp)
 

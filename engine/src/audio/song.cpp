@@ -98,7 +98,14 @@ std::unique_ptr<Song> loadSong (std::string id, std::vector<TrackSpec> specs, do
         track->outputWidth.store (spec.outputWidth == 1 ? 1 : 2);
 
         const juce::File file (juce::String::fromUTF8 (spec.file.c_str()));
-        if (! file.existsAsFile())
+        if (spec.generated == "click")
+        {
+            track->generatedClick = true;
+            track->channels = 1;
+            track->sourceRate = engineRate;
+            track->mainBuffer[0].resize (kBlockFrames);
+        }
+        else if (! file.existsAsFile())
         {
             track->missing = true;
             track->problem = "File missing";

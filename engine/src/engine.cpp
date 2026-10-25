@@ -290,6 +290,7 @@ juce::var Engine::loadSong (const juce::var& message)
         spec.mute = flag (t, "mute", false);
         spec.solo = flag (t, "solo", false);
         spec.soloSafe = flag (t, "soloSafe", false);
+        spec.generated = text (t, "generated").toStdString();
         specs.push_back (spec);
     }
 
@@ -300,6 +301,7 @@ juce::var Engine::loadSong (const juce::var& message)
 
     specs_ = std::move (specs);
     planSpec_.clear(); // a new song plays as written until the app sends its plan
+    gridSpec_ = {};
     hasPlan_ = false;
     replaceSong (std::move (song));
 
@@ -316,6 +318,7 @@ juce::var Engine::unloadSong()
 {
     specs_.clear();
     planSpec_.clear();
+    gridSpec_ = {};
     hasPlan_ = false;
     replaceSong (nullptr);
     return Obj().set ("type", "ok");
@@ -416,6 +419,9 @@ std::unique_ptr<audio::Plan> Engine::buildPlan (double rate) const
 {
     auto plan = std::make_unique<audio::Plan>();
     const auto frames = [rate] (double seconds) { return static_cast<std::int64_t> (std::llround (seconds * rate)); };
+    plan->gridOrigin = gridSpec_.origin * rate;
+    plan->beatFrames = gridSpec_.beat * rate;
+    plan->beatsPerBar = gridSpec_.beatsPerBar;
 
     for (const auto& spec : planSpec_)
     {
@@ -429,6 +435,7 @@ std::unique_ptr<audio::Plan> Engine::buildPlan (double rate) const
         segment.src = spec.silent ? -1 : std::max<std::int64_t> (0, frames (spec.src));
         segment.fadeIn = std::min (length, frames (spec.fadeIn));
         segment.fadeOut = std::min (length, frames (spec.fadeOut));
+        segment.click = spec.click;
         segment.muted.assign (specs_.size(), 0);
         for (const auto& id : spec.mute)
             for (std::size_t i = 0; i < specs_.size(); ++i)
@@ -471,6 +478,7 @@ juce::var Engine::setPlan (const juce::var& message)
         spec.src = spec.silent ? 0.0 : static_cast<double> (src);
         spec.fadeIn = std::max (0.0, number (s, "fadeIn", 0.0));
         spec.fadeOut = std::max (0.0, number (s, "fadeOut", 0.0));
+        spec.click = flag (s, "click", false);
         if (const auto* mute = s.getProperty ("mute", {}).getArray())
             for (const auto& id : *mute)
                 if (id.isString())
@@ -480,6 +488,16 @@ juce::var Engine::setPlan (const juce::var& message)
 
     planSpec_ = std::move (parsed);
     hasPlan_ = true;
+
+    // Protocol 4: the song grid the click follows (PB-70). Without it the click has no beats.
+    const auto grid = message.getProperty ("grid", {});
+    gridSpec_ = {};
+    if (grid.isObject())
+    {
+        gridSpec_.origin = number (grid, "origin", 0.0);
+        gridSpec_.beat = std::max (0.0, number (grid, "beat", 0.0));
+        gridSpec_.beatsPerBar = std::max (1, static_cast<int> (number (grid, "beatsPerBar", 4.0)));
+    }
 
     auto plan = buildPlan (song_->sampleRate);
     const auto length = plan->lengthFrames;

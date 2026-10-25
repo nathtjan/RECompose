@@ -51,6 +51,7 @@ struct TrackSpec
     bool mute = false;
     bool solo = false;
     bool soloSafe = false; // click, guide, spoken guide keep playing when others solo (PB-82)
+    std::string generated; // "click": no file, the engine synthesizes it (PB-70)
 };
 
 // The arrangement as the engine executes it (PB-40): contiguous segments in plan frames, each
@@ -65,12 +66,18 @@ struct PlanSegment
     std::int64_t fadeIn = 0;  // frames
     std::int64_t fadeOut = 0; // frames
     std::vector<std::uint8_t> muted; // per track index, 1 = silenced in this segment
+    bool click = false;              // the click generator sounds on the beats in this segment (PB-70)
 };
 
 struct Plan
 {
     std::vector<PlanSegment> segments;
     std::int64_t lengthFrames = 0;
+
+    // The song grid in plan frames (PB-32): beat 0 is bar 1 beat 1, earlier beats are negative.
+    double gridOrigin = 0.0;
+    double beatFrames = 0.0;
+    int beatsPerBar = 4;
 };
 
 // A read position in one stem: resampler state for the engine rate, kept across contiguous
@@ -100,6 +107,7 @@ struct Track
     double sourceRate = 0.0;
     std::int64_t sourceFrames = 0;
     bool missing = false;       // the file could not be opened (REL-50): the track is silent
+    bool generatedClick = false; // synthesized from the plan's grid instead of read from a file
     juce::String problem;
 
     BlockQueue queue;

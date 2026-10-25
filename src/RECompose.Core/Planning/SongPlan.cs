@@ -101,6 +101,9 @@ public sealed record PlanSegment(double Start, double End, double? Src, double F
     public int? Pad { get; init; }
 }
 
+/// <summary>The song grid in plan seconds, for the engine's click (PB-70): bar 1 beat 1, the beat length, beats per bar.</summary>
+public sealed record PlanGrid(double Origin, double Beat, int BeatsPerBar);
+
 /// <summary>What the header shows at a position (PB-30…35, LIVE-20 rule 4, LIVE-10).</summary>
 public sealed record PlanReadout(
     string NowLabel,
@@ -242,6 +245,9 @@ public sealed class SongPlan
 
         return first;
     }
+
+    /// <summary>The song grid the engine's click follows: song bars count from S0 (PB-32).</summary>
+    public PlanGrid Grid => new(P0, SongGrid.BeatLength, SongGrid.BeatsPerBar);
 
     /// <summary>The plan as the engine plays it. Holds have no length and are left out (they arrive in M5).</summary>
     public IReadOnlyList<PlanSegment> Segments() =>

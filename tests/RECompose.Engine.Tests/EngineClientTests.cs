@@ -3,7 +3,7 @@ using RECompose.Core.Audio;
 
 namespace RECompose.Engine.Tests;
 
-// Protocol 3 against the real engine process, rendering offline (no audio device needed).
+// Protocols 3 and 4 against the real engine process, rendering offline (no audio device needed).
 public class EngineClientTests
 {
     private static string Executable()
@@ -138,7 +138,7 @@ public class EngineClientTests
         [
             new RECompose.Core.Planning.PlanSegment(0, 1, 0, 0, 0, []),
             new RECompose.Core.Planning.PlanSegment(1, 2, 3, 0, 0, ["a"]),
-        ], 0, ct);
+        ], 0, ct: ct);
         Assert.Equal(96000, frames);
 
         await client.PlayAsync(ct);
@@ -165,6 +165,66 @@ public class EngineClientTests
             new RECompose.Core.Planning.PlanSegment(1.5, 2, 0, 0, 0, []),
         ], ct: ct));
         Assert.Equal("badMessage", error.Code);
+    }
+
+    [Fact]
+    public async Task PB70_a_generated_count_in_clicks_on_the_cue_output_before_bar_1()
+    {
+        var folder = Folder();
+        var music = TestWav.Write(Path.Combine(folder, "Keys.wav"), 48000, 1, 48000 * 6, (_, _) => 0);
+        var wav = Path.Combine(folder, "render.wav");
+        var ct = TestContext.Current.CancellationToken;
+
+        await using var client = await StartAsync();
+        await client.LoadSongAsync("song-click",
+        [
+            new EngineTrack("keys", music, 0, 1, 0, false, false, false),
+            EngineTrack.Click(1, 1),
+        ], 0, 0, ct);
+
+        // 120 BPM, 4/4: one bar of count-in (plan 0–2 s, clicks on 0, 0.5, 1 and 1.5 s), then bar 1 at 2 s (SL-36).
+        await client.SetPlanAsync(
+        [
+            new RECompose.Core.Planning.PlanSegment(0, 2, null, 0, 0, []) { Click = true },
+            new RECompose.Core.Planning.PlanSegment(2, 4, 0, 0, 0, []),
+        ], 0, new RECompose.Core.Planning.PlanGrid(2, 0.5, 4), ct);
+
+        await client.PlayAsync(ct);
+        var (peak, _, _) = await client.RenderOfflineAsync(48000 * 4, 2, wav, ct);
+        Assert.Equal(0, peak[0], 3);         // the music is silent and on output 1
+        Assert.Equal(0.501, peak[1], 2);     // the click peaks at −6 dBFS on the Cue output
+
+        // Beats 2–4 start exactly on their frames (beat 1 is under Play's 10 ms fade-in); bar 1 has no click.
+        var right = ReadFloatWav(wav, channel: 1);
+        foreach (var beat in new[] { 24000, 48000, 72000 })
+        {
+            Assert.Equal(0.501, right[beat], 3);
+            Assert.Equal(0, right[beat - 1], 6);
+        }
+
+        Assert.All(right.Skip(96000).Take(96000), x => Assert.Equal(0, x, 6));
+    }
+
+    /// <summary>One channel of a 32-bit float WAV written by renderOffline.</summary>
+    private static float[] ReadFloatWav(string path, int channel)
+    {
+        var bytes = File.ReadAllBytes(path);
+        int Chunk(string id)
+        {
+            var at = 12;
+            while (at + 8 <= bytes.Length && System.Text.Encoding.ASCII.GetString(bytes, at, 4) != id)
+                at += 8 + BitConverter.ToInt32(bytes, at + 4) + (BitConverter.ToInt32(bytes, at + 4) & 1);
+            return at;
+        }
+
+        var channels = BitConverter.ToInt16(bytes, Chunk("fmt ") + 10);
+        var data = Chunk("data");
+        var start = data + 8;
+        var frames = BitConverter.ToInt32(bytes, data + 4) / (4 * channels);
+        var result = new float[frames];
+        for (var i = 0; i < frames; i++)
+            result[i] = BitConverter.ToSingle(bytes, start + ((i * channels) + channel) * 4);
+        return result;
     }
 }
 

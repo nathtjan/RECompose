@@ -49,7 +49,17 @@ public sealed record DeviceInfo(
 public sealed record DeviceTypeInfo(string Name, IReadOnlyList<string> Devices);
 
 /// <summary>A track to load: file, device channels and mixer state.</summary>
-public sealed record EngineTrack(string Id, string File, int Channel, int Width, double GainDb, bool Mute, bool Solo, bool SoloSafe);
+public sealed record EngineTrack(string Id, string File, int Channel, int Width, double GainDb, bool Mute, bool Solo, bool SoloSafe)
+{
+    /// <summary>"click": no file, the engine synthesizes the click from the plan's grid (protocol 4, PB-70).</summary>
+    public string? Generated { get; init; }
+
+    /// <summary>The engine's own click, on the given device channels (the Cue output, PB-85).</summary>
+    public static EngineTrack Click(int channel, int width) =>
+        new(ClickTrackId, string.Empty, channel, width, 0, false, false, SoloSafe: true) { Generated = "click" };
+
+    public const string ClickTrackId = "generated-click";
+}
 
 /// <summary>A track as the engine opened it.</summary>
 public sealed record LoadedTrack(string Id, int Channels, double SourceRate, long SourceFrames, bool Missing, string Problem, double GainDb, bool Mute, bool Solo, int Channel, int Width);
@@ -186,7 +196,7 @@ public sealed class EngineClient : IAsyncDisposable
         var list = new JsonArray();
         foreach (var t in tracks)
         {
-            list.Add(new JsonObject
+            var track = new JsonObject
             {
                 ["id"] = t.Id,
                 ["file"] = t.File,
@@ -195,7 +205,10 @@ public sealed class EngineClient : IAsyncDisposable
                 ["mute"] = t.Mute,
                 ["solo"] = t.Solo,
                 ["soloSafe"] = t.SoloSafe,
-            });
+            };
+            if (t.Generated is { } generated)
+                track["generated"] = generated;
+            list.Add(track);
         }
 
         var reply = await Session.Connection.RequestAsync("loadSong", new JsonObject
@@ -231,7 +244,7 @@ public sealed class EngineClient : IAsyncDisposable
     /// Sends the arrangement as timed segments (PB-40). <paramref name="positionSec"/> is where the playhead
     /// resumes, in plan seconds; null keeps the engine's current frame. Returns the plan length in frames.
     /// </summary>
-    public async Task<long> SetPlanAsync(IEnumerable<PlanSegment> segments, double? positionSec = null, CancellationToken ct = default)
+    public async Task<long> SetPlanAsync(IEnumerable<PlanSegment> segments, double? positionSec = null, PlanGrid? grid = null, CancellationToken ct = default)
     {
         var list = new JsonArray();
         foreach (var s in segments)
@@ -239,7 +252,7 @@ public sealed class EngineClient : IAsyncDisposable
             var mute = new JsonArray();
             foreach (var id in s.Mute)
                 mute.Add(id);
-            list.Add(new JsonObject
+            var segment = new JsonObject
             {
                 ["start"] = s.Start,
                 ["end"] = s.End,
@@ -247,10 +260,15 @@ public sealed class EngineClient : IAsyncDisposable
                 ["fadeIn"] = s.FadeIn,
                 ["fadeOut"] = s.FadeOut,
                 ["mute"] = mute,
-            });
+            };
+            if (s.Click)
+                segment["click"] = true;
+            list.Add(segment);
         }
 
         var request = new JsonObject { ["segments"] = list };
+        if (grid is not null)
+            request["grid"] = new JsonObject { ["origin"] = grid.Origin, ["beat"] = grid.Beat, ["beatsPerBar"] = grid.BeatsPerBar };
         if (positionSec is { } position)
             request["position"] = position;
         var reply = await Session.Connection.RequestAsync("setPlan", request, ct).ConfigureAwait(false);

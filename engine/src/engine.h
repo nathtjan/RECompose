@@ -97,9 +97,18 @@ private:
     {
         double start = 0, end = 0, src = 0, fadeIn = 0, fadeOut = 0;
         bool silent = false;
+        bool click = false;
         std::vector<std::string> mute;
     };
     std::vector<PlanSegmentSpec> planSpec_;
+
+    // The song grid of the plan in seconds (protocol 4): bar 1 beat 1, the beat length, beats per bar.
+    struct GridSpec
+    {
+        double origin = 0, beat = 0;
+        int beatsPerBar = 4;
+    };
+    GridSpec gridSpec_;
     bool hasPlan_ = false;
 
     std::atomic<bool> callbackActive_ { false };
