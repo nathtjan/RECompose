@@ -232,7 +232,26 @@ public sealed class SongViewModel : ObservableObject
     public IReadOnlyList<Arrangement> Variants => _model.Arrangements;
 
     /// <summary>The options the plan is built with: the service entry's key, tempo and count-in, or the song's own.</summary>
-    public PlanOptions CurrentPlanOptions => _entry is { } entry ? PlanOptions.For(entry, _model) : PlanOptions.For(_model);
+    public PlanOptions CurrentPlanOptions
+    {
+        get
+        {
+            var options = _entry is { } entry ? PlanOptions.For(entry, _model) : PlanOptions.For(_model);
+            return _practiceFactor < 1 ? options with { TempoFactor = options.TempoFactor * _practiceFactor } : options;
+        }
+    }
+
+    private double _practiceFactor = 1;
+
+    /// <summary>Practice tempo (PB-64): the plan plays slower than the entry tempo; the engine re-streams (a short gap is fine in rehearsal).</summary>
+    public void SetPracticeTempo(double factor)
+    {
+        factor = Math.Clamp(factor, 0.5, 1);
+        if (Math.Abs(factor - _practiceFactor) < 1e-9)
+            return;
+        _practiceFactor = factor;
+        RefreshSections(sameArrangement: true);
+    }
 
     /// <summary>A live change has landed (a jump, a vamp, a move on): the plan that plays is now this one (PB-47).</summary>
     public void AdoptLivePlan(SongPlan plan)

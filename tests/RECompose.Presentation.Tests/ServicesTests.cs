@@ -466,6 +466,8 @@ internal sealed class ServiceDialogs : IDialogs
     public Task<DuplicateChoice> AskDuplicateAsync(string existingTitle) => Task.FromResult(DuplicateChoice.Cancel);
     public Task<bool> ConfirmAsync(string title, string message, string confirmLabel) => Task.FromResult(true);
     public Task<bool> EditAudioSettingsAsync(AudioSettingsViewModel settings) => Task.FromResult(false);
+
+    public Task EditControlsAsync(ControlsViewModel controls) => Task.CompletedTask;
     public Task<ServiceDetails?> AskServiceDetailsAsync(string title, string confirmLabel, ServiceDetails initial) => Task.FromResult(Details);
 
     public Task<VariantScopeAnswer?> AskVariantScopeAsync(string variantName, int otherEntries)

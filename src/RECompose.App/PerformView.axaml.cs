@@ -36,6 +36,12 @@ public partial class PerformView : UserControl
             _ = vm.TapTileAsync(tile);
     }
 
+    private void OnPlayFromHere(object? sender, RoutedEventArgs e)
+    {
+        if (sender is MenuItem { DataContext: TileViewModel tile } && DataContext is MainViewModel vm)
+            _ = vm.PlayFromHereAsync(tile);
+    }
+
     private void OnRailRowClick(object? sender, RoutedEventArgs e)
     {
         if (sender is Button { Tag: string id } && DataContext is MainViewModel vm)

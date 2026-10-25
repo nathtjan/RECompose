@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 using RECompose.Core.Arrangements;
+using RECompose.Core.Controls;
 using RECompose.Core.Library;
 using RECompose.Core.Persistence;
 using RECompose.Core.Planning;
@@ -239,6 +240,119 @@ public sealed class LiveControlTests : IDisposable
             Assert.Equal(LiveOutcome.Queued, move.Outcome);
             await RenderAsync(vm, 8); // the second pass ends at 24 s of the plan, then Verse 2
             await Eventually(() => vm.NextState != NextState.Repeating);
+        }
+        finally
+        {
+            await FinishAsync(vm);
+        }
+    }
+
+    [Fact]
+    public async Task AT25_a_learned_pedal_releases_the_hold_and_two_presses_within_250_ms_count_once()
+    {
+        var (vm, _) = await StartAsync("V1 HOLD C");
+        try
+        {
+            await vm.EngineForTests!.PlayAsync();
+            await RenderAsync(vm, 13);
+            await Eventually(() => vm.IsHolding);
+
+            // Learn: the next message from a controller binds to GO (LIVE-53).
+            var row = vm.Controls.Rows.First(r => r.Action == ControlAction.Go);
+            vm.Controls.BeginLearn(ControlAction.Go);
+            Assert.True(row.Learning);
+            await vm.EngineForTests.InjectMidiAsync("cc", 1, 64, 127);
+            await Eventually(() => !row.Learning);
+            Assert.Contains("CC 64 ch 1 ≥ 64", row.Inputs);
+            Assert.Contains(vm.Controls.Bindings, b => b.Action == ControlAction.Go && b.Input.Kind == ControlKind.ControlChange);
+
+            // The pedal acts and says so.
+            await vm.EngineForTests.InjectMidiAsync("cc", 1, 64, 0);
+            await vm.EngineForTests.InjectMidiAsync("cc", 1, 64, 127);
+            await Eventually(() => vm.Controls.LastInput == "Pedal: GO");
+            await RenderAsync(vm, 0.5);
+            await Eventually(() => !vm.IsHolding);
+        }
+        finally
+        {
+            await FinishAsync(vm);
+        }
+    }
+
+    [Fact]
+    public async Task LIVE50_the_forward_key_jumps_to_the_next_item_and_the_back_key_cancels()
+    {
+        var (vm, _) = await StartAsync();
+        try
+        {
+            await vm.EngineForTests!.PlayAsync();
+            await RenderAsync(vm, 2);
+            await Eventually(() => vm.State == RECompose.Engine.TransportState.Playing);
+
+            // Verse 1 → the chorus is already next at the end of the section; with Immediately the forward key moves now.
+            vm.Timing = JumpTiming.Immediately;
+            await vm.RunControlAsync(ControlAction.Next, ActionSource.Keys);
+            Assert.True(vm.IsPending);
+            Assert.Equal("NEXT · KEYS · PENDING", vm.Perform!.Next.Tag);
+
+            await vm.RunControlAsync(ControlAction.Back, ActionSource.Keys);
+            Assert.False(vm.IsPending);
+        }
+        finally
+        {
+            await FinishAsync(vm);
+        }
+    }
+
+    [Fact]
+    public async Task ARR70_looping_a_section_puts_a_bar_of_click_between_passes_and_move_on_ends_it()
+    {
+        var (vm, _) = await StartAsync();
+        try
+        {
+            await vm.EngineForTests!.PlayAsync();
+            await RenderAsync(vm, 10); // in the chorus (8–16 s)
+            await Eventually(() => vm.NowLabel == "CHORUS");
+
+            await vm.ToggleLoopAsync();
+            Assert.True(vm.IsPending);
+            await RenderAsync(vm, 6.2); // past 16 s: the loop is the plan now, in its count-in bar (2 s)
+            await Eventually(() => vm.NextState == NextState.Repeating);
+            Assert.True(vm.IsLooping);
+
+            // The count-in bar has only the click (peaking at 0.501 on the one output pair the test machine gives Main and Cue),
+            // then the chorus (0.4) plays again, not Verse 2 (0.6).
+            var countIn = await RenderAsync(vm, 1.5);
+            Assert.Equal(0.501, countIn, 2);
+            await RenderAsync(vm, 0.6);
+            var again = await RenderAsync(vm, 1.5);
+            Assert.Equal(0.4, again, 2);
+
+            await vm.ToggleLoopAsync(); // the same key ends it after this pass
+            Assert.True(vm.IsPending);
+        }
+        finally
+        {
+            await FinishAsync(vm);
+        }
+    }
+
+    [Fact]
+    public async Task PB64_practice_tempo_slows_the_plan_and_service_lock_puts_it_back()
+    {
+        var (vm, _) = await StartAsync();
+        try
+        {
+            var normal = vm.Song!.Plan.HeardDurationSec;
+            vm.PracticePercent = 85;
+            Assert.Equal("Practice 85%", vm.PracticeBadge);
+            Assert.Equal(0.85, vm.Song.Plan.TempoFactor, 6);
+            Assert.Equal(normal / 0.85, vm.Song.Plan.HeardDurationSec, 3);
+
+            vm.IsServiceLock = true;
+            Assert.Equal(100, vm.PracticePercent);
+            Assert.Equal(1.0, vm.Song.Plan.TempoFactor, 6);
+            Assert.Equal(string.Empty, vm.PracticeBadge);
         }
         finally
         {

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
+using Track = RECompose.Core.Library.Track;
 using Avalonia.Headless;
 using Avalonia.Input;
 using Avalonia.Logging;
@@ -245,5 +247,78 @@ public sealed class PerformWindowTests : IDisposable
             window.Close();
             return Task.CompletedTask;
         }, TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
+    public async Task The_page_turner_keys_act_in_Perform_and_Settings_Controls_learns_a_key_and_renders()
+    {
+        var sink = new CollectingSink();
+        await HeadlessApp.RunAsync(async () =>
+        {
+            Logger.Sink = sink;
+            var store = SaveLibrary();
+            var missing = Path.Combine(_root, "no-engine", EnginePaths.ExecutableFileName);
+            await using var vm = new MainViewModel(store, new EngineHostOptions(missing, Path.Combine(_root, "e.sock")), new EngineTools(missing),
+                new AvaloniaDispatcher(), new AcceptingDialogs(), new SpeechModel(store.Root, allowDownload: false));
+
+            var window = new MainWindow { DataContext = vm, Width = 1280, Height = 760 };
+            window.Show();
+            await vm.InitializeAsync();
+            await vm.LoadEntryAsync(vm.Setlist.Rows[0].Id);
+            vm.IsPerform = true;
+            vm.ApplySnapshotForTests(Snapshot(vm, 6));
+            Dispatcher.UIThread.RunJobs();
+
+            // The rehearsal helpers are on the status row in Rehearsal lock and gone in Service lock.
+            var perform = window.FindControl<PerformView>("Perform")!;
+            Assert.True(perform.FindControl<ToggleButton>("LoopKey")!.IsVisible);
+            Assert.True(perform.FindControl<ComboBox>("PracticeSelect")!.IsVisible);
+            vm.PracticePercent = 85;
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal("Practice 85%", perform.FindControl<TextBlock>("PracticeBadgeText")!.Text);
+            Shot(window, "perform-5-rehearsal");
+
+            // PageDown: the next plan item (with a change pending, as Immediately would be at once).
+            vm.Timing = JumpTiming.Immediately;
+            window.KeyPressQwerty(PhysicalKey.PageDown, RawInputModifiers.None);
+            Dispatcher.UIThread.RunJobs();
+            Assert.True(vm.IsPending);
+
+            // PageUp cancels it.
+            window.KeyPressQwerty(PhysicalKey.PageUp, RawInputModifiers.None);
+            Dispatcher.UIThread.RunJobs();
+            Assert.False(vm.IsPending);
+
+            // Settings › Controls: the rows, Learn on a key, and the playback options render.
+            var controls = new RECompose.App.Dialogs.ControlsWindow { DataContext = vm.Controls, Width = 640, Height = 640 };
+            controls.Show();
+            Dispatcher.UIThread.RunJobs();
+            var go = vm.Controls.Rows.First(r => r.Action == RECompose.Core.Controls.ControlAction.Go);
+            Assert.Contains("G", go.Inputs);
+            go.LearnCommand.Execute(null);
+            Dispatcher.UIThread.RunJobs();
+            Assert.True(go.Learning);
+            Assert.Equal("Press a key or a pedal…", go.LearnLabel);
+            Shot(controls, "controls-1-learning");
+
+            controls.KeyPressQwerty(PhysicalKey.F9, RawInputModifiers.None);
+            Dispatcher.UIThread.RunJobs();
+            Assert.False(go.Learning);
+            Assert.Contains("F9", go.Inputs);
+            Assert.Equal("Not bound", vm.Controls.Rows.First(r => r.Action == RECompose.Core.Controls.ControlAction.Vamp).Inputs.Replace("V", "Not bound"));
+            controls.Close();
+            window.Close();
+        }, TestContext.Current.CancellationToken);
+
+        List<string> problems;
+        lock (sink.Messages)
+        {
+            problems = sink.Messages
+                .Where(m => m.StartsWith("Error", StringComparison.Ordinal)
+                         || (m.Contains("Binding", StringComparison.Ordinal) && !m.EndsWith("Value is null.", StringComparison.Ordinal)))
+                .ToList();
+        }
+
+        Assert.True(problems.Count == 0, "Avalonia reported:" + Environment.NewLine + string.Join(Environment.NewLine, problems.Take(30)));
     }
 }

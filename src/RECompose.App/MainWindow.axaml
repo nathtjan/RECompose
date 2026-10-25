@@ -121,6 +121,13 @@
           </ComboBox.ItemTemplate>
         </ComboBox>
 
+        <Button DockPanel.Dock="Right" Command="{Binding OpenControlsCommand}" ToolTip.Tip="Keys, pedals and jump timing" Margin="12,0,0,0" VerticalAlignment="Center"
+                AutomationProperties.Name="Controls">
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <c:Icon Glyph="pedal" IconSize="16" VerticalAlignment="Center" />
+            <TextBlock Text="Controls" VerticalAlignment="Center" />
+          </StackPanel>
+        </Button>
         <Button DockPanel.Dock="Right" Command="{Binding OpenSettingsCommand}" ToolTip.Tip="Settings (Ctrl+,)" Margin="12,0,0,0" VerticalAlignment="Center">
           <StackPanel Orientation="Horizontal" Spacing="6">
             <c:Icon Glyph="settings" IconSize="16" VerticalAlignment="Center" />

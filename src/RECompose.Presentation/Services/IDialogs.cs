@@ -42,6 +42,9 @@ public interface IDialogs
     /// <summary>Settings › Audio. True = Apply.</summary>
     Task<bool> EditAudioSettingsAsync(AudioSettingsViewModel settings);
 
+    /// <summary>Settings › Playback and › Controls (SET-20, SET-28). Edits the view model in place.</summary>
+    Task EditControlsAsync(ControlsViewModel controls);
+
     /// <summary>New service, Duplicate service and Rename (SL-2): a name and an optional date and time. Null = Cancel.</summary>
     Task<ServiceDetails?> AskServiceDetailsAsync(string title, string confirmLabel, ServiceDetails initial);
 

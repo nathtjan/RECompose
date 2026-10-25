@@ -42,6 +42,29 @@ public partial class AudioSettingsWindow : Window
     }
 }
 
+public partial class ControlsWindow : Window
+{
+    public ControlsWindow()
+    {
+        AvaloniaXamlLoader.Load(this);
+        this.FindControl<Button>("CloseButton")!.Click += (_, _) => Close();
+
+        // Learn takes the next key pressed here (LIVE-53); pedals arrive through the engine.
+        AddHandler(KeyDownEvent, (_, e) =>
+        {
+            if (DataContext is ControlsViewModel controls && controls.IsLearning)
+            {
+                if (e.Key == Avalonia.Input.Key.Escape)
+                    controls.CancelLearn();
+                else if (ControlKeys.Name(e) is { } name)
+                    controls.Key(name, true);
+                e.Handled = true;
+            }
+        }, Avalonia.Interactivity.RoutingStrategies.Tunnel);
+        Closed += (_, _) => (DataContext as ControlsViewModel)?.CancelLearn();
+    }
+}
+
 /// <summary>The app's dialogs and pickers for the view models.</summary>
 public sealed class AvaloniaDialogs(Window owner) : IDialogs
 {
@@ -59,6 +82,12 @@ public sealed class AvaloniaDialogs(Window owner) : IDialogs
     {
         var window = new ImportReviewWindow { DataContext = review };
         return await window.ShowDialog<bool>(owner);
+    }
+
+    public async Task EditControlsAsync(ControlsViewModel controls)
+    {
+        var window = new ControlsWindow { DataContext = controls };
+        await window.ShowDialog(owner);
     }
 
     public async Task<bool> EditAudioSettingsAsync(AudioSettingsViewModel settings)

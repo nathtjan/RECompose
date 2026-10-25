@@ -256,6 +256,8 @@ internal sealed class AcceptingDialogs : IDialogs
     public Task<bool> ReviewImportAsync(ImportReviewViewModel review) => Task.FromResult(true);
     public Task<DuplicateChoice> AskDuplicateAsync(string existingTitle) => Task.FromResult(DuplicateChoice.Cancel);
     public Task<bool> EditAudioSettingsAsync(AudioSettingsViewModel settings) => Task.FromResult(false);
+
+    public Task EditControlsAsync(ControlsViewModel controls) => Task.CompletedTask;
     public Task<bool> ConfirmAsync(string title, string message, string confirmLabel) => Task.FromResult(true);
     public Task<ServiceDetails?> AskServiceDetailsAsync(string title, string confirmLabel, ServiceDetails initial) => Task.FromResult<ServiceDetails?>(initial);
     public Task<VariantScopeAnswer?> AskVariantScopeAsync(string variantName, int otherEntries) => Task.FromResult<VariantScopeAnswer?>(new VariantScopeAnswer(VariantScope.ThisService, false));

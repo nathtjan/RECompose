@@ -14,6 +14,9 @@ public enum LiveActionKind
 
     /// <summary>Repeat the current section until moved on.</summary>
     Vamp,
+
+    /// <summary>Rehearsal: repeat the current section until moved on, with a bar of click between passes (ARR-70).</summary>
+    Loop,
     RepeatOnce,
 
     /// <summary>Go to the ending: the next Ending or Outro, the song's Ending, or the ring-out.</summary>
@@ -146,7 +149,8 @@ public sealed class LivePlan
             LiveActionKind.JumpToItem => JumpToItem(plan, action, anchor),
             LiveActionKind.JumpToSection => JumpToSection(plan, action, anchor),
             LiveActionKind.MoveOn => MoveOn(plan, action, anchor),
-            LiveActionKind.Vamp => Vamp(plan, action, anchor),
+            LiveActionKind.Vamp => Vamp(plan, action, anchor, countIn: false),
+            LiveActionKind.Loop => Vamp(plan, action, anchor, countIn: true),
             LiveActionKind.RepeatOnce => RepeatOnce(plan, action, anchor),
             LiveActionKind.End => End(plan, action, anchor),
             _ => new LiveResult(LiveOutcome.Rejected),
@@ -373,7 +377,7 @@ public sealed class LivePlan
         return Queue(plan, action, spot, skip, nextItem?.Label ?? "Ending");
     }
 
-    private LiveResult Vamp(SongPlan plan, LiveAction action, Spot spot)
+    private LiveResult Vamp(SongPlan plan, LiveAction action, Spot spot, bool countIn)
     {
         var item = spot.Item;
         if (item.IsOpen)
@@ -387,6 +391,27 @@ public sealed class LivePlan
         var items = plan.Items.Take(spot.Index).ToList();
         for (var pass = 1; pass <= passes; pass++)
         {
+            if (countIn && pass > 1)
+            {
+                // A bar of click before each further pass (ARR-70). It belongs to the repeat: hidden and counted once like its passes.
+                items.Add(new PlanItem
+                {
+                    Id = $"{item.Id}~{++_serial}",
+                    Kind = PlanItemKind.CountIn,
+                    Label = "Count-in",
+                    EntryId = group,
+                    Pass = pass,
+                    Passes = 0,
+                    PlanStart = 0,
+                    PlanEnd = plan.SongGrid.BarLength,
+                    LengthBars = 1,
+                    ToBar = 1,
+                    KeyTotal = item.KeyTotal,
+                    SongPitchClass = item.SongPitchClass,
+                    IsLive = true,
+                });
+            }
+
             items.Add(item with
             {
                 Id = pass == 1 ? item.Id : $"{item.Id}~{++_serial}",

@@ -319,4 +319,38 @@ public class LivePlanTests
         Assert.Equal(PlanItemKind.Tail, kinds[^1]);
         AssertContiguous(live.Plan);
     }
+
+    [Fact]
+    public void AT16_a_loop_puts_a_bar_of_click_between_passes_counts_once_and_move_on_ends_it()
+    {
+        var live = Live("V1 C V2");
+        var chorus = live.Committed.Items.First(i => i.Label == "Chorus 1");
+
+        var result = live.Apply(new LiveAction(LiveActionKind.Loop), chorus.PlanStart + 1);
+        Assert.Equal(LiveOutcome.Queued, result.Outcome);
+
+        var items = live.Plan.Items;
+        var firstPass = items.Select((item, index) => (item, index)).First(x => x.item.Label == "Chorus 1").index;
+        Assert.Equal(PlanItemKind.CountIn, items[firstPass + 1].Kind);
+        Assert.Equal(Bar, items[firstPass + 1].Length, 6);                // one bar of click between passes
+        Assert.Equal("Chorus 1", items[firstPass + 2].Label);
+        Assert.True(items[firstPass + 1].IsOpen && items[firstPass + 1].Pass == 2);
+        Assert.Equal(16, items.Count(i => i.Label == "Chorus 1"));
+        Assert.Equal(15, items.Count(i => i.Kind == PlanItemKind.CountIn && i.IsLive));
+        AssertContiguous(live.Plan);
+
+        // The screen sees one block; the announced length is unchanged.
+        Assert.Single(live.Plan.DisplayItems, i => i.Label == "Chorus 1");
+        Assert.DoesNotContain(live.Plan.DisplayItems, i => i.Kind == PlanItemKind.CountIn);
+        Assert.Equal(live.Committed.ExpectedDurationSec, live.Plan.ExpectedDurationSec, 6);
+
+        // Moving on during the second pass ends the loop at the end of that pass.
+        live.Tick(chorus.PlanEnd);
+        var second = live.Plan.Items.Where(i => i.Label == "Chorus 1").ElementAt(1);
+        var move = live.Apply(new LiveAction(LiveActionKind.MoveOn), second.PlanStart + 1);
+        Assert.Equal(LiveOutcome.Queued, move.Outcome);
+        Assert.Equal(2, live.Plan.Items.Count(i => i.Label == "Chorus 1"));
+        Assert.Equal(1, live.Plan.Items.Count(i => i.Kind == PlanItemKind.CountIn));
+        Assert.Equal(["Verse 1", "Chorus 1", "Chorus 1", "Verse 2"], Labels(live.Plan));
+    }
 }

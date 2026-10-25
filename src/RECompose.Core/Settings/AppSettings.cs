@@ -71,6 +71,9 @@ public sealed record AppSettings
 
     /// <summary>After a jump to a section the plan does not play again, the written sections that follow it play on (PB-47, SET-20).</summary>
     public bool ContinueAsWritten { get; init; }
+
+    /// <summary>Keys, pedals and controllers (LIVE-51); null = the page-turner profile.</summary>
+    public List<RECompose.Core.Controls.ControlBinding>? Bindings { get; init; }
     public string? LastSongId { get; init; }
 
     /// <summary>The service shown in the sidebar (DM-80 currentServiceId).</summary>

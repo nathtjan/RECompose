@@ -4,6 +4,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using Avalonia.VisualTree;
+using RECompose.App.Dialogs;
 using RECompose.Core.Services;
 using RECompose.Presentation.ViewModels;
 
@@ -24,6 +25,12 @@ public partial class MainWindow : Window
         // Shortcuts (KEY-1) are handled before controls see the key, so Space never also
         // presses a focused button.
         AddHandler(KeyDownEvent, OnKeyDownTunnel, RoutingStrategies.Tunnel);
+        AddHandler(KeyUpEvent, (_, e) =>
+        {
+            // Releases matter for bindings with a long press (LIVE-54).
+            if (ViewModel is { IsPerform: true } vm && ControlKeys.Name(e) is { } name)
+                vm.Controls.Key(name, false);
+        }, RoutingStrategies.Tunnel);
 
         // Drag a stems folder onto the window to import it (SL-50).
         DragDrop.SetAllowDrop(this, true);
@@ -488,6 +495,13 @@ public partial class MainWindow : Window
 
         if (FocusManager?.GetFocusedElement() is ComboBox { IsDropDownOpen: true })
             return;
+
+        // Perform: the page-turner keys and whatever the MD bound (LIVE-50, LIVE-51).
+        if (vm.IsPerform && ControlKeys.Name(e) is { } bound && vm.Controls.Key(bound, true))
+        {
+            e.Handled = true;
+            return;
+        }
 
         switch (e.Key)
         {

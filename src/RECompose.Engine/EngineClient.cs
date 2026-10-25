@@ -209,6 +209,9 @@ public sealed class EngineClient : IAsyncDisposable
     public event Action<string>? SongEnded;
     public event Action? Disconnected;
 
+    /// <summary>A MIDI message from a controller or foot pedal (protocol 9, LIVE-52). Raised on a background thread.</summary>
+    public event Action<RECompose.Core.Controls.MidiMessage>? MidiReceived;
+
     public async Task<(IReadOnlyList<DeviceTypeInfo> Types, DeviceInfo? Current)> ListDevicesAsync(CancellationToken ct = default)
     {
         var reply = await Session.Connection.RequestAsync("listDevices", cancellationToken: ct).ConfigureAwait(false);
@@ -217,6 +220,29 @@ public sealed class EngineClient : IAsyncDisposable
             .ToList();
         return (types, DeviceInfo.From(reply["current"]));
     }
+
+    /// <summary>The MIDI inputs the engine can open.</summary>
+    public async Task<IReadOnlyList<string>> ListMidiInputsAsync(CancellationToken ct = default)
+    {
+        var reply = await Session.Connection.RequestAsync("listDevices", cancellationToken: ct).ConfigureAwait(false);
+        return DeviceInfo.Strings(reply["midiInputs"]);
+    }
+
+    /// <summary>Listens to the named MIDI inputs, or to all of them when <paramref name="names"/> is null (protocol 9). Returns the ones that opened.</summary>
+    public async Task<IReadOnlyList<string>> SetMidiInputsAsync(IEnumerable<string>? names, CancellationToken ct = default)
+    {
+        var request = new JsonObject();
+        if (names is null)
+            request["all"] = true;
+        else
+            request["names"] = new JsonArray(names.Select(n => (JsonNode?)JsonValue.Create(n)).ToArray());
+        var reply = await Session.Connection.RequestAsync("setMidiInputs", request, ct).ConfigureAwait(false);
+        return DeviceInfo.Strings(reply["open"]);
+    }
+
+    /// <summary>Tests: makes the engine raise the event a MIDI device would.</summary>
+    public Task InjectMidiAsync(string kind, int channel, int number, int value, CancellationToken ct = default) =>
+        Session.Connection.RequestAsync("injectMidi", new JsonObject { ["kind"] = kind, ["channel"] = channel, ["number"] = number, ["value"] = value }, ct);
 
     /// <summary>Opens a device. Null fields keep the current or default choice.</summary>
     /// <exception cref="EngineErrorException">With code "deviceError" when nothing could be opened.</exception>
@@ -477,6 +503,19 @@ public sealed class EngineClient : IAsyncDisposable
             case "songEnded":
                 SongEnded?.Invoke((string?)message["songId"] ?? string.Empty);
                 break;
+            case "midiIn":
+            {
+                var kind = ((string?)message["kind"]) switch
+                {
+                    "note" => RECompose.Core.Controls.ControlKind.Note,
+                    "cc" => RECompose.Core.Controls.ControlKind.ControlChange,
+                    "pc" => RECompose.Core.Controls.ControlKind.ProgramChange,
+                    _ => RECompose.Core.Controls.ControlKind.Key,
+                };
+                if (kind != RECompose.Core.Controls.ControlKind.Key)
+                    MidiReceived?.Invoke(new RECompose.Core.Controls.MidiMessage(kind, (int?)message["channel"] ?? 1, (int?)message["number"] ?? 0, (int?)message["value"] ?? 0));
+                break;
+            }
         }
     }
 

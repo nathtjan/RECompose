@@ -134,6 +134,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                 foreach (var command in new[] { PlayPauseCommand, StopCommand, ToStartCommand, ApplySongEditsCommand, ReanalyseClickCommand, DetectDownbeatCommand, RetranscribeCommand, MarkCommand })
                     command.Refresh();
                 RefreshEntryCommands();
+                RefreshLiveCommands();
                 RefreshMixPresets();
                 SaveMixAsNewCommand.Refresh();
                 RenameMixCommand.Refresh();
@@ -441,6 +442,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
         var engine = new EngineClient(session);
         engine.SnapshotReceived += s => _ui.Post(() => ApplySnapshot(s));
+        _ = OpenMidiAsync(engine);
         engine.DeviceChanged += d => _ui.Post(() => ShowDevice(d));
         engine.DeviceError += m => _ui.Post(() => Banner = $"The audio device reported a problem: {m}");
         engine.FileMissing += (id, problem) => _ui.Post(() => MarkMissing(id, problem));
@@ -745,6 +747,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
         vm.PlanChanged += OnPlanChanged;
         _live = null;
+        ResetRehearsal();
         TimelineAsHeard = !vm.IsAsWritten;
         Song = vm;
         SelectedSong ??= _allSongs.FirstOrDefault(s => s.Id == model.Id);
@@ -915,6 +918,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         if (holdChanged)
             OnHoldChanged();
         TickLive();
+        _controls?.Tick();
         CheckRangeEnd(s.State);
 
         Status = s.State == TransportState.Playing

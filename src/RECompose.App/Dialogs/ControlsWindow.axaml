@@ -1,0 +1,48 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<!-- Settings › Playback and › Controls (SET-20, SET-28, LIVE-50…55): jump timing, the bindings with MIDI Learn. -->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:RECompose.Presentation.ViewModels"
+        x:Class="RECompose.App.Dialogs.ControlsWindow"
+        x:DataType="vm:ControlsViewModel"
+        Title="Controls and playback"
+        Width="640" Height="640" MinHeight="420"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False">
+  <DockPanel Margin="20">
+    <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8" Margin="0,12,0,0">
+      <Button Content="Restore defaults" Command="{Binding RestoreDefaultsCommand}" />
+      <Button x:Name="CloseButton" Classes="primary" Content="Done" IsDefault="True" IsCancel="True" />
+    </StackPanel>
+
+    <StackPanel DockPanel.Dock="Top" Spacing="10">
+      <TextBlock Classes="title" Text="Playback" />
+      <Grid ColumnDefinitions="180,*" RowDefinitions="Auto,Auto" RowSpacing="10">
+        <TextBlock Grid.Row="0" Classes="label" Text="JUMP TAKES EFFECT" VerticalAlignment="Center" />
+        <ComboBox x:Name="TimingSelect" Grid.Row="0" Grid.Column="1" ItemsSource="{Binding TimingChoices}" SelectedItem="{Binding SelectedTiming}" HorizontalAlignment="Stretch" />
+        <TextBlock Grid.Row="1" Classes="label" Text="AFTER A JUMP" VerticalAlignment="Center" />
+        <CheckBox x:Name="ContinueBox" Grid.Row="1" Grid.Column="1" IsChecked="{Binding ContinueAsWritten}"
+                  Content="Carry on as written instead of returning to the arrangement" />
+      </Grid>
+      <TextBlock Classes="title" Text="Controls" Margin="0,12,0,0" />
+      <TextBlock Classes="meta" TextWrapping="Wrap"
+                 Text="Press Learn, then a key, a note, a controller or a foot pedal. Two presses within 250 ms count once. A pedal acts when it is pressed." />
+      <TextBlock Classes="mono" Text="{Binding LastInput}" Foreground="{DynamicResource state-playing}" />
+    </StackPanel>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="0,8,0,0">
+      <ItemsControl x:Name="ControlRows" ItemsSource="{Binding Rows}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="vm:ControlRow">
+            <Grid ColumnDefinitions="150,*,Auto,Auto" Margin="0,3" ColumnSpacing="8">
+              <TextBlock Grid.Column="0" Text="{Binding Name}" VerticalAlignment="Center" FontWeight="SemiBold" />
+              <TextBlock Grid.Column="1" Classes="mono" Text="{Binding Inputs}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+              <Button Grid.Column="2" Content="{Binding LearnLabel}" Command="{Binding LearnCommand}" MinWidth="150" AutomationProperties.Name="Learn" />
+              <Button Grid.Column="3" Content="Clear" Command="{Binding ClearCommand}" />
+            </Grid>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </ScrollViewer>
+  </DockPanel>
+</Window>

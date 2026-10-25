@@ -106,6 +106,7 @@ public sealed partial class MainViewModel
                 OnPropertyChanged(nameof(LockLabel));
                 ClearArmedTile();
                 AppLog.Write("Perform", $"Lock: {value}");
+                OnLockChanged();
             }
         }
     }
@@ -208,5 +209,8 @@ public sealed partial class MainViewModel
         RepeatCommand.Refresh();
         MoveOnCommand.Refresh();
         EndCommand.Refresh();
+        LoopCommand.Refresh();
+        RestartSectionCommand.Refresh();
+        ClickGuideOnlyCommand.Refresh();
     }
 }

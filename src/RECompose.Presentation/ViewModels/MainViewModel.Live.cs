@@ -127,7 +127,7 @@ public sealed partial class MainViewModel
     }
 
     /// <summary>Runs a live action on the playing song (PB-44…47, PB-50…52). Returns what happened.</summary>
-    public async Task<LiveResult> LiveAsync(LiveActionKind kind, string? itemId = null, string? sectionId = null, ActionSource source = ActionSource.Manual)
+    public async Task<LiveResult> LiveAsync(LiveActionKind kind, string? itemId = null, string? sectionId = null, ActionSource source = ActionSource.Manual, JumpTiming? timing = null)
     {
         if (EnsureLive() is not { } live)
             return new LiveResult(LiveOutcome.Rejected, null, "Nothing is loaded.");
@@ -140,7 +140,7 @@ public sealed partial class MainViewModel
             return new LiveResult(LiveOutcome.ReleaseHold, null, "Go.");
         }
 
-        var result = live.Apply(new LiveAction(kind, Timing, itemId, sectionId, source), _planPosition, _holding);
+        var result = live.Apply(new LiveAction(kind, timing ?? Timing, itemId, sectionId, source), _planPosition, _holding);
         switch (result.Outcome)
         {
             case LiveOutcome.Queued:

@@ -80,6 +80,7 @@ Engine::Engine()
 Engine::~Engine()
 {
     stopTimer();
+    midiInputs_.clear(); // the MIDI thread stops before anything it pushes to goes away
     devices_.removeChangeListener (this);
     devices_.removeAudioCallback (this);
     devices_.closeAudioDevice();
@@ -104,6 +105,8 @@ juce::var Engine::handle (const juce::String& type, const juce::var& message)
     if (type == "promoteNext")  return promoteNext();
     if (type == "play" || type == "pause" || type == "stop" || type == "seek")
         return transport (type, message);
+    if (type == "setMidiInputs") return setMidiInputs (message);
+    if (type == "injectMidi")   return injectMidi (message);
     if (type == "go")           return go();
     if (type == "panic")        return panic();
     if (type == "setTrack")     return setTrack (message);
@@ -279,7 +282,63 @@ juce::var Engine::listDevices()
         types.add (Obj().set ("name", type->getTypeName()).set ("devices", toArray (type->getDeviceNames (false))));
     }
 
-    return Obj().set ("type", "devices").set ("types", types).set ("current", deviceInfo());
+    juce::Array<juce::var> midi;
+    for (const auto& device : juce::MidiInput::getAvailableDevices())
+        midi.add (device.name);
+
+    return Obj().set ("type", "devices").set ("types", types).set ("current", deviceInfo()).set ("midiInputs", midi);
+}
+
+// Protocol 9 (LIVE-52): the MIDI inputs to listen to, by name; `all` listens to every input. Each message becomes a `midiIn`
+// event for the app, which owns what it means (the control map is in RECompose.Core).
+juce::var Engine::setMidiInputs (const juce::var& message)
+{
+    midiInputs_.clear();
+    const bool all = flag (message, "all", false);
+    juce::StringArray wanted;
+    if (const auto* names = message.getProperty ("names", {}).getArray())
+        for (const auto& name : *names)
+            wanted.add (name.toString());
+
+    juce::Array<juce::var> open;
+    for (const auto& device : juce::MidiInput::getAvailableDevices())
+    {
+        if (! all && ! wanted.contains (device.name))
+            continue;
+        if (auto input = juce::MidiInput::openDevice (device.identifier, this))
+        {
+            input->start();
+            open.add (device.name);
+            midiInputs_.push_back (std::move (input));
+        }
+    }
+
+    return Obj().set ("type", "midiInputs").set ("open", open);
+}
+
+// Tests: the same event a device would produce.
+juce::var Engine::injectMidi (const juce::var& message)
+{
+    pushMidi (text (message, "kind"), static_cast<int> (number (message, "channel", 1.0)), static_cast<int> (number (message, "number", 0.0)),
+              static_cast<int> (number (message, "value", 0.0)));
+    return Obj().set ("type", "ok");
+}
+
+void Engine::pushMidi (const juce::String& kind, int channel, int number, int value)
+{
+    push (Obj().set ("type", "midiIn").set ("kind", kind).set ("channel", channel).set ("number", number).set ("value", value));
+}
+
+void Engine::handleIncomingMidiMessage (juce::MidiInput*, const juce::MidiMessage& m)
+{
+    if (m.isNoteOn())
+        pushMidi ("note", m.getChannel(), m.getNoteNumber(), m.getVelocity());
+    else if (m.isNoteOff())
+        pushMidi ("note", m.getChannel(), m.getNoteNumber(), 0);
+    else if (m.isController())
+        pushMidi ("cc", m.getChannel(), m.getControllerNumber(), m.getControllerValue());
+    else if (m.isProgramChange())
+        pushMidi ("pc", m.getChannel(), m.getProgramChangeNumber(), 0);
 }
 
 juce::var Engine::setDevice (const juce::var& message)

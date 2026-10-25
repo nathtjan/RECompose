@@ -27,6 +27,7 @@ namespace rec
 {
 class Engine : private juce::AudioIODeviceCallback,
                private juce::ChangeListener,
+               private juce::MidiInputCallback,
                private juce::Timer
 {
 public:
@@ -132,6 +133,9 @@ private:
     juce::var transport (const juce::String& type, const juce::var& message);
     juce::var go();
     juce::var panic();
+    juce::var setMidiInputs (const juce::var& message);
+    juce::var injectMidi (const juce::var& message);
+    void pushMidi (const juce::String& kind, int channel, int number, int value);
     juce::var setTrack (const juce::var& message);
     juce::var setMaster (const juce::var& message);
     juce::var setPlan (const juce::var& message, Slot& s);
@@ -162,12 +166,16 @@ private:
     void audioDeviceStopped() override;
     void audioDeviceError (const juce::String& message) override;
 
+    // juce::MidiInputCallback (the MIDI thread): foot controllers and keyboards become midiIn events (protocol 9, LIVE-52).
+    void handleIncomingMidiMessage (juce::MidiInput* source, const juce::MidiMessage& message) override;
+
     // juce::ChangeListener (message thread): the device manager changed device.
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
 
     // juce::Timer (message thread): snapshots, retiring songs, commands without a device.
     void timerCallback() override;
 
+    std::vector<std::unique_ptr<juce::MidiInput>> midiInputs_;
     juce::AudioFormatManager formats_;
     juce::AudioDeviceManager devices_;
     bool deviceInitialised_ = false;

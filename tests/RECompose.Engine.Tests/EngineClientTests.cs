@@ -168,6 +168,39 @@ public class EngineClientTests
     }
 
     [Fact]
+    public async Task LIVE52_a_midi_message_reaches_the_app_as_an_event_and_panic_is_a_request()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var client = await StartAsync();
+        var seen = new List<RECompose.Core.Controls.MidiMessage>();
+        client.MidiReceived += m =>
+        {
+            lock (seen)
+                seen.Add(m);
+        };
+
+        await client.InjectMidiAsync("cc", 1, 64, 127, ct);
+        await client.InjectMidiAsync("note", 3, 60, 0, ct);
+        await client.InjectMidiAsync("pc", 2, 5, 0, ct);
+        for (var i = 0; i < 200 && seen.Count < 3; i++)
+            await Task.Delay(20, ct);
+
+        lock (seen)
+        {
+            Assert.Equal(
+            [
+                new RECompose.Core.Controls.MidiMessage(RECompose.Core.Controls.ControlKind.ControlChange, 1, 64, 127),
+                new RECompose.Core.Controls.MidiMessage(RECompose.Core.Controls.ControlKind.Note, 3, 60, 0),
+                new RECompose.Core.Controls.MidiMessage(RECompose.Core.Controls.ControlKind.ProgramChange, 2, 5, 0),
+            ], seen);
+        }
+
+        // Listening to inputs that do not exist opens nothing and is not an error.
+        Assert.Empty(await client.SetMidiInputsAsync(["No such controller"], ct));
+        _ = await client.ListMidiInputsAsync(ct);
+    }
+
+    [Fact]
     public async Task AT13_a_hold_waits_for_go_and_a_swap_changes_the_plan_without_stopping()
     {
         var folder = Folder();

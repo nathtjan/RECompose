@@ -99,7 +99,7 @@
           <TextBlock Text="Prepare" VerticalAlignment="Center" />
         </c:HoldButton>
         <StackPanel DockPanel.Dock="Left" Margin="16,0,0,0" VerticalAlignment="Center" Spacing="0">
-          <TextBlock x:Name="ServiceName" Text="{Binding Setlist.Title}" FontWeight="Bold" TextTrimming="CharacterEllipsis" MaxWidth="260" />
+          <TextBlock x:Name="ServiceName" Text="{Binding Setlist.Title}" FontWeight="Bold" TextTrimming="CharacterEllipsis" MaxWidth="200" />
           <TextBlock x:Name="ClockLine" Classes="meta" Text="Perform" />
         </StackPanel>
 
@@ -111,10 +111,26 @@
           </StackPanel>
         </Button>
         <Rectangle DockPanel.Dock="Right" Width="1" Fill="{DynamicResource divider}" Margin="12,12,0,12" />
+        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" Margin="0,0,16,0" IsVisible="{Binding IsRehearsalLock}">
+          <ToggleButton x:Name="LoopKey" IsChecked="{Binding IsLooping, Mode=OneWay}" Command="{Binding LoopCommand}" MinHeight="40" Padding="12,0"
+                        ToolTip.Tip="Loop this section with a bar of click between passes (L)" AutomationProperties.Name="Loop">
+            <StackPanel Orientation="Horizontal" Spacing="6"><c:Icon Glyph="loop" IconSize="16" VerticalAlignment="Center" /><TextBlock Text="Loop" VerticalAlignment="Center" /></StackPanel>
+          </ToggleButton>
+          <ToggleButton x:Name="ClickGuideKey" IsChecked="{Binding ClickGuideOnly, Mode=TwoWay}" MinHeight="40" Padding="12,0"
+                        ToolTip.Tip="Hear only the click and the guide" AutomationProperties.Name="Click and guide only">
+            <TextBlock Text="Click + guide" VerticalAlignment="Center" />
+          </ToggleButton>
+          <ComboBox x:Name="PracticeSelect" ItemsSource="{x:Static vm:MainViewModel.PracticeChoices}" SelectedItem="{Binding PracticePercent}" Width="84" MinHeight="40"
+                    ToolTip.Tip="Practice tempo, percent of the entry tempo" AutomationProperties.Name="Practice tempo" />
+        </StackPanel>
         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="16" VerticalAlignment="Center">
+          <Border Classes="pill" IsVisible="{Binding HasPracticeTempo}"><TextBlock x:Name="PracticeBadgeText" Text="{Binding PracticeBadge}" /></Border>
           <Border Classes="pill" Classes.playing="{Binding IsPlaying}" Classes.loading="{Binding IsLoadingStatus}">
             <TextBlock Text="{Binding Status}" />
           </Border>
+          <Button Classes="ghost" Command="{Binding OpenControlsCommand}" ToolTip.Tip="Keys, pedals and jump timing" AutomationProperties.Name="Controls" Padding="6,0">
+            <c:Icon Glyph="pedal" IconSize="16" />
+          </Button>
           <Button Classes="ghost" Command="{Binding OpenSettingsCommand}" ToolTip.Tip="Audio device. Click to change it." AutomationProperties.Name="Audio">
             <StackPanel Orientation="Horizontal" Spacing="8">
               <Ellipse Classes="led" Classes.ok="{Binding AudioOk}" VerticalAlignment="Center" />
@@ -247,6 +263,11 @@
                 <Button Classes="tile" Classes.played="{Binding IsPlayed}" Classes.current="{Binding IsCurrent}" Classes.armed="{Binding Armed}"
                         Classes.skipped="{Binding IsSkipped}" Classes.target="{Binding IsTarget}" Click="OnTileClick" Tag="{Binding Id}"
                         AutomationProperties.Name="{Binding Label}">
+                  <Button.ContextMenu>
+                    <ContextMenu>
+                      <MenuItem Header="Play from here" Click="OnPlayFromHere" IsEnabled="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).IsRehearsalLock}" />
+                    </ContextMenu>
+                  </Button.ContextMenu>
                   <Panel>
                     <StackPanel VerticalAlignment="Center" Spacing="2">
                       <TextBlock Text="{Binding Label}" FontWeight="Bold" TextTrimming="CharacterEllipsis" />

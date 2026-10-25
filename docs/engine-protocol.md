@@ -44,9 +44,9 @@ Frames are at the **engine rate**: the open device's sample rate (48 000 when no
 
 `hello` and `shutdown` keep this shape in every future version.
 
-### Protocol 2 to 8 (milestones 1 to 5)
+### Protocol 2 to 9 (milestones 1 to 5)
 
-Protocol 3 adds `setPlan` and the `planFrames` snapshot field; everything else is as in 2. Protocol 4 adds the engine's click: a generated track in `loadSong`, the song grid in `setPlan` and a `click` flag per segment. Protocol 5 adds live key and tempo: `transposes` per track, `key` per segment and `tempo` per plan. Protocol 6 adds pads: `loadPadSet`, `pad`, `songKey` and `pad` per segment, and `pad` in the snapshot. Protocol 7 adds the second song slot and transitions: `slot` on `loadSong`, `unloadSong` and `setPlan`, `setTransition`, `startNext`, `promoteNext`, the `songChanged` and `songEnded` events, and `next` and `transition` in the snapshot. Protocol 8 adds live plan changes and holds: `swapAt` and `holds` on `setPlan`, the `go` and `panic` requests, and `holding` and `holdSec` in the snapshot.
+Protocol 3 adds `setPlan` and the `planFrames` snapshot field; everything else is as in 2. Protocol 4 adds the engine's click: a generated track in `loadSong`, the song grid in `setPlan` and a `click` flag per segment. Protocol 5 adds live key and tempo: `transposes` per track, `key` per segment and `tempo` per plan. Protocol 6 adds pads: `loadPadSet`, `pad`, `songKey` and `pad` per segment, and `pad` in the snapshot. Protocol 7 adds the second song slot and transitions: `slot` on `loadSong`, `unloadSong` and `setPlan`, `setTransition`, `startNext`, `promoteNext`, the `songChanged` and `songEnded` events, and `next` and `transition` in the snapshot. Protocol 8 adds live plan changes and holds: `swapAt` and `holds` on `setPlan`, the `go` and `panic` requests, and `holding` and `holdSec` in the snapshot. Protocol 9 adds MIDI input: `setMidiInputs`, the `midiInputs` list in the `listDevices` reply and the `midiIn` event.
 
 | Request | Fields | Reply |
 |---|---|---|
@@ -58,6 +58,8 @@ Protocol 3 adds `setPlan` and the `planFrames` snapshot field; everything else i
 | `seek` | `frame` | `ok`. While playing: a 10 ms fade-out, then playback resumes exactly at `frame` once every track has data there (PB-26, PB-55). |
 | `setTrack` | `trackId`, any of `gainDb`, `mute`, `solo`, `output`, `transposes` (5) | `ok`. Changes ramp over one 256-frame block; `transposes` applies from the audio not yet read ahead (up to 4 s later). |
 | `setMaster` | `gainDb` | `ok` |
+| `setMidiInputs` (9) | `names?: [..]`, `all?` | `midiInputs {open: [names]}`. Listens to the named MIDI inputs (or all); each message arrives as a `midiIn` event. An empty call closes them. |
+| `injectMidi` (9) | `kind`, `channel`, `number`, `value` | `ok`. Tests only: raises the `midiIn` event a device would. |
 | `go` (8) | | `ok`. Releases the hold the playhead waits at (PB-52). |
 | `panic` (8) | | `ok`. Stops the current and the next song with a 100 ms fade (at once during a hold), fades the pad out, cancels the transition and its click (UI-40). |
 | `setPlan` (3–5) | `segments: [{start, end, src, fadeIn, fadeOut, mute: [trackIds], click?, key?}]`, `grid?: {origin, beat, beatsPerBar}` (4), `tempo?` (5), `position?`, `holds?: [{at, pad, padKey?, click}]` (8), `swapAt?` (8) | `plan {frames, swapped?}`. See below. |
@@ -91,6 +93,7 @@ Protocol 3 adds `setPlan` and the `planFrames` snapshot field; everything else i
 | Event | Fields |
 |---|---|
 | `snapshot` | `state` (`stopped`, `playing`, `paused`), `frame` (next frame to render, in plan frames), `t` (engine clock, ns), `latency` (output latency, in plan frames), `sampleRate`, `songId`, `lengthFrames` (the files), `planFrames` (the plan; the transport ends here), `buffered`, `waiting`, `starved`, `xruns`, `cpu`, `deviceOpen`, `meters: [{id, peak}]`, `master: [left, right]`, `holding`, `holdSec` (8). Sent at 60 Hz while playing, otherwise on change and once a second. The heard frame is `frame − latency` while playing (PB-4). |
+| `midiIn` (9) | `kind` (`note`, `cc`, `pc`), `channel` (1–16), `number`, `value`. Note on has its velocity as `value` and note off 0; a program change has 0. The app matches them against its bindings (LIVE-52); the engine does not interpret them. |
 | `deviceChanged` | `device` (or null when it went away) |
 | `deviceError` | `message` |
 | `fileMissing` | `trackId`, `problem` (REL-50) |
