@@ -70,6 +70,8 @@ struct PlanSegment
     std::vector<std::uint8_t> muted; // per track index, 1 = silenced in this segment
     bool click = false;              // the click generator sounds on the beats in this segment (PB-70)
     int key = 0;                     // semitones for tracks that transpose: entry key + lift (PB-41, PB-58)
+    int songKey = -1;                // the pitch class heard, for pads that follow the song (SL-44); -1 unknown
+    int pad = -1;                    // pad bars: the pitch class of the pad (ARR-39); -1 none
 };
 
 struct Plan
@@ -197,6 +199,10 @@ struct Song
     // True when every playable track has its first block at the current request.
     bool isBuffered() const noexcept;
 };
+
+// Opens a track's file and prepares its streams for the engine rate. Returns its length in engine
+// frames; a missing or unreadable file makes a silent track with a problem text (REL-50).
+std::int64_t openTrackFile (Track& track, double engineRate, juce::AudioFormatManager& formats);
 
 // Opens every file and prepares the streams. Missing or unreadable files become silent
 // tracks with a problem text; the rest play (REL-50).

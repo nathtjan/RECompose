@@ -82,6 +82,42 @@ bool Song::isBuffered() const noexcept
     return true;
 }
 
+std::int64_t openTrackFile (Track& track, double engineRate, juce::AudioFormatManager& formats)
+{
+    const juce::File file (juce::String::fromUTF8 (track.spec.file.c_str()));
+    if (! file.existsAsFile())
+    {
+        track.missing = true;
+        track.problem = "File missing";
+        return 0;
+    }
+
+    auto* reader = formats.createReaderFor (file);
+    if (reader == nullptr)
+    {
+        track.missing = true;
+        track.problem = "Can't read this file";
+        return 0;
+    }
+
+    track.reader.reset (reader);
+    track.channels = juce::jlimit (1, kMaxTrackChannels, static_cast<int> (reader->numChannels));
+    track.sourceRate = reader->sampleRate;
+    track.sourceFrames = reader->lengthInSamples;
+    track.resampling = std::abs (reader->sampleRate - engineRate) > 0.5;
+    for (int c = 0; c < track.channels; ++c)
+    {
+        track.readBuffer[c].resize (kBlockFrames);
+        track.mainBuffer[c].resize (kBlockFrames);
+        track.tailBuffer[c].resize (kBlockFrames);
+        if (track.resampling)
+            for (auto& stream : track.streams)
+                stream.resamplers[c] = std::make_unique<r8b::CDSPResampler24> (reader->sampleRate, engineRate, kBlockFrames);
+    }
+    track.resampleInput.resize (kBlockFrames);
+    return static_cast<std::int64_t> (std::ceil (static_cast<double> (reader->lengthInSamples) * engineRate / reader->sampleRate));
+}
+
 std::unique_ptr<Song> loadSong (std::string id, std::vector<TrackSpec> specs, double engineRate,
                                 std::int64_t startFrame, juce::AudioFormatManager& formats)
 {
@@ -101,7 +137,6 @@ std::unique_ptr<Song> loadSong (std::string id, std::vector<TrackSpec> specs, do
         track->outputChannel.store (spec.outputChannel);
         track->outputWidth.store (spec.outputWidth == 1 ? 1 : 2);
 
-        const juce::File file (juce::String::fromUTF8 (spec.file.c_str()));
         if (spec.generated == "click")
         {
             track->generatedClick = true;
@@ -109,38 +144,9 @@ std::unique_ptr<Song> loadSong (std::string id, std::vector<TrackSpec> specs, do
             track->sourceRate = engineRate;
             track->mainBuffer[0].resize (kBlockFrames);
         }
-        else if (! file.existsAsFile())
-        {
-            track->missing = true;
-            track->problem = "File missing";
-        }
-        else if (auto* reader = formats.createReaderFor (file))
-        {
-            track->reader.reset (reader);
-            track->channels = juce::jlimit (1, kMaxTrackChannels, static_cast<int> (reader->numChannels));
-            track->sourceRate = reader->sampleRate;
-            track->sourceFrames = reader->lengthInSamples;
-
-            const auto songFrames = static_cast<std::int64_t> (
-                std::ceil (static_cast<double> (reader->lengthInSamples) * engineRate / reader->sampleRate));
-            song->lengthFrames = std::max (song->lengthFrames, songFrames);
-
-            track->resampling = std::abs (reader->sampleRate - engineRate) > 0.5;
-            for (int c = 0; c < track->channels; ++c)
-            {
-                track->readBuffer[c].resize (kBlockFrames);
-                track->mainBuffer[c].resize (kBlockFrames);
-                track->tailBuffer[c].resize (kBlockFrames);
-                if (track->resampling)
-                    for (auto& stream : track->streams)
-                        stream.resamplers[c] = std::make_unique<r8b::CDSPResampler24> (reader->sampleRate, engineRate, kBlockFrames);
-            }
-            track->resampleInput.resize (kBlockFrames);
-        }
         else
         {
-            track->missing = true;
-            track->problem = "Can't read this file";
+            song->lengthFrames = std::max (song->lengthFrames, openTrackFile (*track, engineRate, formats));
         }
 
         song->tracks.push_back (std::move (track));

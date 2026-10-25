@@ -12,6 +12,11 @@
 
 #include "audio/song.h"
 
+namespace rec::audio
+{
+class PadPlayer;
+}
+
 #include <array>
 #include <atomic>
 #include <cstdint>
@@ -66,6 +71,10 @@ public:
 
     // Message thread: a song the audio side no longer uses, or nullptr.
     Song* takeRetiredSong() noexcept;
+
+    // Message thread, before the device starts: the pads told about each segment the song enters
+    // (Follow song, pad bars). They are mixed by their own player.
+    void setPads (PadPlayer* pads) noexcept { pads_ = pads; }
 
     // Snapshot values, readable from any thread.
     TransportState state() const noexcept { return static_cast<TransportState> (state_.load()); }
@@ -125,6 +134,8 @@ private:
     std::uint32_t seekGeneration_ = 0;
     std::int64_t seekFrame_ = 0;
     double sampleRate_ = 48000.0;
+    PadPlayer* pads_ = nullptr;
+    const PlanSegment* lastSegment_ = nullptr; // the segment the pads were last told about
     const Plan* plan_ = nullptr;        // the plan in play
     const Plan* pendingPlan_ = nullptr; // takes effect when the pending seek lands
     std::size_t segmentIndex_ = 0;

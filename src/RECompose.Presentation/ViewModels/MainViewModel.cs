@@ -73,6 +73,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         Sections = new SectionsViewModel(this);
         Entry = new EntryViewModel(this);
         Setlist = new SetlistViewModel(this);
+        Pads = new PadsViewModel(this);
         _ui = ui;
         _dialogs = dialogs;
         _settings = store.LoadSettings();
@@ -403,6 +404,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     {
         foreach (var command in new[] { KeyDownCommand, KeyUpCommand, TempoDownCommand, TempoUpCommand })
             command.Refresh();
+        Pads.ShowSongKey(_song is { } loaded ? ServiceText.EntryKey(loaded.Model, loaded.Entry?.KeyOffset ?? 0)?.PitchClass : null);
         foreach (var name in new[] { nameof(HasLoadedEntry), nameof(EntryKeyText), nameof(EntryTempoText), nameof(EntryKeyWarning), nameof(LiveKeyBadge), nameof(HasLiveKeyBadge) })
             OnPropertyChanged(name);
     }
@@ -447,6 +449,10 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         _engine = engine;
 
         var (loaded, device, snapshot) = await engine.GetStateAsync();
+        if (snapshot.PadKey is null)
+            _ = SendPadSetAsync(); // a fresh engine has no pads yet; one that kept sounding is left alone (REL-34)
+        else
+            ShowEnginePad(snapshot.PadKey);
 
         if (device is null)
             await OpenDeviceAsync();
@@ -869,6 +875,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     private void ApplySnapshot(EngineSnapshot s)
     {
+        ShowEnginePad(s.PadKey); // pads sound whether or not a song is loaded (SL-40)
         if (s.Xruns + s.Starved != _dropouts)
         {
             _dropouts = (int)(s.Xruns + s.Starved);
@@ -1181,6 +1188,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                 track.OutputLabel = Outputs.Label(track.Track.Output);
             }
             await engine.SetTrackAsync(EngineTrack.ClickTrackId, output: a.Resolve("cue"));
+            await engine.SetPadAsync(output: a.ResolvePad());
             ShowToast($"Main on {OutputRef.Direct(a.MainChannel, a.MainWidth).Label}, Cue on {OutputRef.Direct(a.CueChannel, a.CueWidth).Label}");
         }
     }

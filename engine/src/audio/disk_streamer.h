@@ -14,6 +14,13 @@
 
 namespace rec::audio
 {
+struct PadBank;
+
+// Disk thread: reads `frames` engine-rate frames of a stream (resampled when needed, PB-2), and
+// starts a stream at an engine-rate frame. Shared by the songs and the pads.
+void readStream (Track& track, SourceStream& stream, float* const* out, int frames, double engineRate);
+void startStream (Track& track, SourceStream& stream, std::int64_t engineFrame, double ratio);
+
 class DiskStreamer : private juce::Thread
 {
 public:
@@ -23,6 +30,8 @@ public:
     // Message thread.
     void addSong (Song* song);
     void removeSong (Song* song); // returns once the disk thread no longer uses it
+    void addPads (PadBank* bank);
+    void removePads (PadBank* bank); // returns once the disk thread no longer uses it
 
     // Any thread: a request changed, fill now rather than at the next poll.
     void wake() { notify(); }
@@ -38,5 +47,6 @@ private:
 
     std::mutex mutex_;
     std::vector<Song*> songs_;
+    std::vector<PadBank*> pads_;
 };
 } // namespace rec::audio

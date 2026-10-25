@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 using System.Collections.ObjectModel;
 using RECompose.Core.Library;
+using RECompose.Core.Settings;
+using RECompose.Engine;
 using RECompose.Presentation.Services;
 
 namespace RECompose.Presentation.ViewModels;
@@ -37,10 +39,66 @@ public sealed partial class MainViewModel
 
     public bool PadsEmpty => PadSets.Count == 0;
 
+    /// <summary>The compact pads of the sidebar (UI-12, SL-40…46).</summary>
+    public PadsViewModel Pads { get; }
+
+    public string? CurrentPadSetId => _pads.Current?.Id;
+
+    /// <summary>Runs an engine request, ignoring a lost connection (pads must never stop the app, REL-50).</summary>
+    internal async Task SendToEngineAsync(Func<EngineClient, Task> request)
+    {
+        if (_engine is not { } engine)
+            return;
+        try
+        {
+            await request(engine);
+        }
+        catch (Exception ex) when (ex is EngineErrorException or EngineDisconnectedException or OperationCanceledException)
+        {
+            AppLog.Error("Pads", ex);
+        }
+    }
+
+    internal void SavePadSettings(PadSettings pads)
+    {
+        _settings = _settings with { Pads = pads };
+        _store.SaveSettings(_settings);
+    }
+
+    /// <summary>SL-41: another pad set; a sounding pad crossfades to the same key of the new set.</summary>
+    internal async Task SelectPadSetAsync(string id)
+    {
+        if (_pads.PadSets.All(p => p.Id != id))
+            return;
+        _pads = _pads with { CurrentId = id };
+        _store.SavePads(_pads);
+        Pads.Refresh();
+        await SendPadSetAsync();
+    }
+
+    /// <summary>Opens the current pad set in the engine and sends the pad settings (SL-45, PB-85).</summary>
+    private async Task SendPadSetAsync()
+    {
+        var pads = _settings.Pads ?? new PadSettings();
+        await SendToEngineAsync(async e =>
+        {
+            await e.SetPadAsync(pads.GainDb <= -40 ? -100 : pads.GainDb, pads.FadeSec, pads.Follow, _settings.Audio.ResolvePad());
+            if (_pads.Current is { } set)
+            {
+                var missing = await e.LoadPadSetAsync(set.Id, set.Samples);
+                if (missing.Count > 0)
+                    _ui.Post(() => ShowToast($"{set.Name}: {missing.Count} pad files are missing"));
+            }
+        });
+    }
+
+    private void ShowEnginePad(int? key) => Pads.ShowPlaying(key);
+
     private void LoadPads()
     {
         _pads = _store.LoadPads();
         RefreshPads();
+        Pads.Refresh();
     }
 
     private void RefreshPads()
@@ -71,7 +129,10 @@ public sealed partial class MainViewModel
         _pads = _pads with { PadSets = [.. _pads.PadSets, set], CurrentId = _pads.CurrentId ?? set.Id };
         _store.SavePads(_pads);
         RefreshPads();
+        Pads.Refresh();
         PadsKey = true;
+        if (_pads.CurrentId == set.Id)
+            _ = SendPadSetAsync();
         ShowToast($"Imported the pad set {set.Name} · 12 keys");
         AppLog.Write("Library", $"Imported pad set {set.Name} from {folder}");
         return true;

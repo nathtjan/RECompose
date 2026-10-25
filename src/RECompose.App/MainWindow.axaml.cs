@@ -247,6 +247,13 @@ public partial class MainWindow : Window
 
     private MainViewModel? ViewModel => DataContext as MainViewModel;
 
+    /// <summary>A pad key: start it, crossfade to it, or fade it out (SL-42).</summary>
+    private void OnPadKeyClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Avalonia.Controls.Primitives.ToggleButton { Tag: int pitchClass } && ViewModel is { } vm)
+            _ = vm.Pads.PressAsync(pitchClass);
+    }
+
     /// <summary>A transition chip between two service rows: the popover (SL-21).</summary>
     private void OnTransitionChipClick(object? sender, RoutedEventArgs e)
     {

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "audio/player.h"
 
+#include "audio/pads.h"
+
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -106,6 +108,7 @@ void Player::handle (const Command& command) noexcept
             }
 
             song_ = command.song;
+            lastSegment_ = nullptr;
             plan_ = song_ != nullptr ? song_->plan.load (std::memory_order_acquire) : nullptr;
             pendingPlan_ = nullptr;
             segmentIndex_ = 0;
@@ -207,6 +210,7 @@ void Player::seekTo (std::int64_t frame, std::uint32_t generation) noexcept
 
 void Player::adoptPendingPlan() noexcept
 {
+    lastSegment_ = nullptr; // after a seek or a new plan the pads hear about the segment again
     if (pendingPlan_ != nullptr)
     {
         plan_ = pendingPlan_;
@@ -365,7 +369,15 @@ void Player::process (float* const* outputs, int numOutputs, int numSamples, boo
 
         int frames = std::min (kChunk, numSamples - done);
         if (const auto* segment = locateSegment())
+        {
             frames = static_cast<int> (std::min<std::int64_t> (frames, segment->end - position_frames_)); // mutes and fades change at the seams
+            if (segment != lastSegment_)
+            {
+                lastSegment_ = segment;
+                if (pads_ != nullptr)
+                    pads_->onSegment (*segment); // Follow song and pad bars (SL-44, ARR-39)
+            }
+        }
         renderChunk (outputs, numOutputs, done, frames, offline);
         done += frames;
     }

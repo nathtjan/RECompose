@@ -70,6 +70,7 @@ Engine::Engine()
 {
     formats_.registerBasicFormats();
     disk_ = std::make_unique<audio::DiskStreamer>();
+    player_.setPads (&pads_);
     devices_.addChangeListener (this);
     startTimerHz (10);
 }
@@ -80,9 +81,10 @@ Engine::~Engine()
     devices_.removeChangeListener (this);
     devices_.removeAudioCallback (this);
     devices_.closeAudioDevice();
-    disk_.reset(); // the disk thread stops before any song is freed
+    disk_.reset(); // the disk thread stops before any song or pad set is freed
     song_.reset();
     retiring_.clear();
+    padBanks_.clear();
 }
 
 //==============================================================================
@@ -99,6 +101,8 @@ juce::var Engine::handle (const juce::String& type, const juce::var& message)
     if (type == "setPlan")      return setPlan (message);
     if (type == "getState")     return getState();
     if (type == "renderOffline") return renderOffline (message);
+    if (type == "loadPadSet")   return loadPadSet (message);
+    if (type == "pad")          return pad (message);
 
     return makeError ({}, "unknownType", "Unknown message type: " + type);
 }
@@ -135,6 +139,95 @@ void Engine::post (const audio::Command& command)
         player_.processCommandsOnly();
         collectRetired();
     }
+}
+
+//==============================================================================
+// Pads (protocol 6, SL-40…46): a pad set is opened here and sounds on its own player.
+void Engine::openPadBank (double rate)
+{
+    auto bank = audio::loadPadBank (padSetId_, padFiles_, rate, formats_);
+    disk_->addPads (bank.get());
+    audio::PadCommand command;
+    command.type = audio::PadCommand::Type::setBank;
+    command.bank = bank.get();
+    padBanks_.push_back (std::move (bank));
+    pads_.post (command);
+    disk_->wake();
+}
+
+juce::var Engine::loadPadSet (const juce::var& message)
+{
+    const auto* samples = message.getProperty ("samples", {}).getArray();
+    if (samples == nullptr)
+        return makeError ({}, "badMessage", "loadPadSet needs samples.");
+
+    padSetId_ = text (message, "id").toStdString();
+    padFiles_ = {};
+    for (const auto& s : *samples)
+    {
+        const auto pc = static_cast<int> (number (s, "pitchClass", -1.0));
+        if (pc >= 0 && pc < audio::kPadKeys)
+            padFiles_[static_cast<std::size_t> (pc)] = text (s, "file").toStdString();
+    }
+
+    openPadBank (engineRate());
+    const auto& bank = *padBanks_.back();
+    juce::Array<juce::var> keys;
+    for (int k = 0; k < audio::kPadKeys; ++k)
+    {
+        const auto& track = *bank.keys[static_cast<std::size_t> (k)].track;
+        keys.add (Obj().set ("pitchClass", k).set ("missing", track.missing).set ("problem", track.problem));
+    }
+    return Obj().set ("type", "padSet").set ("id", juce::String (padSetId_)).set ("keys", keys);
+}
+
+juce::var Engine::pad (const juce::var& message)
+{
+    auto send = [this] (audio::PadCommand command) { pads_.post (command); };
+
+    if (const auto v = message.getProperty ("gainDb", {}); ! v.isVoid())
+    {
+        audio::PadCommand c;
+        c.type = audio::PadCommand::Type::setGain;
+        c.value = audio::decibelsToGain (static_cast<float> (static_cast<double> (v)));
+        send (c);
+    }
+    if (const auto v = message.getProperty ("fadeSec", {}); ! v.isVoid())
+    {
+        audio::PadCommand c;
+        c.type = audio::PadCommand::Type::setFade;
+        c.frames = static_cast<std::int64_t> (std::llround (std::max (0.01, static_cast<double> (v)) * engineRate()));
+        send (c);
+    }
+    if (const auto v = message.getProperty ("follow", {}); v.isBool())
+    {
+        audio::PadCommand c;
+        c.type = audio::PadCommand::Type::setFollow;
+        c.key = static_cast<bool> (v) ? 1 : 0;
+        send (c);
+    }
+    if (const auto output = message.getProperty ("output", {}); output.isObject())
+    {
+        audio::PadCommand c;
+        c.type = audio::PadCommand::Type::setOutput;
+        c.channel = static_cast<int> (number (output, "channel", 0));
+        c.width = static_cast<int> (number (output, "width", 2)) == 1 ? 1 : 2;
+        send (c);
+    }
+    if (message.hasProperty ("key"))
+    {
+        // A pitch class starts that pad (crossfading from another); null stops it (SL-42).
+        const auto v = message.getProperty ("key", {});
+        audio::PadCommand c;
+        c.type = audio::PadCommand::Type::play;
+        c.key = v.isInt() || v.isInt64() || v.isDouble() ? juce::jlimit (-1, audio::kPadKeys - 1, static_cast<int> (v)) : -1;
+        send (c);
+        disk_->wake();
+    }
+
+    if (! callbackActive_.load())
+        collectRetired();
+    return Obj().set ("type", "ok");
 }
 
 //==============================================================================
@@ -268,6 +361,13 @@ void Engine::collectRetired()
                                          [retired] (const auto& s) { return s.get() == retired; }),
                          retiring_.end());
     }
+    while (auto* bank = pads_.takeRetiredBank())
+    {
+        disk_->removePads (bank);
+        padBanks_.erase (std::remove_if (padBanks_.begin(), padBanks_.end(),
+                                         [bank] (const auto& b) { return b.get() == bank; }),
+                         padBanks_.end());
+    }
 }
 
 juce::var Engine::loadSong (const juce::var& message)
@@ -329,6 +429,9 @@ juce::var Engine::unloadSong()
 
 void Engine::reloadAtRate (double rate)
 {
+    if (! padBanks_.empty() && std::abs (padBanks_.back()->sampleRate - rate) > 0.5)
+        openPadBank (rate); // the pads follow the device rate too; the old set fades out
+
     if (song_ == nullptr || std::abs (song_->sampleRate - rate) < 0.5)
         return;
 
@@ -450,6 +553,8 @@ std::unique_ptr<audio::Plan> Engine::buildPlan (double rate) const
         segment.fadeOut = std::min (length, frames (spec.fadeOut));
         segment.click = spec.click;
         segment.key = spec.key;
+        segment.songKey = spec.songKey;
+        segment.pad = spec.pad;
         segment.muted.assign (specs_.size(), 0);
         for (const auto& id : spec.mute)
             for (std::size_t i = 0; i < specs_.size(); ++i)
@@ -494,6 +599,8 @@ juce::var Engine::setPlan (const juce::var& message)
         spec.fadeOut = std::max (0.0, number (s, "fadeOut", 0.0));
         spec.click = flag (s, "click", false);
         spec.key = juce::jlimit (-24, 24, static_cast<int> (number (s, "key", 0.0)));
+        spec.songKey = juce::jlimit (-1, 11, static_cast<int> (number (s, "songKey", -1.0)));
+        spec.pad = juce::jlimit (-1, 11, static_cast<int> (number (s, "pad", -1.0)));
         if (const auto* mute = s.getProperty ("mute", {}).getArray())
             for (const auto& id : *mute)
                 if (id.isString())
@@ -557,6 +664,7 @@ juce::var Engine::renderOffline (const juce::var& message)
         devices_.removeAudioCallback (this);
 
     player_.prepare (song_->sampleRate, 512, channels);
+    pads_.prepare (song_->sampleRate);
     juce::AudioBuffer<float> buffer (channels, frames);
     std::vector<float*> pointers (static_cast<std::size_t> (channels));
 
@@ -566,6 +674,7 @@ juce::var Engine::renderOffline (const juce::var& message)
         for (int c = 0; c < channels; ++c)
             pointers[static_cast<std::size_t> (c)] = buffer.getWritePointer (c, done);
         player_.process (pointers.data(), channels, n, true);
+        pads_.process (pointers.data(), channels, n, true);
         done += n;
     }
     collectRetired();
@@ -650,7 +759,8 @@ juce::var Engine::snapshot()
         .set ("cpu", devices_.getCpuUsage())
         .set ("deviceOpen", callbackActive_.load())
         .set ("meters", meters)
-        .set ("master", masterArray);
+        .set ("master", masterArray)
+        .set ("pad", Obj().set ("key", pads_.key() >= 0 ? juce::var (pads_.key()) : juce::var()).set ("level", pads_.level()));
 }
 
 void Engine::timerCallback()
@@ -683,12 +793,14 @@ void Engine::audioDeviceIOCallbackWithContext (const float* const*, int, float* 
                                                int numSamples, const juce::AudioIODeviceCallbackContext&)
 {
     player_.process (outputs, numOutputs, numSamples, false);
+    pads_.process (outputs, numOutputs, numSamples, false);
 }
 
 void Engine::audioDeviceAboutToStart (juce::AudioIODevice* device)
 {
     const auto rate = device->getCurrentSampleRate();
     player_.prepare (rate, device->getCurrentBufferSizeSamples(), device->getActiveOutputChannels().getHighestBit() + 1);
+    pads_.prepare (rate);
     deviceRate_.store (rate);
     outputLatency_.store (device->getOutputLatencyInSamples());
     callbackActive_.store (true);

@@ -117,7 +117,9 @@ public sealed record EngineSnapshot(
     IReadOnlyDictionary<string, float> Meters,
     float MasterLeft,
     float MasterRight,
-    long PlanFrames = 0)
+    long PlanFrames = 0,
+    int? PadKey = null,
+    float PadLevel = 0)
 {
     /// <summary>The frame being heard: the render position minus the output latency while playing (PB-4).</summary>
     public long HeardFrame => State == TransportState.Playing ? Math.Max(0, Frame - Latency) : Frame;
@@ -146,12 +148,14 @@ public sealed record EngineSnapshot(
             meters,
             (float?)master?[0] ?? 0,
             (float?)master?[1] ?? 0,
-            (long?)o["planFrames"] ?? 0);
+            (long?)o["planFrames"] ?? 0,
+            (int?)o["pad"]?["key"],
+            (float?)o["pad"]?["level"] ?? 0);
     }
 }
 
 /// <summary>
-/// Typed access to protocol 3 (docs/engine-protocol.md). Events are raised on a background
+/// Typed access to the engine protocol (docs/engine-protocol.md). Events are raised on a background
 /// thread; the UI marshals them itself.
 /// </summary>
 public sealed class EngineClient : IAsyncDisposable
@@ -275,6 +279,10 @@ public sealed class EngineClient : IAsyncDisposable
                 segment["click"] = true;
             if (s.Key != 0)
                 segment["key"] = s.Key;
+            if (s.SongKey is { } songKey)
+                segment["songKey"] = songKey;
+            if (s.Pad is { } pad)
+                segment["pad"] = pad;
             list.Add(segment);
         }
 
@@ -287,6 +295,34 @@ public sealed class EngineClient : IAsyncDisposable
             request["position"] = position;
         var reply = await Session.Connection.RequestAsync("setPlan", request, ct).ConfigureAwait(false);
         return (long?)reply["frames"] ?? 0;
+    }
+
+    /// <summary>Opens a pad set (protocol 6, SL-47): one file per pitch class. Returns the pitch classes whose file is missing.</summary>
+    public async Task<IReadOnlyList<int>> LoadPadSetAsync(string id, IReadOnlyDictionary<int, string> samples, CancellationToken ct = default)
+    {
+        var list = new JsonArray();
+        foreach (var (pitchClass, file) in samples)
+            list.Add(new JsonObject { ["pitchClass"] = pitchClass, ["file"] = file });
+        var reply = await Session.Connection.RequestAsync("loadPadSet", new JsonObject { ["id"] = id, ["samples"] = list }, ct).ConfigureAwait(false);
+        return (reply["keys"] as JsonArray ?? []).OfType<JsonObject>()
+            .Where(k => (bool?)k["missing"] ?? false)
+            .Select(k => (int?)k["pitchClass"] ?? -1)
+            .ToList();
+    }
+
+    /// <summary>Starts the pad in a pitch class, crossfading from another, or stops it with null (SL-42).</summary>
+    public Task PlayPadAsync(int? pitchClass, CancellationToken ct = default) =>
+        Session.Connection.RequestAsync("pad", new JsonObject { ["key"] = pitchClass }, ct);
+
+    /// <summary>Pad volume, fade time, Follow song and output (SL-44, SL-45, PB-85); null leaves a value as it is.</summary>
+    public Task SetPadAsync(double? gainDb = null, double? fadeSec = null, bool? follow = null, (int Channel, int Width)? output = null, CancellationToken ct = default)
+    {
+        var request = new JsonObject();
+        if (gainDb is { } g) request["gainDb"] = g;
+        if (fadeSec is { } f) request["fadeSec"] = f;
+        if (follow is { } fo) request["follow"] = fo;
+        if (output is { } o) request["output"] = new JsonObject { ["channel"] = o.Channel, ["width"] = o.Width };
+        return Session.Connection.RequestAsync("pad", request, ct);
     }
 
     public Task SetMasterAsync(double gainDb, CancellationToken ct = default) =>

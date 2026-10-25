@@ -2,6 +2,7 @@
 #include "audio/disk_streamer.h"
 
 #include "audio/click.h"
+#include "audio/pads.h"
 
 #include <CDSPResampler.h>
 
@@ -36,6 +37,21 @@ void DiskStreamer::removeSong (Song* song)
     songs_.erase (std::remove (songs_.begin(), songs_.end(), song), songs_.end());
 }
 
+void DiskStreamer::addPads (PadBank* bank)
+{
+    {
+        const std::lock_guard lock (mutex_);
+        pads_.push_back (bank);
+    }
+    notify();
+}
+
+void DiskStreamer::removePads (PadBank* bank)
+{
+    const std::lock_guard lock (mutex_);
+    pads_.erase (std::remove (pads_.begin(), pads_.end(), bank), pads_.end());
+}
+
 void DiskStreamer::run()
 {
     while (! threadShouldExit())
@@ -46,6 +62,8 @@ void DiskStreamer::run()
             for (auto* song : songs_)
                 for (auto& track : song->tracks)
                     written += fillTrack (*song, *track, 8); // round-robin, 8 blocks at a time
+            for (auto* bank : pads_)
+                written += fillPads (*bank, 8);
         }
 
         if (written == 0)
@@ -53,54 +71,55 @@ void DiskStreamer::run()
     }
 }
 
-namespace
+// Reads `frames` engine-rate frames from a stream into `out`, resampling when the file's
+// rate differs (PB-2). Past the end of the file the reader returns silence.
+void readStream (Track& track, SourceStream& stream, float* const* out, int frames, double engineRate)
 {
-    // Reads `frames` engine-rate frames from a stream into `out`, resampling when the file's
-    // rate differs (PB-2). Past the end of the file the reader returns silence.
-    void readStream (Track& track, SourceStream& stream, float* const* out, int frames, double engineRate)
+    const int channels = track.channels;
+
+    if (! track.resampling)
     {
-        const int channels = track.channels;
+        float* dest[kMaxTrackChannels] { out[0], channels > 1 ? out[1] : nullptr };
+        track.reader->read (dest, channels, stream.pos, frames);
+        stream.pos += frames;
+        stream.nextEngine += frames;
+        return;
+    }
 
-        if (! track.resampling)
-        {
-            float* dest[kMaxTrackChannels] { out[0], channels > 1 ? out[1] : nullptr };
-            track.reader->read (dest, channels, stream.pos, frames);
-            stream.pos += frames;
-            stream.nextEngine += frames;
-            return;
-        }
-
-        (void) engineRate;
-        while (static_cast<int> (stream.pending[0].size()) < frames)
-        {
-            float* dest[kMaxTrackChannels] { track.readBuffer[0].data(), channels > 1 ? track.readBuffer[1].data() : nullptr };
-            track.reader->read (dest, channels, stream.pos, kBlockFrames);
-            stream.pos += kBlockFrames;
-            for (int c = 0; c < channels; ++c)
-            {
-                std::copy (dest[c], dest[c] + kBlockFrames, track.resampleInput.begin());
-                double* resampled = nullptr;
-                const int produced = stream.resamplers[c]->process (track.resampleInput.data(), kBlockFrames, resampled);
-                stream.pending[c].insert (stream.pending[c].end(), resampled, resampled + produced);
-            }
-        }
-
+    (void) engineRate;
+    while (static_cast<int> (stream.pending[0].size()) < frames)
+    {
+        float* dest[kMaxTrackChannels] { track.readBuffer[0].data(), channels > 1 ? track.readBuffer[1].data() : nullptr };
+        track.reader->read (dest, channels, stream.pos, kBlockFrames);
+        stream.pos += kBlockFrames;
         for (int c = 0; c < channels; ++c)
         {
-            for (int i = 0; i < frames; ++i)
-                out[c][i] = static_cast<float> (stream.pending[c][static_cast<std::size_t> (i)]);
-            stream.pending[c].erase (stream.pending[c].begin(), stream.pending[c].begin() + frames);
+            std::copy (dest[c], dest[c] + kBlockFrames, track.resampleInput.begin());
+            double* resampled = nullptr;
+            const int produced = stream.resamplers[c]->process (track.resampleInput.data(), kBlockFrames, resampled);
+            stream.pending[c].insert (stream.pending[c].end(), resampled, resampled + produced);
         }
-        stream.nextEngine += frames;
     }
 
-    void startStream (Track& track, SourceStream& stream, std::int64_t engineFrame, double ratio)
+    for (int c = 0; c < channels; ++c)
     {
-        stream.clear();
-        stream.nextEngine = engineFrame;
-        stream.pos = track.resampling ? static_cast<std::int64_t> (std::floor (static_cast<double> (engineFrame) * ratio)) : engineFrame;
-        stream.valid = true;
+        for (int i = 0; i < frames; ++i)
+            out[c][i] = static_cast<float> (stream.pending[c][static_cast<std::size_t> (i)]);
+        stream.pending[c].erase (stream.pending[c].begin(), stream.pending[c].begin() + frames);
     }
+    stream.nextEngine += frames;
+}
+
+void startStream (Track& track, SourceStream& stream, std::int64_t engineFrame, double ratio)
+{
+    stream.clear();
+    stream.nextEngine = engineFrame;
+    stream.pos = track.resampling ? static_cast<std::int64_t> (std::floor (static_cast<double> (engineFrame) * ratio)) : engineFrame;
+    stream.valid = true;
+}
+
+namespace
+{
 
     // Pointers to the track's stretch input, grown on the disk thread when a block needs more.
     void stretchInput (Track& track, int frames, float* (&in)[kMaxTrackChannels])

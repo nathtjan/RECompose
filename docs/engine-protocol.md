@@ -44,9 +44,9 @@ Frames are at the **engine rate**: the open device's sample rate (48 000 when no
 
 `hello` and `shutdown` keep this shape in every future version.
 
-### Protocol 2 to 5 (milestones 1, 3 and 4)
+### Protocol 2 to 6 (milestones 1, 3 and 4)
 
-Protocol 3 adds `setPlan` and the `planFrames` snapshot field; everything else is as in 2. Protocol 4 adds the engine's click: a generated track in `loadSong`, the song grid in `setPlan` and a `click` flag per segment. Protocol 5 adds live key and tempo: `transposes` per track, `key` per segment and `tempo` per plan.
+Protocol 3 adds `setPlan` and the `planFrames` snapshot field; everything else is as in 2. Protocol 4 adds the engine's click: a generated track in `loadSong`, the song grid in `setPlan` and a `click` flag per segment. Protocol 5 adds live key and tempo: `transposes` per track, `key` per segment and `tempo` per plan. Protocol 6 adds pads: `loadPadSet`, `pad`, `songKey` and `pad` per segment, and `pad` in the snapshot.
 
 | Request | Fields | Reply |
 |---|---|---|
@@ -59,6 +59,8 @@ Protocol 3 adds `setPlan` and the `planFrames` snapshot field; everything else i
 | `setTrack` | `trackId`, any of `gainDb`, `mute`, `solo`, `output`, `transposes` (5) | `ok`. Changes ramp over one 256-frame block; `transposes` applies from the audio not yet read ahead (up to 4 s later). |
 | `setMaster` | `gainDb` | `ok` |
 | `setPlan` (3–5) | `segments: [{start, end, src, fadeIn, fadeOut, mute: [trackIds], click?, key?}]`, `grid?: {origin, beat, beatsPerBar}` (4), `tempo?` (5), `position?` | `plan {frames}`. See below. |
+| `loadPadSet` (6) | `id`, `samples: [{pitchClass, file}]` | `padSet {id, keys: [{pitchClass, missing, problem}]}`. Opens a pad set (SL-47); a sounding pad crossfades to the same key of the new set (SL-41). |
+| `pad` (6) | any of `key` (pitch class 0–11, or `null` to fade out), `gainDb`, `fadeSec`, `follow`, `output: {channel, width}` | `ok`. Pads play independently of the song transport (SL-40). |
 | `getState` | | `state {song, device, snapshot}` |
 | `renderOffline` | `frames`, `channels`, `path?` | `rendered {frames, channels, peak: [..], rms: [..], snapshot}`. Tests only: pulls the audio through the graph on the message thread instead of the device, waiting for the disk, and optionally writes a 32-bit float WAV. |
 
@@ -67,6 +69,8 @@ Protocol 3 adds `setPlan` and the `planFrames` snapshot field; everything else i
 **The click (protocol 4, PB-70).** A track with `generated: "click"` has no file: the engine synthesizes a click into it (accent on beat 1 at 1.6 kHz, other beats at 1 kHz, 30 ms, peaking at −6 dBFS), so it is routed, muted and metered like any track. The app loads one with the id `generated-click` on the Cue output. It sounds on every beat of the plan's `grid` that starts inside a segment with `click: true` (count-ins and click bars, SL-36, ARR-39). `grid.origin` is the plan second of bar 1 beat 1 (S0), `grid.beat` the beat length in seconds; beats before the origin count down to it, so a count-in ending on S0 lands on the grid. Each beat's frame is rounded once, as segment starts are. Without a grid there is no click.
 
 **Key and tempo (protocol 5, PB-58, PB-60).** A segment's `key` (semitones, the entry key plus any lift) shifts the tracks loaded with `transposes: true`; `tempo` (0.5–1.5, default 1) plays the whole plan that much faster or slower without changing pitch, and applies to every track. A track at key 0 in a plan at tempo 1 bypasses the processing and plays bit for bit as before. Processing runs on the disk thread ahead of playback (Signalsmith Stretch), never on the audio thread; a shifted stream is primed so its first frame is the source frame it starts at, so shifted and unshifted tracks stay on one grid. Where the key changes on a contiguous boundary (a lift, or `transposes` switched), the old and the new key crossfade over 50 ms. The app's frames stay *plan frames* under a tempo: `seek.frame`, the `plan` reply, and the snapshot's `frame`, `planFrames` and `latency` are all in plan frames, and `position` is in plan seconds; the engine converts. (The render cache of milestone 6 will play pre-rendered stems instead, PB-5.)
+
+**Pads (protocol 6, SL-40…46, PB-72).** One file per pitch class. The disk thread reads only the keys that sound and loops each between the file's own loop points (WAV `smpl`) or, without them, 25–90 % of the file, with a 2 s equal-power crossfade (SL-46). A `key` fades that pad in over `fadeSec` (default 4 s) while any other fades out (SL-42); `null` fades out. With `follow`, a sounding pad takes each segment's `songKey` (the pitch class heard, key lifts included, SL-44). A segment with `pad` (pad bars, ARR-39) starts that pad and, when it ends, the pad fades out or goes to the song's key with `follow`. The volume defaults to −6 dB (SL-45) and the pads play on the output the app sends (Pad, default Main). The engine counts a sounding pad as busy, so it stays alive without an app (REL-34). The snapshot's `pad` is `{key, level}`.
 
 `device` = `{type, name, sampleRate, bufferSize, outputChannels: [names], activeOutputs, sampleRates, bufferSizes, outputLatency}`.
 

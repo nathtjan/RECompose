@@ -260,6 +260,42 @@ public class EngineClientTests
         }
     }
 
+    [Fact]
+    public async Task SL42_a_pad_plays_with_the_song_stopped_and_fades_out()
+    {
+        var folder = Folder();
+        var files = Enumerable.Range(0, 12).ToDictionary(k => k, k =>
+            TestWav.Write(Path.Combine(folder, $"Pad{k}.wav"), 48000, 2, 48000 * 4, (i, _) => 0.5 * Math.Sin(2 * Math.PI * (200 + 50 * k) * i / 48000.0)));
+        var music = TestWav.Write(Path.Combine(folder, "Keys.wav"), 48000, 1, 48000 * 4, (_, _) => 0);
+        var ct = TestContext.Current.CancellationToken;
+
+        await using var client = await StartAsync();
+        await client.LoadSongAsync("song-pad", [new EngineTrack("keys", music, 0, 1, 0, false, false, false)], 0, 0, ct);
+        Assert.Empty(await client.LoadPadSetAsync("pads", files, ct));
+        await client.SetPadAsync(gainDb: 0, fadeSec: 0.1, output: (0, 2), ct: ct);
+
+        try
+        {
+            await client.PlayPadAsync(5, ct);
+            await client.PlayAsync(ct); // the song plays silence; the pad is independent of it
+            var (peak, _, snapshot) = await client.RenderOfflineAsync(48000, 2, ct: ct);
+            Assert.Equal(0.5, peak[0], 1);
+            Assert.Equal(5, snapshot.PadKey);
+
+            await client.PauseAsync(ct);
+            await client.PlayPadAsync(null, ct);
+            await client.RenderOfflineAsync(12000, 2, ct: ct);
+            (peak, _, snapshot) = await client.RenderOfflineAsync(4800, 2, ct: ct);
+            Assert.Equal(0, peak[0], 3);
+            Assert.Null(snapshot.PadKey);
+        }
+        finally
+        {
+            await client.StopAsync(ct);
+            await client.PlayPadAsync(null, ct);
+        }
+    }
+
     /// <summary>One channel of a 32-bit float WAV written by renderOffline.</summary>
     private static float[] ReadFloatWav(string path, int channel)
     {

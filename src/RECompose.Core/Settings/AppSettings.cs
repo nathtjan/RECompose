@@ -22,6 +22,14 @@ public sealed record AudioSettings
     public int CueChannel { get; init; }
     public int CueWidth { get; init; } = 2;
 
+    /// <summary>The Pad output (PB-85); null plays pads on Main, the default.</summary>
+    public int? PadChannel { get; init; }
+    public int? PadWidth { get; init; }
+
+    /// <summary>Where pads play: the Pad output, or Main when it isn't set.</summary>
+    public (int Channel, int Width) ResolvePad() =>
+        PadChannel is { } channel ? (channel, PadWidth == 1 ? 1 : 2) : (MainChannel, MainWidth);
+
     /// <summary>Resolves a track output ("main", "cue", "3-4") to device channels.</summary>
     public (int Channel, int Width) Resolve(string output)
     {
@@ -33,6 +41,17 @@ public sealed record AudioSettings
             _ => (o.Channel, o.Width),
         };
     }
+}
+
+/// <summary>The pads' own settings (SL-44, SL-45).</summary>
+public sealed record PadSettings
+{
+    public double GainDb { get; init; } = -6;
+
+    /// <summary>1, 2, 4 or 8 seconds.</summary>
+    public double FadeSec { get; init; } = 4;
+
+    public bool Follow { get; init; }
 }
 
 /// <summary>settings.json (DM-90).</summary>
@@ -59,4 +78,7 @@ public sealed record AppSettings
     /// (they change the variant). May be null in files written before milestone 4.
     /// </summary>
     public Dictionary<string, string>? VariantScopes { get; init; }
+
+    /// <summary>Pad volume, fade time and Follow song; null in files written before pads existed.</summary>
+    public PadSettings? Pads { get; init; }
 }

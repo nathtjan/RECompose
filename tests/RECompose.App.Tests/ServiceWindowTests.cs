@@ -75,6 +75,8 @@ public sealed class ServiceWindowTests : IDisposable
         });
         service = ServiceEdit.Add(service, ServiceEdit.NewEntry(other));
         store.SaveService(service);
+        var pads = new PadSet { Id = "ob", Name = "OB Pad", Folder = _root, Samples = Enumerable.Range(0, 12).ToDictionary(k => k, k => Path.Combine(_root, $"pad{k}.wav")) };
+        store.SavePads(new PadLibrary { PadSets = [pads], CurrentId = "ob" });
         return store;
     }
 
@@ -123,6 +125,16 @@ public sealed class ServiceWindowTests : IDisposable
             Dispatcher.UIThread.RunJobs();
             Assert.Equal("Default", vm.CurrentMixPreset?.Name);
             Assert.Equal("Default", (window.FindControl<ComboBox>("MixPresetSelect")!.SelectedItem as MixPresetChoice)?.Name); // the select shows it too
+            Assert.NotNull(window.CaptureRenderedFrame());
+
+            // The sidebar pads (UI-12): twelve keys, the song's key marked, a key press without an engine doesn't throw.
+            Assert.True(vm.Pads.HasSet);
+            Assert.Equal(12, vm.Pads.Keys.Count);
+            Assert.Equal("B♭", vm.Pads.Keys.Single(k => k.IsSongKey).Label); // the entry is back at B♭ after Ctrl+↑
+            await vm.Pads.PressAsync(3);
+            Assert.True(vm.Pads.Keys[3].IsPlaying);
+            await vm.Pads.PressAsync(3);
+            Assert.False(vm.Pads.IsPlaying);
             Assert.NotNull(window.CaptureRenderedFrame());
 
             // Library › Pads (SL-47): the switch and the empty list render.

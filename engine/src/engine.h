@@ -6,6 +6,7 @@
 #pragma once
 
 #include "audio/disk_streamer.h"
+#include "audio/pads.h"
 #include "audio/player.h"
 #include "audio/song.h"
 
@@ -39,7 +40,8 @@ public:
     std::vector<std::string> takeOutgoing (bool connected);
 
     // Any thread.
-    bool isPlaying() const noexcept { return player_.state() == audio::TransportState::playing; }
+    // A song playing, or a pad sounding: either keeps the engine alive without an app (REL-34, SL-40).
+    bool isPlaying() const noexcept { return player_.state() == audio::TransportState::playing || pads_.key() >= 0; }
 
     // Exposed for tests (message thread).
     audio::Player& player() noexcept { return player_; }
@@ -56,6 +58,9 @@ private:
     juce::var setPlan (const juce::var& message);
     juce::var getState();
     juce::var renderOffline (const juce::var& message);
+    juce::var loadPadSet (const juce::var& message);
+    juce::var pad (const juce::var& message);
+    void openPadBank (double rate);
 
     // Helpers.
     juce::var deviceInfo();
@@ -88,6 +93,10 @@ private:
     bool deviceInitialised_ = false;
     std::unique_ptr<audio::DiskStreamer> disk_;
     audio::Player player_;
+    audio::PadPlayer pads_;
+    std::vector<std::unique_ptr<audio::PadBank>> padBanks_; // the one sounding and any still fading out
+    std::string padSetId_;
+    std::array<std::string, audio::kPadKeys> padFiles_;
     std::unique_ptr<audio::Song> song_;
     std::vector<std::unique_ptr<audio::Song>> retiring_;
     std::vector<audio::TrackSpec> specs_; // current mixer state of the loaded song, for getState/reload
@@ -99,6 +108,8 @@ private:
         bool silent = false;
         bool click = false;
         int key = 0;
+        int songKey = -1;
+        int pad = -1;
         std::vector<std::string> mute;
     };
 

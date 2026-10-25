@@ -158,7 +158,7 @@
 
       <!-- Sidebar (UI-12): the service (SL-1…7) over the library (SL-56) -->
       <Border Grid.Column="0" Classes="panel" BorderThickness="0,0,1,0">
-        <Grid RowDefinitions="3*,4,2*">
+        <Grid RowDefinitions="3*,4,2*,Auto">
         <DockPanel Grid.Row="0" x:Name="ServiceBlock" DataContext="{Binding Setlist}" x:DataType="vm:SetlistViewModel">
           <StackPanel DockPanel.Dock="Top" Margin="16,16,16,8" Spacing="4">
             <DockPanel>
@@ -286,6 +286,46 @@
             </ListBox.ItemTemplate>
           </ListBox>
         </DockPanel>
+
+        <!-- Pads (UI-12, SL-40…46): twelve keys in two rows, play/stop, Follow song, volume, fade -->
+        <Border Grid.Row="3" Classes="panel" BorderThickness="0,1,0,0" Padding="12,8" DataContext="{Binding Pads}" x:DataType="vm:PadsViewModel" IsVisible="{Binding HasSet}">
+          <StackPanel Spacing="6">
+            <DockPanel>
+              <ComboBox DockPanel.Dock="Right" ItemsSource="{Binding Sets}" SelectedItem="{Binding CurrentSet}" MinWidth="120" AutomationProperties.Name="Pad set">
+                <ComboBox.ItemTemplate>
+                  <DataTemplate x:DataType="vm:PadSetItem"><TextBlock Text="{Binding Name}" /></DataTemplate>
+                </ComboBox.ItemTemplate>
+              </ComboBox>
+              <TextBlock Classes="label" Text="PADS" VerticalAlignment="Center" />
+            </DockPanel>
+            <ItemsControl ItemsSource="{Binding FirstRow}">
+              <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal" Spacing="2" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="vm:PadKeyViewModel">
+                    <ToggleButton Classes="ms" Tag="{Binding PitchClass}" Click="OnPadKeyClick" IsChecked="{Binding IsPlaying, Mode=OneWay}" Content="{Binding Label}"
+                                  Width="38" Padding="0" AutomationProperties.Name="{Binding AccessibleName}"
+                                  ToolTip.Tip="{Binding AccessibleName}" />
+                  </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <ItemsControl ItemsSource="{Binding SecondRow}">
+              <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal" Spacing="2" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="vm:PadKeyViewModel">
+                    <ToggleButton Classes="ms" Tag="{Binding PitchClass}" Click="OnPadKeyClick" IsChecked="{Binding IsPlaying, Mode=OneWay}" Content="{Binding Label}"
+                                  Width="38" Padding="0" AutomationProperties.Name="{Binding AccessibleName}"
+                                  ToolTip.Tip="{Binding AccessibleName}" />
+                  </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <DockPanel>
+              <Button DockPanel.Dock="Left" Content="{Binding PlayStopLabel}" Command="{Binding PlayStopCommand}" Margin="0,0,8,0" Width="64" />
+              <CheckBox DockPanel.Dock="Left" Content="Follow song" IsChecked="{Binding Follow}" Margin="0,0,8,0" ToolTip.Tip="The pad follows the song's key, key lifts included" />
+              <ComboBox DockPanel.Dock="Right" ItemsSource="{Binding FadeChoices}" SelectedItem="{Binding Fade}" AutomationProperties.Name="Pad fade time" ToolTip.Tip="Fade time" />
+              <Slider Minimum="-40" Maximum="0" Value="{Binding VolumeDb}" Margin="0,0,8,0" AutomationProperties.Name="Pad volume" ToolTip.Tip="Pad volume" />
+            </DockPanel>
+          </StackPanel>
+        </Border>
         </Grid>
       </Border>
 
