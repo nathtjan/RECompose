@@ -132,9 +132,23 @@ public sealed class DataStore(string root)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         var temp = path + ".tmp";
-        using (var stream = File.Create(temp))
-            JsonSerializer.Serialize(stream, value, type);
-        File.Move(temp, path, overwrite: true);
+
+        // On Windows a virus scanner or the indexer may hold a file it just saw for a moment, and then the
+        // replace is refused. A save must not be lost for that (DM-90): try again shortly, then give up loudly.
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                using (var stream = new FileStream(temp, FileMode.Create, FileAccess.Write, FileShare.None))
+                    JsonSerializer.Serialize(stream, value, type);
+                File.Move(temp, path, overwrite: true);
+                return;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException && attempt < 8)
+            {
+                Thread.Sleep(15 * attempt);
+            }
+        }
     }
 
     /// <summary>
