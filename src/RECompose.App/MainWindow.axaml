@@ -530,7 +530,6 @@
                   <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,16,4">
                     <TextBlock Classes="label" Text="COUNT-IN" VerticalAlignment="Center" />
                     <ComboBox Classes="cell" ItemsSource="{Binding CountInChoices}" SelectedItem="{Binding CountIn}" MinWidth="140" AutomationProperties.Name="Count-in" />
-                    <TextBlock Classes="meta" Text="click not audible yet" VerticalAlignment="Center" IsVisible="{Binding CountInNotAudible}" />
                   </StackPanel>
                   <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,16,4">
                     <TextBlock Classes="label" Text="MIX" VerticalAlignment="Center" />

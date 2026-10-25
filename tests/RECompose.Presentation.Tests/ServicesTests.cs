@@ -220,7 +220,6 @@ public sealed class ServicesTests : IDisposable
         Assert.Equal(PlanItemKind.CountIn, vm.Song!.Plan.Items[0].Kind);
         Assert.Equal("COUNT-IN", vm.NowLabel);
         Assert.Equal("beat −8", vm.NowDetail);
-        Assert.True(vm.Setlist.CountInNotAudible);
         Assert.Equal(CountInMode.Generated, Store.LoadService(vm.CurrentService!.Id)!.Entry(entryId)!.CountIn.Mode);
     }
 

@@ -202,9 +202,6 @@ public sealed class SetlistViewModel : ObservableObject
         }
     }
 
-    /// <summary>SL-36 Generated sounds once the click generator is in the engine (milestone 4, engine part).</summary>
-    public bool CountInNotAudible => _selected?.Entry.CountIn.Mode == CountInMode.Generated;
-
     public ObservableCollection<MixPresetChoice> MixPresets { get; } = [];
 
     public MixPresetChoice? MixPreset
@@ -359,7 +356,7 @@ public sealed class SetlistViewModel : ObservableObject
         foreach (var name in new[]
                  {
                      nameof(HasSelection), nameof(EditingText), nameof(IsSelectionNotLoaded), nameof(IsSelectionLoaded), nameof(KeyText), nameof(KeyWarning),
-                     nameof(KeyTip), nameof(TempoText), nameof(CountIn), nameof(CountInNotAudible), nameof(MixPreset), nameof(ArrangementText), nameof(IsCustom), nameof(RevertText),
+                     nameof(KeyTip), nameof(TempoText), nameof(CountIn), nameof(MixPreset), nameof(ArrangementText), nameof(IsCustom), nameof(RevertText),
                      nameof(CanRevert), nameof(TransitionText), nameof(HasTransition),
                  })
             OnPropertyChanged(name);
