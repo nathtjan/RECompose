@@ -327,6 +327,34 @@ public sealed class SongPlan
         return DurationSec;
     }
 
+    /// <summary>
+    /// True when this plan plays exactly what <paramref name="other"/> does up to <paramref name="planSec"/>: the same items in the
+    /// same places reading the same audio. A plan that is the same up to a point can replace the other there with no seek (ARR-90).
+    /// </summary>
+    public bool SamePrefix(SongPlan other, double planSec)
+    {
+        if (Math.Abs(TempoFactor - other.TempoFactor) > 1e-9)
+            return false;
+
+        var index = 0;
+        foreach (var item in other.Items)
+        {
+            if (item.PlanStart >= planSec - ToleranceSec)
+                break;
+            if (index >= Items.Count)
+                return false;
+            var mine = Items[index++];
+            if (mine.Kind != item.Kind || mine.Label != item.Label || mine.EntryId != item.EntryId || mine.Pass != item.Pass
+                || Math.Abs(mine.PlanStart - item.PlanStart) > ToleranceSec || Math.Abs(mine.PlanEnd - item.PlanEnd) > ToleranceSec
+                || Math.Abs(mine.SrcStart - item.SrcStart) > ToleranceSec || Math.Abs(mine.SrcEnd - item.SrcEnd) > ToleranceSec
+                || mine.KeyTotal != item.KeyTotal || mine.FadeInSec != item.FadeInSec || mine.FadeOutSec != item.FadeOutSec
+                || !mine.MutedTrackIds.SequenceEqual(item.MutedTrackIds))
+                return false;
+        }
+
+        return true;
+    }
+
     public IReadOnlyList<PlanHold> Holds() =>
         Items.Select((item, index) => (item, index)).Where(x => x.item.Kind == PlanItemKind.Hold)
             .Select(x => new PlanHold(x.item.PlanStart, x.item.HoldPad, x.item.HoldPad ? x.item.SongPitchClass : null, x.item.HoldClick))

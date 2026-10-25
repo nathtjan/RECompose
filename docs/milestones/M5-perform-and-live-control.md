@@ -2,7 +2,7 @@
 
 **Goal:** the MD runs the service. Prepare and Perform are two modes of the same window. In Perform the screen is sparse and large: what is playing and where in it, what comes next and when, a plan strip in play order, the setlist, and a key deck of big keys. During a song the MD redirects it by keys, a foot pedal or a tapped tile: jump to a section, vamp, repeat once, move on, end, cancel. Holds wait for GO, open repeats wait for MOVE ON, the lock keeps stray touches from stopping the music, and Rehearsal mode loops a section with a count-in.
 
-**Status:** in progress (25 Oct 2026). WP1–WP8 are on `main`: live plan, engine swap and holds (protocol 8), the Perform screen with its lock and panic. Controls (WP9), Rehearsal (WP10) and the wrap-up (WP11) remain.
+**Status:** done (25 Oct 2026), ready to test with [the test guide](../testing/M5-test-guide.md). Delivered as planned, with these differences: protocol 9 (not 8) because MIDI input and `injectMidi` came with the controls; Loop is a live action (`LiveActionKind.Loop`) built like a vamp with a count-in bar between passes; an arrangement edit made while playing takes effect after the current item through the same swap (ARR-90, demo step 8); Settings › Controls and › Playback are one dialog; the status row has no MIDI, VOICE, RENDER or CPU indicators yet.
 
 **Starting point:** milestone 4. A service plays from song to song; the plan is built once per entry and changes only when the MD edits it. Holds and until-cued repeats are stored but passed over; there is no Perform view, no lock, no foot control.
 
@@ -113,3 +113,12 @@ Suggested order: WP1–3 (all pure), then WP4 and WP5 (the engine, with its test
 | Foot controller input is hard to test without hardware | The control map is pure and unit-tested; the engine's MIDI input sits behind a small interface with a test injection; the product owner's pedal is the real test |
 | Locks that annoy in rehearsal | Rehearsal lock allows everything; Service lock is the default only within 2 hours of the service time (WF-11) |
 | Size of the milestone | The order above leaves a working state after WP3, WP5 and WP8; Controls and Rehearsal can be split off if needed |
+
+## Known gaps (carried to later milestones)
+
+- Settings has one Controls and playback dialog, not a Settings window with pages; there is still no Pad output selector.
+- Service lock does not switch on by itself near the service time (WF-11); Panic has no MIDI All Notes Off or resume prompt (M6).
+- The MIDI, VOICE, RENDER and CPU indicators of the status row come with M6 and M7; the `VOICE` tag exists and nothing sends it.
+- A swap re-opens the streams at its frame: plain and jumping audio is sample-exact in the engine tests, resampled or stretched streams get a short priming transient. A swap with less than about 60 ms of lead falls back to a short gap.
+- The hold's pad is covered by hand only (the engine tests have no pad files).
+- `WindowSmokeTests` (M1) stop at their first real wait without failing; `HeadlessApp.RunAsync` fails loudly and the Perform and service window tests use it. The two old tests need the same treatment.

@@ -854,7 +854,24 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             return;
         if (!sameArrangement)
             TimelineAsHeard = !_song.IsAsWritten; // the timeline follows the variant that plays
-        _live = null; // an edit rebuilds the plan: a pending live change no longer applies
+        _live = null; // an edit rebuilt the plan: a pending live change no longer applies
+
+        // Playing: an edit that leaves the rest of the current item as it was takes effect when that item ends, with no gap (ARR-90).
+        if (IsPlaying && !_holding && sameArrangement && !previous.IsEmpty)
+        {
+            var current = previous.Items[previous.ItemIndexAt(_planPosition)];
+            if (current.Kind != PlanItemKind.Tail && _song.Plan.SamePrefix(previous, current.PlanEnd))
+            {
+                Sections.Refresh();
+                Entry.Refresh();
+                RefreshEntryCommands();
+                RefreshMixPresets();
+                UpdateReadouts();
+                _ = SendPlanAsync(null, null, current.PlanEnd);
+                return;
+            }
+        }
+
         var position = SongPlan.Remap(previous, _planPosition, _song.Plan, sameArrangement);
         PlanPositionSec = position;
         Sections.Refresh();

@@ -13,13 +13,13 @@ public class LivePlanTests
     private const double DurationB = Sections.SectionTests.DurationB;
     private static readonly double Bar = B.BarLength;
 
-    private static SongPlan Build(string order)
+    private static SongPlan Build(string order, PlanOptions? options = null)
     {
         var infos = ArrangementTests.InfosB();
         var parsed = QuickOrder.Parse(order, infos);
         Assert.False(parsed.HasProblems);
         var arrangement = new Arrangement { Id = "x", Name = "x", Entries = [.. parsed.Entries] };
-        return PlanBuilder.Build(B, infos, DurationB, arrangement);
+        return PlanBuilder.Build(B, infos, DurationB, arrangement, null, options);
     }
 
     private static LivePlan Live(string order, bool continueAsWritten = false) =>
@@ -352,5 +352,25 @@ public class LivePlanTests
         Assert.Equal(2, live.Plan.Items.Count(i => i.Label == "Chorus 1"));
         Assert.Equal(1, live.Plan.Items.Count(i => i.Kind == PlanItemKind.CountIn));
         Assert.Equal(["Verse 1", "Chorus 1", "Chorus 1", "Verse 2"], Labels(live.Plan));
+    }
+
+    [Fact]
+    public void ARR90_a_plan_that_adds_to_the_end_is_the_same_as_the_old_one_up_to_the_end_of_what_plays()
+    {
+        // The same entries before and after the edit, as an edit of the arrangement keeps them.
+        var infos = ArrangementTests.InfosB();
+        var entries = QuickOrder.Parse("V1 C V2", infos).Entries;
+        SongPlan Plan(IEnumerable<ArrangementEntry> list, PlanOptions? options = null) =>
+            PlanBuilder.Build(B, infos, DurationB, new Arrangement { Id = "x", Name = "x", Entries = [.. list] }, null, options);
+
+        var old = Plan(entries.Take(2));
+        var grown = Plan(entries);
+        var verse = old.Items.First(i => i.Label == "Verse 1");
+        var chorus = old.Items.First(i => i.Label == "Chorus 1");
+
+        Assert.True(grown.SamePrefix(old, verse.PlanEnd));
+        Assert.True(grown.SamePrefix(old, chorus.PlanEnd));
+        Assert.False(Plan(entries.Reverse()).SamePrefix(old, chorus.PlanEnd));                       // another order from the start
+        Assert.False(Plan(entries, new PlanOptions { TempoFactor = 0.9 }).SamePrefix(old, chorus.PlanEnd)); // another tempo
     }
 }

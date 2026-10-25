@@ -359,4 +359,34 @@ public sealed class LiveControlTests : IDisposable
             await FinishAsync(vm);
         }
     }
+
+    [Fact]
+    public async Task ARR90_an_arrangement_edit_while_playing_takes_effect_after_the_current_item_without_a_gap()
+    {
+        var (vm, song) = await StartAsync("V1 C");
+        try
+        {
+            await vm.EngineForTests!.PlayAsync();
+            await RenderAsync(vm, 2);
+            await Eventually(() => vm.State == RECompose.Engine.TransportState.Playing);
+            var framesBefore = vm.EnginePlanFrames;
+            var positionBefore = vm.PlanPositionSec;
+            Assert.True(framesBefore > 0);
+
+            // Add Verse 2 to the end of the variant that is playing.
+            var verse2 = vm.Song!.Sections.First(i => i.Label == "Verse 2");
+            vm.Entry.AddSection(verse2.Id);
+
+            // The plan grew, and the song went on from where it was: no seek back, still playing.
+            await RenderAsync(vm, 1);
+            await Eventually(() => vm.EnginePlanFrames > framesBefore);
+            Assert.Equal(RECompose.Engine.TransportState.Playing, vm.State);
+            Assert.InRange(vm.PlanPositionSec, positionBefore + 0.8, positionBefore + 1.3);
+            Assert.Equal(0.2, await RenderAsync(vm, 1), 2); // still Verse 1
+        }
+        finally
+        {
+            await FinishAsync(vm);
+        }
+    }
 }
