@@ -19,6 +19,7 @@ inline constexpr int kMaxTrackChannels = 2;
 struct Block
 {
     std::uint32_t generation = 0;
+    std::uint32_t version = 0;   // the plan the block was read for (gap-free swap, protocol 8)
     std::int64_t startFrame = 0; // song frame (engine rate) of the first frame
     int frames = 0;
     float data[kBlockFrames * kMaxTrackChannels] {}; // interleaved

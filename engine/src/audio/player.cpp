@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "audio/player.h"
 
+#include "audio/click.h"
 #include "audio/pads.h"
 
 #include <algorithm>
@@ -116,6 +117,9 @@ void Player::handle (const Command& command) noexcept
             lastSegment_ = nullptr;
             plan_ = song_ != nullptr ? song_->plan.load (std::memory_order_acquire) : nullptr;
             pendingPlan_ = nullptr;
+            swapPlan_ = nullptr;
+            currentVersion_ = plan_ != nullptr ? plan_->version : 0;
+            holding_ = false;
             segmentIndex_ = 0;
             transport_ = TransportState::stopped;
             fade_ = 0.0f;
@@ -135,6 +139,7 @@ void Player::handle (const Command& command) noexcept
             {
                 position_frames_ = 0;
             }
+            resetHolds();
             return;
         }
 
@@ -191,6 +196,49 @@ void Player::handle (const Command& command) noexcept
                 return;
             seekTo (std::clamp<std::int64_t> (command.frame, 0, planLength()), command.generation);
             return;
+
+        case Command::Type::swapPlan:
+            if (song_ == nullptr || command.plan == nullptr)
+                return;
+            swapPlan_ = command.plan;
+            swapFrame_ = std::max<std::int64_t> (0, command.frame);
+            // Not playing: nothing to keep going, the plan takes effect now. Late: the playhead is already past the
+            // frame, so it takes effect where the playhead is and the disk thread catches up (a short gap).
+            if (transport_ != TransportState::playing || position_frames_ >= swapFrame_)
+                adoptSwap();
+            return;
+
+        case Command::Type::go:
+            if (holding_)
+                releaseHold();
+            return;
+
+        case Command::Type::panic:
+            if (song_ == nullptr)
+                return;
+            if (holding_)
+            {
+                holding_ = false;
+                if (pads_ != nullptr)
+                    pads_->playNow (-1);
+                transport_ = TransportState::stopped;
+                waiting_ = false;
+                after_ = AfterFade::none;
+                seekPending_ = false;
+                rewindToStart();
+                return;
+            }
+            if (transport_ == TransportState::playing && ! waiting_)
+            {
+                startFade (0.0f, panicFadeMs, AfterFade::stopAndRewind);
+                return;
+            }
+            transport_ = TransportState::stopped;
+            waiting_ = false;
+            after_ = AfterFade::none;
+            seekPending_ = false;
+            rewindToStart();
+            return;
     }
 }
 
@@ -211,17 +259,134 @@ void Player::seekTo (std::int64_t frame, std::uint32_t generation) noexcept
     readGeneration_ = current.generation == generation ? generation : song_->requestFrame (frame).generation;
     position_frames_ = frame;
     dropStaleBlocks();
+    resetHolds();
 }
 
 void Player::adoptPendingPlan() noexcept
 {
     lastSegment_ = nullptr; // after a seek or a new plan the pads hear about the segment again
+    swapPlan_ = nullptr;
     if (pendingPlan_ != nullptr)
     {
         plan_ = pendingPlan_;
         pendingPlan_ = nullptr;
         segmentIndex_ = 0;
+        currentVersion_ = plan_->version;
     }
+}
+
+// A swap takes effect (protocol 8): the plan in play changes with no seek. The blocks of the old plan from this
+// frame on become stale and are dropped as they come up.
+void Player::adoptSwap() noexcept
+{
+    if (swapPlan_ == nullptr)
+        return;
+    plan_ = swapPlan_;
+    swapPlan_ = nullptr;
+    currentVersion_ = plan_->version;
+    segmentIndex_ = 0;
+    lastSegment_ = nullptr;
+    resetHolds();
+}
+
+const PlanHold* Player::nextHold() const noexcept
+{
+    if (plan_ == nullptr || holdIndex_ >= plan_->holds.size())
+        return nullptr;
+    return &plan_->holds[holdIndex_];
+}
+
+// After a seek, a new plan or a swap: the next hold is the first at or after the playhead. A playhead already
+// waiting at a hold the new plan still has stays waiting; one whose hold is gone is released.
+void Player::resetHolds() noexcept
+{
+    const bool was = holding_;
+    holdIndex_ = 0;
+    if (plan_ != nullptr)
+    {
+        const auto& holds = plan_->holds;
+        while (holdIndex_ < holds.size() && holds[holdIndex_].frame < position_frames_)
+            ++holdIndex_;
+    }
+
+    const auto* hold = nextHold();
+    if (was && (hold == nullptr || hold->frame != position_frames_))
+    {
+        holding_ = false;
+        if (pads_ != nullptr)
+            pads_->playNow (-1);
+    }
+}
+
+void Player::enterHold (const PlanHold& hold) noexcept
+{
+    holding_ = true;
+    holdFrames_ = 0;
+    if (pads_ != nullptr && hold.pad && hold.padKey >= 0)
+        pads_->playNow (hold.padKey);
+}
+
+// GO (PB-52): the playhead moves on from the hold, and the hold's pad fades out as the song starts.
+void Player::releaseHold() noexcept
+{
+    const auto* hold = nextHold();
+    holding_ = false;
+    if (hold != nullptr)
+    {
+        if (pads_ != nullptr && hold->pad)
+            pads_->playNow (-1);
+        ++holdIndex_;
+    }
+}
+
+// The click that runs while a hold waits: the song tempo, accent on beat 1, routed like the click track.
+void Player::renderHoldClick (float* const* outputs, int numOutputs, int offset, int frames) noexcept
+{
+    const auto* hold = nextHold();
+    if (hold == nullptr || ! hold->click || plan_ == nullptr || plan_->beatFrames <= 1.0 || song_ == nullptr)
+        return;
+
+    const Track* click = nullptr;
+    for (auto& track : song_->tracks)
+        if (track->generatedClick)
+            click = track.get();
+    if (click == nullptr || click->mute.load (std::memory_order_relaxed))
+        return;
+
+    const auto length = static_cast<std::int64_t> (std::lround (kClickMs * sampleRate_ / 1000.0));
+    const double decay = 1.0 / (6.0 * sampleRate_ / 1000.0);
+    const auto beats = static_cast<std::int64_t> (std::max (1, plan_->beatsPerBar));
+    const float gain = click->gain.load (std::memory_order_relaxed) * song_->masterGain.load (std::memory_order_relaxed) * fade_;
+    const int out = click->outputChannel.load (std::memory_order_relaxed);
+    const int width = click->outputWidth.load (std::memory_order_relaxed);
+    float* a = out >= 0 && out < numOutputs ? outputs[out] : nullptr;
+    float* b = width == 2 && out + 1 >= 0 && out + 1 < numOutputs ? outputs[out + 1] : nullptr;
+
+    for (int i = 0; i < frames; ++i)
+    {
+        const auto n = holdFrames_ + i;
+        const auto k = static_cast<std::int64_t> (std::floor (static_cast<double> (n) / plan_->beatFrames));
+        const auto start = static_cast<std::int64_t> (std::llround (static_cast<double> (k) * plan_->beatFrames));
+        const auto at = n - start;
+        if (at < 0 || at >= length)
+            continue;
+        const double w = 6.283185307179586 * (k % beats == 0 ? kAccentHz : kClickHz) / sampleRate_;
+        const float v = gain * kClickPeak * static_cast<float> (std::exp (-static_cast<double> (at) * decay) * std::cos (w * static_cast<double> (at)));
+        if (a != nullptr)
+            a[offset + i] += v;
+        if (b != nullptr)
+            b[offset + i] += v;
+    }
+}
+
+// The plan played to its end: return to the start, stopped (PB-25 without a transition).
+void Player::endOfPlan() noexcept
+{
+    transport_ = TransportState::stopped;
+    after_ = AfterFade::none;
+    rewindToStart();
+    endCount_.fetch_add (1, std::memory_order_release);
+    ended_.store (true, std::memory_order_release);
 }
 
 std::int64_t Player::planLength() const noexcept
@@ -258,6 +423,8 @@ void Player::rewindToStart() noexcept
     readGeneration_ = song_->requestFrame (0).generation;
     position_frames_ = 0;
     dropStaleBlocks();
+    holding_ = false;
+    resetHolds();
 }
 
 void Player::finishFade() noexcept
@@ -274,6 +441,7 @@ void Player::finishFade() noexcept
         position_frames_ = seekFrame_;
         seekPending_ = false;
         dropStaleBlocks();
+        resetHolds();
     };
 
     switch (after)
@@ -387,7 +555,37 @@ void Player::process (float* const* outputs, int numOutputs, int numSamples, boo
             startFade (1.0f, playFadeMs, AfterFade::none);
         }
 
+        if (swapPlan_ != nullptr && position_frames_ >= swapFrame_)
+            adoptSwap();
+
+        if (! holding_)
+        {
+            if (const auto* hold = nextHold(); hold != nullptr && position_frames_ >= hold->frame)
+                enterHold (*hold);
+        }
+
+        if (holding_)
+        {
+            // PB-52: the playhead waits. The stems are silent (the tail played before the marker); the pad and the
+            // click run until GO.
+            const int n = std::min (kChunk, numSamples - done);
+            renderHoldClick (outputs, numOutputs, done, n);
+            holdFrames_ += n;
+            done += n;
+            continue;
+        }
+
+        if (planLength() > 0 && position_frames_ >= planLength())
+        {
+            endOfPlan(); // GO at the very end of the plan
+            break;
+        }
+
         int frames = std::min (kChunk, numSamples - done);
+        if (swapPlan_ != nullptr && position_frames_ < swapFrame_)
+            frames = static_cast<int> (std::min<std::int64_t> (frames, swapFrame_ - position_frames_)); // the swap lands on a chunk edge
+        if (const auto* hold = nextHold(); hold != nullptr && position_frames_ < hold->frame)
+            frames = static_cast<int> (std::min<std::int64_t> (frames, hold->frame - position_frames_));
         if (const auto* segment = locateSegment())
         {
             frames = static_cast<int> (std::min<std::int64_t> (frames, segment->end - position_frames_)); // mutes and fades change at the seams
@@ -439,7 +637,10 @@ int Player::pullFrames (Track& track, std::int64_t from, int frames, bool offlin
             break;
         }
 
-        if (block->generation != readGeneration_)
+        // Blocks read for an older plan are stale from the swap frame on (protocol 8).
+        const auto at = from + i;
+        const std::uint32_t minVersion = swapPlan_ != nullptr && at >= swapFrame_ ? swapPlan_->version : currentVersion_;
+        if (block->generation != readGeneration_ || block->version < minVersion)
         {
             track.queue.pop();
             continue;
@@ -461,7 +662,10 @@ int Player::pullFrames (Track& track, std::int64_t from, int frames, bool offlin
             continue;
         }
 
-        const int take = static_cast<int> (std::min<std::int64_t> (frames - i, block->frames - offset));
+        auto limit = std::min<std::int64_t> (frames - i, block->frames - offset);
+        if (swapPlan_ != nullptr && block->version < swapPlan_->version && at < swapFrame_)
+            limit = std::min<std::int64_t> (limit, swapFrame_ - at); // old blocks play up to the swap frame
+        const int take = static_cast<int> (limit);
         const float* src = block->data + offset * channels;
         for (int k = 0; k < take; ++k)
             for (int c = 0; c < channels; ++c)
@@ -592,11 +796,9 @@ void Player::renderChunk (float* const* outputs, int numOutputs, int offset, int
     // End of the song: return to the start, stopped (PB-25 without a transition).
     if (transport_ == TransportState::playing && ! waiting_ && position_frames_ >= planLength())
     {
-        transport_ = TransportState::stopped;
-        after_ = AfterFade::none;
-        rewindToStart();
-        endCount_.fetch_add (1, std::memory_order_release);
-        ended_.store (true, std::memory_order_release);
+        const auto* hold = nextHold();
+        if (hold == nullptr || hold->frame > position_frames_)
+            endOfPlan(); // a hold at the very end waits for GO first
     }
 }
 
@@ -606,5 +808,7 @@ void Player::publish() noexcept
     position_.store (position_frames_, std::memory_order_relaxed);
     positionTimeNs_.store (nowNs(), std::memory_order_relaxed);
     waitingPublished_.store (waiting_ && transport_ == TransportState::playing, std::memory_order_relaxed);
+    holdingPublished_.store (holding_, std::memory_order_relaxed);
+    holdFramesPublished_.store (holding_ ? holdFrames_ : 0, std::memory_order_relaxed);
 }
 } // namespace rec::audio

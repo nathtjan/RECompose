@@ -64,6 +64,15 @@ private:
         std::vector<std::string> mute;
     };
 
+    // Where the plan clock waits for GO, in plan seconds (protocol 8, PB-52).
+    struct HoldSpec
+    {
+        double at = 0;
+        bool pad = false;
+        int padKey = -1;
+        bool click = false;
+    };
+
     // The song grid of the plan in seconds (protocol 4): bar 1 beat 1, the beat length, beats per bar.
     struct GridSpec
     {
@@ -80,6 +89,8 @@ private:
         std::vector<std::unique_ptr<audio::Song>> retiring;
         std::vector<audio::TrackSpec> specs; // current mixer state of the loaded song, for getState/reload
         std::vector<PlanSegmentSpec> planSpec;
+        std::vector<HoldSpec> holdSpec;
+        std::int64_t pendingSwapFrame = -1; // a swap the playhead has not reached yet, in output frames
         GridSpec grid;
         double tempo = 1.0; // the entry tempo (protocol 5): plan seconds per output second
         bool hasPlan = false;
@@ -119,6 +130,8 @@ private:
     void promote();
     void processBlock (float* const* outputs, int numOutputs, int numSamples, bool offline) noexcept;
     juce::var transport (const juce::String& type, const juce::var& message);
+    juce::var go();
+    juce::var panic();
     juce::var setTrack (const juce::var& message);
     juce::var setMaster (const juce::var& message);
     juce::var setPlan (const juce::var& message, Slot& s);

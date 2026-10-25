@@ -139,7 +139,9 @@ public sealed record EngineSnapshot(
     float PadLevel = 0,
     string? NextSongId = null,
     bool NextBuffered = false,
-    string Transition = "none")
+    string Transition = "none",
+    bool Holding = false,
+    double HoldSec = 0)
 {
     /// <summary>The frame being heard: the render position minus the output latency while playing (PB-4).</summary>
     public long HeardFrame => State == TransportState.Playing ? Math.Max(0, Frame - Latency) : Frame;
@@ -173,7 +175,9 @@ public sealed record EngineSnapshot(
             (float?)o["pad"]?["level"] ?? 0,
             (string?)o["next"]?["songId"],
             (bool?)o["next"]?["buffered"] ?? false,
-            (string?)o["transition"] ?? "none");
+            (string?)o["transition"] ?? "none",
+            (bool?)o["holding"] ?? false,
+            (double?)o["holdSec"] ?? 0);
     }
 }
 
@@ -311,6 +315,12 @@ public sealed class EngineClient : IAsyncDisposable
     public Task PauseAsync(CancellationToken ct = default) => Session.Connection.RequestAsync("pause", cancellationToken: ct);
     public Task StopAsync(CancellationToken ct = default) => Session.Connection.RequestAsync("stop", cancellationToken: ct);
 
+    /// <summary>Releases the hold the playhead waits at (PB-52).</summary>
+    public Task GoAsync(CancellationToken ct = default) => Session.Connection.RequestAsync("go", cancellationToken: ct);
+
+    /// <summary>Stops now: a 100 ms fade, pads and the transition click off, the next song stays cued (UI-40).</summary>
+    public Task PanicAsync(CancellationToken ct = default) => Session.Connection.RequestAsync("panic", cancellationToken: ct);
+
     public Task SeekAsync(long frame, CancellationToken ct = default) =>
         Session.Connection.RequestAsync("seek", new JsonObject { ["frame"] = frame }, ct);
 
@@ -333,7 +343,7 @@ public sealed class EngineClient : IAsyncDisposable
     /// Returns the plan length in plan frames.
     /// </summary>
     public async Task<long> SetPlanAsync(IEnumerable<PlanSegment> segments, double? positionSec = null, PlanGrid? grid = null, double tempo = 1,
-        bool next = false, CancellationToken ct = default)
+        bool next = false, CancellationToken ct = default, IEnumerable<PlanHold>? holds = null, double? swapAtSec = null)
     {
         var list = new JsonArray();
         foreach (var s in segments)
@@ -370,6 +380,23 @@ public sealed class EngineClient : IAsyncDisposable
             request["grid"] = new JsonObject { ["origin"] = grid.Origin, ["beat"] = grid.Beat, ["beatsPerBar"] = grid.BeatsPerBar };
         if (positionSec is { } position)
             request["position"] = position;
+        if (holds is not null)
+        {
+            var marks = new JsonArray();
+            foreach (var h in holds)
+            {
+                var mark = new JsonObject { ["at"] = h.AtSec, ["pad"] = h.Pad, ["click"] = h.Click };
+                if (h.PadKey is { } padKey)
+                    mark["padKey"] = padKey;
+                marks.Add(mark);
+            }
+
+            request["holds"] = marks;
+        }
+
+        // Protocol 8: while playing, the plan takes effect at this plan second with no seek (ARR-90).
+        if (swapAtSec is { } swapAt)
+            request["swapAt"] = swapAt;
         var reply = await Session.Connection.RequestAsync("setPlan", request, ct).ConfigureAwait(false);
         return (long?)reply["frames"] ?? 0;
     }

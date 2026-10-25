@@ -168,6 +168,63 @@ public class EngineClientTests
     }
 
     [Fact]
+    public async Task AT13_a_hold_waits_for_go_and_a_swap_changes_the_plan_without_stopping()
+    {
+        var folder = Folder();
+        var a = TestWav.Write(Path.Combine(folder, "A.wav"), 48000, 1, 48000 * 8, (_, _) => 0.5);
+        var b = TestWav.Write(Path.Combine(folder, "B.wav"), 48000, 1, 48000 * 8, (_, _) => 0.25);
+        var ct = TestContext.Current.CancellationToken;
+
+        await using var client = await StartAsync();
+        await client.LoadSongAsync("song-hold",
+        [
+            new EngineTrack("a", a, 0, 1, 0, false, false, false),
+            new EngineTrack("b", b, 1, 1, 0, false, false, false),
+        ], 0, 0, ct);
+
+        // Protocol 8: the plan waits at 1 s (PB-52).
+        await client.SetPlanAsync(
+            [new RECompose.Core.Planning.PlanSegment(0, 1, 0, 0, 0, []), new RECompose.Core.Planning.PlanSegment(1, 4, 1, 0, 0, [])],
+            0, ct: ct, holds: [new RECompose.Core.Planning.PlanHold(1, false, null, false)]);
+        await client.PlayAsync(ct);
+        var (_, _, snapshot) = await client.RenderOfflineAsync(48000 * 2, 2, ct: ct);
+        Assert.True(snapshot.Holding);
+        Assert.Equal(48000, snapshot.Frame);
+        Assert.InRange(snapshot.HoldSec, 0.9, 1.1);
+
+        var (peak, _, _) = await client.RenderOfflineAsync(24000, 2, ct: ct);
+        Assert.Equal(0, peak[0], 3);                       // silent while it waits
+
+        await client.GoAsync(ct);
+        (peak, _, snapshot) = await client.RenderOfflineAsync(24000, 2, ct: ct);
+        Assert.False(snapshot.Holding);
+        Assert.Equal(0.5, peak[0], 2);
+        Assert.Equal(48000 + 24000, snapshot.Frame);
+
+        // A swap while playing: from 2.5 s on track a is muted. The playhead is not moved and nothing stops.
+        await client.SetPlanAsync(
+        [
+            new RECompose.Core.Planning.PlanSegment(0, 1, 0, 0, 0, []),
+            new RECompose.Core.Planning.PlanSegment(1, 2.5, 1, 0, 0, []),
+            new RECompose.Core.Planning.PlanSegment(2.5, 4, 2.5, 0, 0, ["a"]),
+        ], ct: ct, holds: [new RECompose.Core.Planning.PlanHold(1, false, null, false)], swapAtSec: 2.5);
+        (peak, _, snapshot) = await client.RenderOfflineAsync(24000, 2, ct: ct); // 1.5 s to 2.0 s
+        Assert.Equal(0.5, peak[0], 2);
+        Assert.Equal(TransportState.Playing, snapshot.State);
+
+        await client.RenderOfflineAsync(24000 + 4800, 2, ct: ct); // to 2.6 s: past the 10 ms mute ramp
+        (peak, _, snapshot) = await client.RenderOfflineAsync(24000, 2, ct: ct);
+        Assert.Equal(0, peak[0], 3);
+        Assert.Equal(0.25, peak[1], 2);
+        Assert.Equal(TransportState.Playing, snapshot.State);
+
+        // Panic stops with a short fade.
+        await client.PanicAsync(ct);
+        (_, _, snapshot) = await client.RenderOfflineAsync(48000, 2, ct: ct);
+        Assert.Equal(TransportState.Stopped, snapshot.State);
+    }
+
+    [Fact]
     public async Task PB70_a_generated_count_in_clicks_on_the_cue_output_before_bar_1()
     {
         var folder = Folder();

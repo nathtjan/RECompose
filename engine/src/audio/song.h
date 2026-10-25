@@ -74,9 +74,25 @@ struct PlanSegment
     int pad = -1;                    // pad bars: the pitch class of the pad (ARR-39); -1 none
 };
 
+// Where the plan clock waits for GO (PB-52): the playhead stops at `frame` until released.
+struct PlanHold
+{
+    std::int64_t frame = 0;
+    bool pad = false;   // the pad sounds while it waits
+    int padKey = -1;    // its pitch class, -1 none
+    bool click = false; // a free-running click at the song tempo
+};
+
 struct Plan
 {
     std::vector<PlanSegment> segments;
+    std::vector<PlanHold> holds; // ascending frames
+
+    // Every published plan has a version. A plan published as a swap (protocol 8) replaces `previous`
+    // from `swapFrame` on: the frames before it are identical, so playback does not stop.
+    std::uint32_t version = 0;
+    std::int64_t swapFrame = -1;
+    const Plan* previous = nullptr;
     std::int64_t lengthFrames = 0;
 
     // The song grid in plan frames (PB-32): beat 0 is bar 1 beat 1, earlier beats are negative.
@@ -146,6 +162,8 @@ struct Track
     std::unique_ptr<juce::AudioFormatReader> reader;
     bool resampling = false;
     std::uint32_t diskGeneration = 0xffffffffu;
+    std::uint32_t diskVersion = 0xffffffffu; // the plan version of the blocks being written
+    const Plan* diskPlan = nullptr;          // the plan the streams currently follow
     std::int64_t diskNextFrame = 0;   // plan frame of the next block to write
     std::int64_t diskLastEnd = -1;    // plan frame where the previous block ended, -1 after a seek
     std::size_t diskSegment = 0;
@@ -177,6 +195,7 @@ struct Song
     // sees the new request also sees the new plan. Never freed before the song (see PlanSegment).
     std::atomic<const Plan*> plan { nullptr };
     std::vector<std::unique_ptr<Plan>> plans; // message thread only
+    std::uint32_t lastVersion = 0;            // message thread only
 
     std::atomic<std::uint64_t> request { StreamRequest::pack ({ 1, 0 }) };
     std::atomic<float> masterGain { 1.0f };
@@ -190,6 +209,10 @@ struct Song
     // Message thread: makes `next` the current plan and returns it. The caller then bumps the
     // stream request (requestFrame) so both threads start from the new plan.
     const Plan* publishPlan (std::unique_ptr<Plan> next);
+
+    // Message thread: publishes `next` as a swap at `swapFrame` (output frames) without moving the stream
+    // request. The disk thread rewinds to the frame and writes the new plan's blocks from there.
+    const Plan* publishSwap (std::unique_ptr<Plan> next, std::int64_t swapFrame);
     std::int64_t planFrames() const noexcept
     {
         const auto* p = plan.load (std::memory_order_acquire);

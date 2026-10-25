@@ -6,6 +6,7 @@ add_executable(recompose_engine_tests
     test_player.cpp
     test_pads.cpp
     test_transition.cpp
+    test_live.cpp
     test_analysis.cpp)
 
 target_link_libraries(recompose_engine_tests PRIVATE recompose_engine_core)

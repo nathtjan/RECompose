@@ -40,7 +40,10 @@ struct Command
         stop,
         seek,
         setSong,
-        setPlan // like a seek to `frame`, and the plan takes effect there (PB-40)
+        setPlan, // like a seek to `frame`, and the plan takes effect there (PB-40)
+        swapPlan, // keeps playing; the plan takes effect at `frame` with no seek (protocol 8)
+        go,       // releases the hold the playhead waits at (PB-52)
+        panic     // stops now with a 100 ms fade, or at once during a hold (UI-40)
     };
 
     Type type = Type::play;
@@ -74,6 +77,10 @@ public:
     void playNow() noexcept;
     void fadeStopNow (std::int64_t frames) noexcept;
 
+    // Snapshot values for a hold (PB-52): the playhead waits for GO, and for how long.
+    bool holding() const noexcept { return holdingPublished_.load (std::memory_order_relaxed); }
+    std::int64_t holdFrames() const noexcept { return holdFramesPublished_.load (std::memory_order_relaxed); }
+
     // True once after the plan played to its end (any thread).
     bool takeEnded() noexcept { return ended_.exchange (false); }
 
@@ -102,6 +109,7 @@ public:
     static constexpr float pauseFadeMs = 20.0f;
     static constexpr float stopFadeMs = 50.0f;
     static constexpr float seekFadeMs = 10.0f;
+    static constexpr float panicFadeMs = 100.0f;
 
 private:
     enum class AfterFade
@@ -121,6 +129,13 @@ private:
     bool allTracksReady() noexcept;
     void renderChunk (float* const* outputs, int numOutputs, int offset, int frames, bool offline) noexcept;
     void adoptPendingPlan() noexcept;
+    void adoptSwap() noexcept;
+    void resetHolds() noexcept;
+    const PlanHold* nextHold() const noexcept;
+    void enterHold (const PlanHold& hold) noexcept;
+    void releaseHold() noexcept;
+    void renderHoldClick (float* const* outputs, int numOutputs, int offset, int frames) noexcept;
+    void endOfPlan() noexcept;
     std::int64_t planLength() const noexcept;
     const PlanSegment* locateSegment() noexcept;
     void seekTo (std::int64_t frame, std::uint32_t generation) noexcept;
@@ -153,6 +168,12 @@ private:
     const PlanSegment* lastSegment_ = nullptr; // the segment the pads were last told about
     const Plan* plan_ = nullptr;        // the plan in play
     const Plan* pendingPlan_ = nullptr; // takes effect when the pending seek lands
+    const Plan* swapPlan_ = nullptr;    // takes effect at swapFrame_ while playing on (protocol 8)
+    std::int64_t swapFrame_ = 0;
+    std::uint32_t currentVersion_ = 0;  // the version of the plan in play: older blocks are stale
+    bool holding_ = false;
+    std::size_t holdIndex_ = 0;         // the next hold the playhead reaches, or the one it waits at
+    std::int64_t holdFrames_ = 0;       // how long it has waited
     std::size_t segmentIndex_ = 0;
 
     std::vector<float> scratch_[kMaxTrackChannels];
@@ -170,6 +191,8 @@ private:
     std::atomic<std::uint64_t> starved_ { 0 };
     std::atomic<bool> waitingPublished_ { false };
     std::atomic<bool> ended_ { false };
+    std::atomic<bool> holdingPublished_ { false };
+    std::atomic<std::int64_t> holdFramesPublished_ { 0 };
     std::atomic<std::uint32_t> endCount_ { 0 };
 };
 } // namespace rec::audio

@@ -55,6 +55,20 @@ StreamRequest Song::requestFrame (std::int64_t frame) noexcept
 
 const Plan* Song::publishPlan (std::unique_ptr<Plan> next)
 {
+    next->version = ++lastVersion;
+    next->swapFrame = -1;
+    next->previous = nullptr;
+    const auto* raw = next.get();
+    plans.push_back (std::move (next));
+    plan.store (raw, std::memory_order_release);
+    return raw;
+}
+
+const Plan* Song::publishSwap (std::unique_ptr<Plan> next, std::int64_t swapFrame)
+{
+    next->version = ++lastVersion;
+    next->swapFrame = swapFrame;
+    next->previous = plan.load (std::memory_order_acquire);
     const auto* raw = next.get();
     plans.push_back (std::move (next));
     plan.store (raw, std::memory_order_release);

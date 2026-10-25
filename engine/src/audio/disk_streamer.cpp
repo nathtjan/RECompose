@@ -176,6 +176,38 @@ namespace
         stream.stretcher->process (in, inputFrames, out, frames);
         stream.nextSource += frames * tempo;
     }
+
+    // A swap (protocol 8): the blocks written from the swap frame on were read for the old plan. Start again
+    // there, with the streams where the old plan had them at that frame; if the new plan continues from the
+    // same source it plays on with no seam, and if it jumps the usual splice blends the two (PB-55).
+    void swapTrack (Track& track, const Plan& old, const Plan& next, double ratio, double rate, bool transposes)
+    {
+        const auto frame = next.swapFrame;
+        if (track.diskNextFrame <= frame)
+            return; // not written that far yet: everything queued so far is before the swap
+
+        track.diskNextFrame = frame;
+        track.diskSegment = 0;
+        track.tailRemaining = 0;
+        track.fadeInRemaining = 0;
+        track.diskLastEnd = frame;
+        track.streams[track.mainStream ^ 1].valid = false;
+
+        const auto it = std::find_if (old.segments.begin(), old.segments.end(),
+                                      [frame] (const PlanSegment& s) { return frame >= s.start && frame < s.end; });
+        auto& stream = track.streams[track.mainStream];
+        if (it == old.segments.end() || it->src < 0)
+        {
+            stream.valid = false;
+            return;
+        }
+
+        const double tempo = old.tempo > 0.0 ? old.tempo : 1.0;
+        const double want = static_cast<double> (it->src) + static_cast<double> (frame - it->start) * tempo;
+        const int semitones = transposes ? it->key : 0;
+        const bool stretched = std::abs (tempo - 1.0) > 1.0e-9 || semitones != 0;
+        openStream (track, stream, want, ratio, rate, stretched, semitones, tempo);
+    }
 } // namespace
 
 // The generated click track: silence with a click on every beat that starts in a click segment.
@@ -187,6 +219,16 @@ int DiskStreamer::fillClick (Song& song, Track& track, int maxBlocks)
     {
         track.diskGeneration = request.generation;
         track.diskNextFrame = request.frame;
+        track.diskVersion = plan->version;
+        track.diskPlan = plan;
+    }
+    else if (plan->version != track.diskVersion)
+    {
+        // A swap (protocol 8): what was written from the swap frame on belongs to the old plan.
+        if (plan->swapFrame >= 0 && track.diskNextFrame > plan->swapFrame)
+            track.diskNextFrame = plan->swapFrame;
+        track.diskVersion = plan->version;
+        track.diskPlan = plan;
     }
 
     int written = 0;
@@ -204,6 +246,7 @@ int DiskStreamer::fillClick (Song& song, Track& track, int maxBlocks)
         renderClick (*plan, position, kBlockFrames, song.sampleRate, buffer.data());
         std::copy_n (buffer.begin(), kBlockFrames, block->data);
         block->generation = track.diskGeneration;
+        block->version = plan->version;
         block->startFrame = position;
         block->frames = kBlockFrames;
 
@@ -245,6 +288,15 @@ int DiskStreamer::fillTrack (Song& song, Track& track, int maxBlocks)
         track.fadeInRemaining = 0;
         for (auto& stream : track.streams)
             stream.clear();
+        track.diskVersion = plan->version;
+        track.diskPlan = plan;
+    }
+    else if (plan->version != track.diskVersion)
+    {
+        if (plan->swapFrame >= 0 && track.diskPlan != nullptr)
+            swapTrack (track, *track.diskPlan, *plan, ratio, song.sampleRate, transposes);
+        track.diskVersion = plan->version;
+        track.diskPlan = plan;
     }
 
     int written = 0;
@@ -373,6 +425,7 @@ int DiskStreamer::fillTrack (Song& song, Track& track, int maxBlocks)
                 block->data[i * channels + c] = main[c][i];
 
         block->generation = track.diskGeneration;
+        block->version = plan->version;
         block->startFrame = position;
         block->frames = frames;
 

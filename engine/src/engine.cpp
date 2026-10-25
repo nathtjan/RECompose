@@ -104,6 +104,8 @@ juce::var Engine::handle (const juce::String& type, const juce::var& message)
     if (type == "promoteNext")  return promoteNext();
     if (type == "play" || type == "pause" || type == "stop" || type == "seek")
         return transport (type, message);
+    if (type == "go")           return go();
+    if (type == "panic")        return panic();
     if (type == "setTrack")     return setTrack (message);
     if (type == "setMaster")    return setMaster (message);
     if (type == "setPlan")      return setPlan (message, slotFor (message));
@@ -418,6 +420,8 @@ juce::var Engine::loadSong (const juce::var& message, Slot& s)
 
     s.specs = std::move (specs);
     s.planSpec.clear(); // a new song plays as written until the app sends its plan
+    s.holdSpec.clear();
+    s.pendingSwapFrame = -1;
     s.grid = {};
     s.tempo = 1.0;
     s.hasPlan = false;
@@ -438,6 +442,8 @@ juce::var Engine::unloadSong (Slot& s)
 {
     s.specs.clear();
     s.planSpec.clear();
+    s.holdSpec.clear();
+    s.pendingSwapFrame = -1;
     s.grid = {};
     s.tempo = 1.0;
     s.hasPlan = false;
@@ -511,6 +517,36 @@ juce::var Engine::transport (const juce::String& type, const juce::var& message)
             post (nxt(), command);
         armTransition();
     }
+    return Obj().set ("type", "ok");
+}
+
+// PB-52: releases the hold the playhead waits at.
+juce::var Engine::go()
+{
+    auto& s = cur();
+    if (s.song == nullptr)
+        return makeError ({}, "noSong", "No song is loaded.");
+    audio::Command command;
+    command.type = audio::Command::Type::go;
+    post (s, command);
+    return Obj().set ("type", "ok");
+}
+
+// UI-40, REL-40 (basic): the song stops with a 100 ms fade, the pads and the transition click stop, the next song stays cued.
+juce::var Engine::panic()
+{
+    audio::Command command;
+    command.type = audio::Command::Type::panic;
+    for (auto* s : { &cur(), &nxt() })
+        if (s->song != nullptr)
+            post (*s, command);
+
+    transitions_.post ({});
+    audio::PadCommand stopPad;
+    stopPad.type = audio::PadCommand::Type::play;
+    stopPad.key = -1;
+    pads_.post (stopPad);
+    armTransition();
     return Obj().set ("type", "ok");
 }
 
@@ -603,6 +639,16 @@ std::unique_ptr<audio::Plan> Engine::buildPlan (double rate, const Slot& s) cons
         plan->segments.push_back (std::move (segment));
     }
 
+    for (const auto& hold : s.holdSpec)
+    {
+        audio::PlanHold h;
+        h.frame = frames (hold.at);
+        h.pad = hold.pad;
+        h.padKey = hold.padKey;
+        h.click = hold.click;
+        plan->holds.push_back (h);
+    }
+
     return plan;
 }
 
@@ -646,7 +692,25 @@ juce::var Engine::setPlan (const juce::var& message, Slot& s)
         parsed.push_back (std::move (spec));
     }
 
+    // Protocol 8: where the clock waits for GO (PB-52).
+    std::vector<HoldSpec> holds;
+    if (const auto* list = message.getProperty ("holds", {}).getArray())
+    {
+        for (const auto& h : *list)
+        {
+            HoldSpec hold;
+            hold.at = std::max (0.0, number (h, "at", 0.0));
+            hold.pad = flag (h, "pad", false);
+            hold.padKey = juce::jlimit (-1, 11, static_cast<int> (number (h, "padKey", -1.0)));
+            hold.click = flag (h, "click", false);
+            holds.push_back (hold);
+        }
+        std::sort (holds.begin(), holds.end(), [] (const HoldSpec& a, const HoldSpec& b) { return a.at < b.at; });
+    }
+
+    const auto previousTempo = s.tempo;
     s.planSpec = std::move (parsed);
+    s.holdSpec = std::move (holds);
     s.hasPlan = true;
 
     // Protocol 5: the entry tempo, 50–150 % (PB-60).
@@ -664,6 +728,30 @@ juce::var Engine::setPlan (const juce::var& message, Slot& s)
 
     auto plan = buildPlan (s.song->sampleRate, s);
     const auto length = plan->lengthFrames;
+
+    // Protocol 8: while playing, `swapAt` (plan seconds) makes the plan take effect there with no seek. The frames
+    // before it are the same in both plans. A swap that finds the playhead past its frame takes effect at once.
+    const auto swapAt = message.getProperty ("swapAt", {});
+    const bool swap = (swapAt.isDouble() || swapAt.isInt() || swapAt.isInt64()) && s.player.state() == audio::TransportState::playing
+                      && ! s.player.waitingForData() && std::abs (previousTempo - s.tempo) < 1.0e-9 && s.song->plan.load() != nullptr;
+    if (swap)
+    {
+        auto frame = static_cast<std::int64_t> (std::llround (static_cast<double> (swapAt) / s.tempo * s.song->sampleRate));
+        if (s.pendingSwapFrame >= 0 && s.player.position() < s.pendingSwapFrame)
+            frame = std::min (frame, s.pendingSwapFrame); // an earlier swap still waits: the new plan takes over from there
+        s.pendingSwapFrame = frame;
+
+        audio::Command command;
+        command.type = audio::Command::Type::swapPlan;
+        command.plan = s.song->publishSwap (std::move (plan), frame);
+        command.frame = frame;
+        post (s, command);
+        if (&s == &cur())
+            armTransition();
+        return Obj().set ("type", "plan").set ("frames", static_cast<juce::int64> (s.toPlanFrames (length))).set ("swapped", true);
+    }
+
+    s.pendingSwapFrame = -1;
     const auto position = message.getProperty ("position", {});
     const auto wanted = position.isVoid() ? s.player.position()
                                           : static_cast<std::int64_t> (std::llround (number (message, "position", 0.0) / s.tempo * s.song->sampleRate));
@@ -798,6 +886,8 @@ juce::var Engine::snapshot()
         .set ("planFrames", planLength)
         .set ("buffered", buffered)
         .set ("waiting", s.player.waitingForData())
+        .set ("holding", s.player.holding())
+        .set ("holdSec", s.player.holdFrames() > 0 && s.song != nullptr ? static_cast<double> (s.player.holdFrames()) / s.song->sampleRate : 0.0)
         .set ("starved", static_cast<juce::int64> (s.player.starvedBlocks()))
         .set ("xruns", device != nullptr ? device->getXRunCount() : 0)
         .set ("cpu", devices_.getCpuUsage())
