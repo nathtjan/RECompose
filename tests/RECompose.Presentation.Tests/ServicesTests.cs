@@ -469,6 +469,8 @@ internal sealed class ServiceDialogs : IDialogs
 
     public Task EditControlsAsync(ControlsViewModel controls) => Task.CompletedTask;
 
+    public Task ShowServiceCheckAsync(ServiceCheckViewModel check) => Task.CompletedTask;
+
     public ResumeChoice ResumeAnswer { get; set; } = ResumeChoice.DontResume;
     public ResumeQuestion? ResumeAsked { get; private set; }
 

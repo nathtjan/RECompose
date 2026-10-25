@@ -124,6 +124,70 @@ public sealed class AvaloniaDialogs(Window owner) : IDialogs
         return await window.ShowDialog<ResumeChoice>(owner);
     }
 
+    /// <summary>REL-1: the service check as a list of marks, details and Fix buttons.</summary>
+    public async Task ShowServiceCheckAsync(ServiceCheckViewModel check)
+    {
+        var window = new Window
+        {
+            Title = "Service check",
+            Width = 720,
+            Height = 560,
+            ShowInTaskbar = false,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            DataContext = check,
+        };
+
+        var verdict = new TextBlock { FontSize = 20, FontWeight = Avalonia.Media.FontWeight.Bold };
+        verdict.Bind(TextBlock.TextProperty, new Avalonia.Data.Binding(nameof(ServiceCheckViewModel.Verdict)));
+        var rows = new StackPanel { Spacing = 8 };
+
+        void Fill()
+        {
+            rows.Children.Clear();
+            foreach (var item in check.Items)
+            {
+                var line = new DockPanel { Margin = new Thickness(0, 2) };
+                var mark = new TextBlock { Text = item.Mark, Width = 24, FontWeight = Avalonia.Media.FontWeight.Bold };
+                DockPanel.SetDock(mark, Dock.Left);
+                line.Children.Add(mark);
+                if (item.HasFix)
+                {
+                    var fix = new Button { Content = item.FixLabel, Command = item.FixCommand, Margin = new Thickness(8, 0, 0, 0) };
+                    DockPanel.SetDock(fix, Dock.Right);
+                    line.Children.Add(fix);
+                }
+
+                line.Children.Add(new StackPanel
+                {
+                    Children =
+                    {
+                        new TextBlock { Text = item.Title, FontWeight = Avalonia.Media.FontWeight.SemiBold },
+                        new TextBlock { Text = item.Detail, TextWrapping = Avalonia.Media.TextWrapping.Wrap, Opacity = 0.8 },
+                    },
+                });
+                rows.Children.Add(line);
+            }
+        }
+
+        check.Items.CollectionChanged += (_, _) => Fill();
+        Fill();
+
+        var run = new Button { Content = "Run check", Command = check.RunCommand };
+        var close = new Button { Content = "Close", IsCancel = true };
+        close.Click += (_, _) => window.Close();
+        window.Content = new DockPanel
+        {
+            Margin = new Thickness(20),
+            Children =
+            {
+                new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right, Children = { run, close } }.Dock(Dock.Bottom),
+                verdict.Dock(Dock.Top),
+                new ScrollViewer { Content = rows, Margin = new Thickness(0, 12) },
+            },
+        };
+        await window.ShowDialog(owner);
+    }
+
     public async Task EditControlsAsync(ControlsViewModel controls)
     {
         var window = new ControlsWindow { DataContext = controls };
@@ -398,5 +462,14 @@ public sealed class AvaloniaDialogs(Window owner) : IDialogs
         };
 
         return await window.ShowDialog<DuplicateChoice>(owner);
+    }
+}
+
+internal static class DockExtensions
+{
+    public static T Dock<T>(this T control, Avalonia.Controls.Dock dock) where T : Control
+    {
+        DockPanel.SetDock(control, dock);
+        return control;
     }
 }

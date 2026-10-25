@@ -16,6 +16,13 @@ public sealed record AudioSettings
 
     public int BufferSize { get; init; } = 256;
 
+    /// <summary>The device that takes over when the main one is lost (REL-20); null = none.</summary>
+    public string? FallbackDeviceType { get; init; }
+    public string? FallbackDeviceName { get; init; }
+
+    /// <summary>Go back to the main device at the next section boundary once it returns (REL-23).</summary>
+    public bool AutoSwitchBack { get; init; } = true;
+
     /// <summary>Logical outputs (PB-85): 0-based first channel and width.</summary>
     public int MainChannel { get; init; }
     public int MainWidth { get; init; } = 2;
@@ -71,6 +78,9 @@ public sealed record AppSettings
 
     /// <summary>After a jump to a section the plan does not play again, the written sections that follow it play on (PB-47, SET-20).</summary>
     public bool ContinueAsWritten { get; init; }
+
+    /// <summary>The render cache may grow to this many gigabytes before the oldest renders go (REL-15, SET-60).</summary>
+    public int RenderBudgetGb { get; init; } = 30;
 
     /// <summary>Keys, pedals and controllers (LIVE-51); null = the page-turner profile.</summary>
     public List<RECompose.Core.Controls.ControlBinding>? Bindings { get; init; }

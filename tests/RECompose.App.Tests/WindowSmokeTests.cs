@@ -259,6 +259,8 @@ internal sealed class AcceptingDialogs : IDialogs
 
     public Task EditControlsAsync(ControlsViewModel controls) => Task.CompletedTask;
 
+    public Task ShowServiceCheckAsync(ServiceCheckViewModel check) => Task.CompletedTask;
+
     public Task<ResumeChoice> AskResumeAsync(ResumeQuestion question) => Task.FromResult(ResumeChoice.DontResume);
     public Task<bool> ConfirmAsync(string title, string message, string confirmLabel) => Task.FromResult(true);
     public Task<ServiceDetails?> AskServiceDetailsAsync(string title, string confirmLabel, ServiceDetails initial) => Task.FromResult<ServiceDetails?>(initial);

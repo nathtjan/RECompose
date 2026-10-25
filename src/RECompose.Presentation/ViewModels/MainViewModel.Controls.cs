@@ -36,6 +36,7 @@ public sealed partial class MainViewModel
         try
         {
             var open = await engine.SetMidiInputsAsync(null);
+            _midiInputs = open;
             if (open.Count > 0)
                 AppLog.Write("Controls", $"MIDI in: {string.Join(", ", open)}");
         }

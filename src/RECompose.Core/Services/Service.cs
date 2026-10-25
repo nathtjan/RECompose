@@ -182,6 +182,9 @@ public sealed record ServiceCheckResult
     public string Result { get; init; } = "notReady";
 
     public List<string> Items { get; init; } = [];
+
+    /// <summary>What the check looked at (<see cref="ServiceCheck.Signature"/>): a different one later means "Changed since check".</summary>
+    public string Signature { get; init; } = string.Empty;
 }
 
 /// <summary>One worship service's setlist (DM-40, SL-1).</summary>

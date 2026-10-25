@@ -303,6 +303,8 @@ internal sealed class ScriptedDialogs : IDialogs
 
     public Task EditControlsAsync(ControlsViewModel controls) => Task.CompletedTask;
 
+    public Task ShowServiceCheckAsync(ServiceCheckViewModel check) => Task.CompletedTask;
+
     public Task<ResumeChoice> AskResumeAsync(ResumeQuestion question) => Task.FromResult(ResumeChoice.DontResume);
     public Task<ServiceDetails?> AskServiceDetailsAsync(string title, string confirmLabel, ServiceDetails initial) => Task.FromResult<ServiceDetails?>(initial);
     public Task<VariantScopeAnswer?> AskVariantScopeAsync(string variantName, int otherEntries) => Task.FromResult<VariantScopeAnswer?>(new VariantScopeAnswer(VariantScope.ThisService, false));
