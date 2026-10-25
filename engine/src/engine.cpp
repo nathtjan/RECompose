@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 
 namespace rec
 {
@@ -70,7 +71,8 @@ Engine::Engine()
 {
     formats_.registerBasicFormats();
     disk_ = std::make_unique<audio::DiskStreamer>();
-    player_.setPads (&pads_);
+    for (auto& slot : slots_)
+        slot.player.setPads (&pads_);
     devices_.addChangeListener (this);
     startTimerHz (10);
 }
@@ -82,8 +84,11 @@ Engine::~Engine()
     devices_.removeAudioCallback (this);
     devices_.closeAudioDevice();
     disk_.reset(); // the disk thread stops before any song or pad set is freed
-    song_.reset();
-    retiring_.clear();
+    for (auto& slot : slots_)
+    {
+        slot.song.reset();
+        slot.retiring.clear();
+    }
     padBanks_.clear();
 }
 
@@ -92,13 +97,16 @@ juce::var Engine::handle (const juce::String& type, const juce::var& message)
 {
     if (type == "listDevices")  return listDevices();
     if (type == "setDevice")    return setDevice (message);
-    if (type == "loadSong")     return loadSong (message);
-    if (type == "unloadSong")   return unloadSong();
+    if (type == "loadSong")     return loadSong (message, slotFor (message));
+    if (type == "unloadSong")   return unloadSong (slotFor (message));
+    if (type == "setTransition") return setTransition (message);
+    if (type == "startNext")    return startNext (message);
+    if (type == "promoteNext")  return promoteNext();
     if (type == "play" || type == "pause" || type == "stop" || type == "seek")
         return transport (type, message);
     if (type == "setTrack")     return setTrack (message);
     if (type == "setMaster")    return setMaster (message);
-    if (type == "setPlan")      return setPlan (message);
+    if (type == "setPlan")      return setPlan (message, slotFor (message));
     if (type == "getState")     return getState();
     if (type == "renderOffline") return renderOffline (message);
     if (type == "loadPadSet")   return loadPadSet (message);
@@ -124,19 +132,24 @@ void Engine::push (const juce::var& message)
         outgoing_.push_back (toJson (message));
 }
 
+Engine::Slot& Engine::slotFor (const juce::var& message)
+{
+    return text (message, "slot") == "next" ? nxt() : cur();
+}
+
 double Engine::engineRate()
 {
     const auto rate = deviceRate_.load();
     return rate > 0.0 ? rate : kDefaultEngineRate;
 }
 
-void Engine::post (const audio::Command& command)
+void Engine::post (Slot& s, const audio::Command& command)
 {
-    player_.post (command);
+    s.player.post (command);
     disk_->wake();
     if (! callbackActive_.load())
     {
-        player_.processCommandsOnly();
+        s.player.processCommandsOnly();
         collectRetired();
     }
 }
@@ -305,16 +318,16 @@ juce::var Engine::setDevice (const juce::var& message)
 }
 
 //==============================================================================
-juce::var Engine::songInfo()
+juce::var Engine::songInfo (const Slot& s)
 {
-    if (song_ == nullptr)
+    if (s.song == nullptr)
         return {};
 
     juce::Array<juce::var> tracks;
-    for (std::size_t i = 0; i < song_->tracks.size(); ++i)
+    for (std::size_t i = 0; i < s.song->tracks.size(); ++i)
     {
-        const auto& track = *song_->tracks[i];
-        const auto& spec = specs_[i];
+        const auto& track = *s.song->tracks[i];
+        const auto& spec = s.specs[i];
         tracks.add (Obj()
                         .set ("id", juce::String (spec.id))
                         .set ("channels", track.channels)
@@ -329,14 +342,14 @@ juce::var Engine::songInfo()
     }
 
     return Obj()
-        .set ("songId", juce::String (song_->id))
-        .set ("sampleRate", song_->sampleRate)
-        .set ("lengthFrames", static_cast<juce::int64> (song_->lengthFrames))
-        .set ("masterGainDb", gainToDecibels (song_->masterGain.load()))
+        .set ("songId", juce::String (s.song->id))
+        .set ("sampleRate", s.song->sampleRate)
+        .set ("lengthFrames", static_cast<juce::int64> (s.song->lengthFrames))
+        .set ("masterGainDb", gainToDecibels (s.song->masterGain.load()))
         .set ("tracks", tracks);
 }
 
-void Engine::replaceSong (std::unique_ptr<audio::Song> next)
+void Engine::replaceSong (Slot& s, std::unique_ptr<audio::Song> next)
 {
     if (next != nullptr)
         disk_->addSong (next.get());
@@ -345,21 +358,24 @@ void Engine::replaceSong (std::unique_ptr<audio::Song> next)
     command.type = audio::Command::Type::setSong;
     command.song = next.get();
 
-    if (song_ != nullptr)
-        retiring_.push_back (std::move (song_));
-    song_ = std::move (next);
+    if (s.song != nullptr)
+        s.retiring.push_back (std::move (s.song));
+    s.song = std::move (next);
 
-    post (command);
+    post (s, command);
 }
 
 void Engine::collectRetired()
 {
-    while (auto* retired = player_.takeRetiredSong())
+    for (auto& s : slots_)
     {
-        disk_->removeSong (retired);
-        retiring_.erase (std::remove_if (retiring_.begin(), retiring_.end(),
-                                         [retired] (const auto& s) { return s.get() == retired; }),
-                         retiring_.end());
+        while (auto* retired = s.player.takeRetiredSong())
+        {
+            disk_->removeSong (retired);
+            s.retiring.erase (std::remove_if (s.retiring.begin(), s.retiring.end(),
+                                              [retired] (const auto& song) { return song.get() == retired; }),
+                              s.retiring.end());
+        }
     }
     while (auto* bank = pads_.takeRetiredBank())
     {
@@ -370,7 +386,7 @@ void Engine::collectRetired()
     }
 }
 
-juce::var Engine::loadSong (const juce::var& message)
+juce::var Engine::loadSong (const juce::var& message, Slot& s)
 {
     const auto songId = text (message, "songId");
     const auto* tracks = message.getProperty ("tracks", {}).getArray();
@@ -400,30 +416,32 @@ juce::var Engine::loadSong (const juce::var& message)
     if (const auto master = message.getProperty ("masterGainDb", {}); ! master.isVoid())
         song->masterGain.store (audio::decibelsToGain (static_cast<float> (static_cast<double> (master))));
 
-    specs_ = std::move (specs);
-    planSpec_.clear(); // a new song plays as written until the app sends its plan
-    gridSpec_ = {};
-    tempo_ = 1.0;
-    hasPlan_ = false;
-    replaceSong (std::move (song));
+    s.specs = std::move (specs);
+    s.planSpec.clear(); // a new song plays as written until the app sends its plan
+    s.grid = {};
+    s.tempo = 1.0;
+    s.hasPlan = false;
+    replaceSong (s, std::move (song));
+    if (&s == &cur())
+        armTransition(); // the new song has no plan yet: nothing to trigger from
 
-    for (std::size_t i = 0; i < song_->tracks.size(); ++i)
-        if (song_->tracks[i]->missing)
-            push (Obj().set ("type", "fileMissing").set ("trackId", juce::String (specs_[i].id)).set ("problem", song_->tracks[i]->problem));
+    for (std::size_t i = 0; i < s.song->tracks.size(); ++i)
+        if (s.song->tracks[i]->missing)
+            push (Obj().set ("type", "fileMissing").set ("trackId", juce::String (s.specs[i].id)).set ("problem", s.song->tracks[i]->problem));
 
-    auto reply = songInfo();
+    auto reply = songInfo (s);
     reply.getDynamicObject()->setProperty ("type", "song");
     return reply;
 }
 
-juce::var Engine::unloadSong()
+juce::var Engine::unloadSong (Slot& s)
 {
-    specs_.clear();
-    planSpec_.clear();
-    gridSpec_ = {};
-    tempo_ = 1.0;
-    hasPlan_ = false;
-    replaceSong (nullptr);
+    s.specs.clear();
+    s.planSpec.clear();
+    s.grid = {};
+    s.tempo = 1.0;
+    s.hasPlan = false;
+    replaceSong (s, nullptr);
     return Obj().set ("type", "ok");
 }
 
@@ -432,32 +450,42 @@ void Engine::reloadAtRate (double rate)
     if (! padBanks_.empty() && std::abs (padBanks_.back()->sampleRate - rate) > 0.5)
         openPadBank (rate); // the pads follow the device rate too; the old set fades out
 
-    if (song_ == nullptr || std::abs (song_->sampleRate - rate) < 0.5)
+    for (auto& slot : slots_)
+        reloadSlotAtRate (slot, rate);
+    armTransition();
+}
+
+void Engine::reloadSlotAtRate (Slot& s, double rate)
+{
+    if (s.song == nullptr || std::abs (s.song->sampleRate - rate) < 0.5)
         return;
 
-    const auto oldRate = song_->sampleRate;
-    const auto position = static_cast<std::int64_t> (static_cast<double> (player_.position()) * rate / oldRate);
-    const auto master = song_->masterGain.load();
+    const auto oldRate = s.song->sampleRate;
+    const auto position = static_cast<std::int64_t> (static_cast<double> (s.player.position()) * rate / oldRate);
+    const auto master = s.song->masterGain.load();
 
-    auto song = audio::loadSong (song_->id, specs_, rate, position, formats_);
+    auto song = audio::loadSong (s.song->id, s.specs, rate, position, formats_);
     song->masterGain.store (master);
-    if (hasPlan_)
+    if (s.hasPlan)
     {
-        auto plan = buildPlan (rate);
+        auto plan = buildPlan (rate, s);
         const auto length = plan->lengthFrames;
         song->publishPlan (std::move (plan));
         song->request.store (audio::StreamRequest::pack ({ 1, std::clamp<std::int64_t> (position, 0, length) }));
     }
-    replaceSong (std::move (song));
+    replaceSong (s, std::move (song));
 
-    auto event = songInfo();
+    auto event = songInfo (s);
     event.getDynamicObject()->setProperty ("type", "songReloaded");
+    if (&s == &nxt())
+        event.getDynamicObject()->setProperty ("slot", "next");
     push (event);
 }
 
 juce::var Engine::transport (const juce::String& type, const juce::var& message)
 {
-    if (song_ == nullptr)
+    auto& s = cur();
+    if (s.song == nullptr)
         return makeError ({}, "noSong", "No song is loaded.");
 
     audio::Command command;
@@ -470,27 +498,36 @@ juce::var Engine::transport (const juce::String& type, const juce::var& message)
     else
     {
         command.type = audio::Command::Type::seek;
-        command.frame = std::clamp<std::int64_t> (toOutputFrames (static_cast<std::int64_t> (number (message, "frame", 0.0))), 0, song_->planFrames());
-        command.generation = song_->requestFrame (command.frame).generation; // start buffering now (PB-56)
+        command.frame = std::clamp<std::int64_t> (s.toOutputFrames (static_cast<std::int64_t> (number (message, "frame", 0.0))), 0, s.song->planFrames());
+        command.generation = s.song->requestFrame (command.frame).generation; // start buffering now (PB-56)
     }
 
-    post (command);
+    post (s, command);
+    if (type == "stop")
+    {
+        // Stop during a transition stops the transition click and leaves the next song cued (SL-32).
+        transitions_.post ({});
+        if (nxt().song != nullptr)
+            post (nxt(), command);
+        armTransition();
+    }
     return Obj().set ("type", "ok");
 }
 
 juce::var Engine::setTrack (const juce::var& message)
 {
-    if (song_ == nullptr)
+    auto& s = cur();
+    if (s.song == nullptr)
         return makeError ({}, "noSong", "No song is loaded.");
 
     const auto id = text (message, "trackId").toStdString();
-    for (std::size_t i = 0; i < specs_.size(); ++i)
+    for (std::size_t i = 0; i < s.specs.size(); ++i)
     {
-        if (specs_[i].id != id)
+        if (s.specs[i].id != id)
             continue;
 
-        auto& spec = specs_[i];
-        auto& track = *song_->tracks[i];
+        auto& spec = s.specs[i];
+        auto& track = *s.song->tracks[i];
         if (const auto v = message.getProperty ("gainDb", {}); ! v.isVoid())
         {
             spec.gainDb = static_cast<float> (static_cast<double> (v));
@@ -521,25 +558,26 @@ juce::var Engine::setTrack (const juce::var& message)
 
 juce::var Engine::setMaster (const juce::var& message)
 {
-    if (song_ == nullptr)
+    auto& s = cur();
+    if (s.song == nullptr)
         return makeError ({}, "noSong", "No song is loaded.");
-    song_->masterGain.store (audio::decibelsToGain (static_cast<float> (number (message, "gainDb", 0.0))));
+    s.song->masterGain.store (audio::decibelsToGain (static_cast<float> (number (message, "gainDb", 0.0))));
     return Obj().set ("type", "ok");
 }
 
-std::unique_ptr<audio::Plan> Engine::buildPlan (double rate) const
+std::unique_ptr<audio::Plan> Engine::buildPlan (double rate, const Slot& s) const
 {
     // Plan seconds become output frames (divided by the tempo); sources stay source frames.
     auto plan = std::make_unique<audio::Plan>();
-    const double tempo = tempo_;
+    const double tempo = s.tempo;
     const auto frames = [rate, tempo] (double planSeconds) { return static_cast<std::int64_t> (std::llround (planSeconds / tempo * rate)); };
     const auto sourceFrames = [rate] (double seconds) { return static_cast<std::int64_t> (std::llround (seconds * rate)); };
     plan->tempo = tempo;
-    plan->gridOrigin = gridSpec_.origin / tempo * rate;
-    plan->beatFrames = gridSpec_.beat / tempo * rate;
-    plan->beatsPerBar = gridSpec_.beatsPerBar;
+    plan->gridOrigin = s.grid.origin / tempo * rate;
+    plan->beatFrames = s.grid.beat / tempo * rate;
+    plan->beatsPerBar = s.grid.beatsPerBar;
 
-    for (const auto& spec : planSpec_)
+    for (const auto& spec : s.planSpec)
     {
         audio::PlanSegment segment;
         segment.start = frames (spec.start);
@@ -555,10 +593,10 @@ std::unique_ptr<audio::Plan> Engine::buildPlan (double rate) const
         segment.key = spec.key;
         segment.songKey = spec.songKey;
         segment.pad = spec.pad;
-        segment.muted.assign (specs_.size(), 0);
+        segment.muted.assign (s.specs.size(), 0);
         for (const auto& id : spec.mute)
-            for (std::size_t i = 0; i < specs_.size(); ++i)
-                if (specs_[i].id == id)
+            for (std::size_t i = 0; i < s.specs.size(); ++i)
+                if (s.specs[i].id == id)
                     segment.muted[i] = 1;
 
         plan->lengthFrames = std::max (plan->lengthFrames, segment.end);
@@ -570,9 +608,9 @@ std::unique_ptr<audio::Plan> Engine::buildPlan (double rate) const
 
 // PB-40: the arrangement as contiguous timed segments. The app builds the plan (RECompose.Core);
 // the engine only executes it. The playhead stays where `position` says (plan seconds), or where it was.
-juce::var Engine::setPlan (const juce::var& message)
+juce::var Engine::setPlan (const juce::var& message, Slot& s)
 {
-    if (song_ == nullptr)
+    if (s.song == nullptr)
         return makeError ({}, "noSong", "No song is loaded.");
 
     const auto* segments = message.getProperty ("segments", {}).getArray();
@@ -608,51 +646,55 @@ juce::var Engine::setPlan (const juce::var& message)
         parsed.push_back (std::move (spec));
     }
 
-    planSpec_ = std::move (parsed);
-    hasPlan_ = true;
+    s.planSpec = std::move (parsed);
+    s.hasPlan = true;
 
     // Protocol 5: the entry tempo, 50–150 % (PB-60).
-    tempo_ = juce::jlimit (0.5, 1.5, number (message, "tempo", 1.0));
+    s.tempo = juce::jlimit (0.5, 1.5, number (message, "tempo", 1.0));
 
     // Protocol 4: the song grid the click follows (PB-70). Without it the click has no beats.
     const auto grid = message.getProperty ("grid", {});
-    gridSpec_ = {};
+    s.grid = {};
     if (grid.isObject())
     {
-        gridSpec_.origin = number (grid, "origin", 0.0);
-        gridSpec_.beat = std::max (0.0, number (grid, "beat", 0.0));
-        gridSpec_.beatsPerBar = std::max (1, static_cast<int> (number (grid, "beatsPerBar", 4.0)));
+        s.grid.origin = number (grid, "origin", 0.0);
+        s.grid.beat = std::max (0.0, number (grid, "beat", 0.0));
+        s.grid.beatsPerBar = std::max (1, static_cast<int> (number (grid, "beatsPerBar", 4.0)));
     }
 
-    auto plan = buildPlan (song_->sampleRate);
+    auto plan = buildPlan (s.song->sampleRate, s);
     const auto length = plan->lengthFrames;
     const auto position = message.getProperty ("position", {});
-    const auto wanted = position.isVoid() ? player_.position()
-                                          : static_cast<std::int64_t> (std::llround (number (message, "position", 0.0) / tempo_ * song_->sampleRate));
+    const auto wanted = position.isVoid() ? s.player.position()
+                                          : static_cast<std::int64_t> (std::llround (number (message, "position", 0.0) / s.tempo * s.song->sampleRate));
     const auto frame = std::clamp<std::int64_t> (wanted, 0, length);
 
     audio::Command command;
     command.type = audio::Command::Type::setPlan;
-    command.plan = song_->publishPlan (std::move (plan)); // before the request, so the disk thread sees both
+    command.plan = s.song->publishPlan (std::move (plan)); // before the request, so the disk thread sees both
     command.frame = frame;
-    command.generation = song_->requestFrame (frame).generation;
-    post (command);
+    command.generation = s.song->requestFrame (frame).generation;
+    post (s, command);
+    if (&s == &cur())
+        armTransition(); // the trigger is a frame of this plan
 
-    return Obj().set ("type", "plan").set ("frames", static_cast<juce::int64> (toPlanFrames (length)));
+    return Obj().set ("type", "plan").set ("frames", static_cast<juce::int64> (s.toPlanFrames (length)));
 }
 
 juce::var Engine::getState()
 {
     return Obj()
         .set ("type", "state")
-        .set ("song", songInfo())
+        .set ("song", songInfo (cur()))
+        .set ("next", songInfo (nxt()))
         .set ("device", deviceInfo())
         .set ("snapshot", snapshot());
 }
 
 juce::var Engine::renderOffline (const juce::var& message)
 {
-    if (song_ == nullptr)
+    auto& s = cur();
+    if (s.song == nullptr)
         return makeError ({}, "noSong", "No song is loaded.");
 
     const int frames = juce::jlimit (0, 48000 * 60 * 20, static_cast<int> (number (message, "frames", 0.0)));
@@ -663,8 +705,10 @@ juce::var Engine::renderOffline (const juce::var& message)
     if (hadDevice)
         devices_.removeAudioCallback (this);
 
-    player_.prepare (song_->sampleRate, 512, channels);
-    pads_.prepare (song_->sampleRate);
+    for (auto& slot : slots_)
+        slot.player.prepare (s.song->sampleRate, 512, channels);
+    transitions_.prepare (s.song->sampleRate);
+    pads_.prepare (s.song->sampleRate);
     juce::AudioBuffer<float> buffer (channels, frames);
     std::vector<float*> pointers (static_cast<std::size_t> (channels));
 
@@ -673,8 +717,7 @@ juce::var Engine::renderOffline (const juce::var& message)
         const int n = std::min (512, frames - done);
         for (int c = 0; c < channels; ++c)
             pointers[static_cast<std::size_t> (c)] = buffer.getWritePointer (c, done);
-        player_.process (pointers.data(), channels, n, true);
-        pads_.process (pointers.data(), channels, n, true);
+        processBlock (pointers.data(), channels, n, true);
         done += n;
     }
     collectRetired();
@@ -693,7 +736,7 @@ juce::var Engine::renderOffline (const juce::var& message)
         std::unique_ptr<juce::OutputStream> stream = std::make_unique<juce::FileOutputStream> (file);
         juce::WavAudioFormat wav;
         const auto options = juce::AudioFormatWriterOptions{}
-                                 .withSampleRate (song_->sampleRate)
+                                 .withSampleRate (s.song->sampleRate)
                                  .withNumChannels (channels)
                                  .withBitsPerSample (32)
                                  .withSampleFormat (juce::AudioFormatWriterOptions::SampleFormat::floatingPoint);
@@ -716,6 +759,7 @@ juce::var Engine::renderOffline (const juce::var& message)
 //==============================================================================
 juce::var Engine::snapshot()
 {
+    auto& s = cur();
     juce::Array<juce::var> meters;
     float master[2] { 0.0f, 0.0f };
     juce::var songId;
@@ -723,17 +767,17 @@ juce::var Engine::snapshot()
     bool buffered = false;
     double rate = engineRate();
 
-    if (song_ != nullptr)
+    if (s.song != nullptr)
     {
-        songId = juce::String (song_->id);
-        length = song_->lengthFrames;
-        planLength = toPlanFrames (song_->planFrames());
-        buffered = song_->isBuffered();
-        rate = song_->sampleRate;
-        for (std::size_t i = 0; i < song_->tracks.size(); ++i)
-            meters.add (Obj().set ("id", juce::String (specs_[i].id)).set ("peak", song_->tracks[i]->peak.exchange (0.0f)));
-        master[0] = song_->masterPeak[0].exchange (0.0f);
-        master[1] = song_->masterPeak[1].exchange (0.0f);
+        songId = juce::String (s.song->id);
+        length = s.song->lengthFrames;
+        planLength = s.toPlanFrames (s.song->planFrames());
+        buffered = s.song->isBuffered();
+        rate = s.song->sampleRate;
+        for (std::size_t i = 0; i < s.song->tracks.size(); ++i)
+            meters.add (Obj().set ("id", juce::String (s.specs[i].id)).set ("peak", s.song->tracks[i]->peak.exchange (0.0f)));
+        master[0] = s.song->masterPeak[0].exchange (0.0f);
+        master[1] = s.song->masterPeak[1].exchange (0.0f);
     }
 
     auto* device = devices_.getCurrentAudioDevice();
@@ -744,30 +788,47 @@ juce::var Engine::snapshot()
 
     return Obj()
         .set ("type", "snapshot")
-        .set ("state", stateName (player_.state()))
-        .set ("frame", static_cast<juce::int64> (toPlanFrames (player_.position())))
-        .set ("t", static_cast<juce::int64> (player_.positionTimeNs()))
-        .set ("latency", static_cast<juce::int64> (toPlanFrames (outputLatency_.load())))
+        .set ("state", stateName (s.player.state()))
+        .set ("frame", static_cast<juce::int64> (s.toPlanFrames (s.player.position())))
+        .set ("t", static_cast<juce::int64> (s.player.positionTimeNs()))
+        .set ("latency", static_cast<juce::int64> (s.toPlanFrames (outputLatency_.load())))
         .set ("sampleRate", rate)
         .set ("songId", songId)
         .set ("lengthFrames", length)
         .set ("planFrames", planLength)
         .set ("buffered", buffered)
-        .set ("waiting", player_.waitingForData())
-        .set ("starved", static_cast<juce::int64> (player_.starvedBlocks()))
+        .set ("waiting", s.player.waitingForData())
+        .set ("starved", static_cast<juce::int64> (s.player.starvedBlocks()))
         .set ("xruns", device != nullptr ? device->getXRunCount() : 0)
         .set ("cpu", devices_.getCpuUsage())
         .set ("deviceOpen", callbackActive_.load())
         .set ("meters", meters)
         .set ("master", masterArray)
-        .set ("pad", Obj().set ("key", pads_.key() >= 0 ? juce::var (pads_.key()) : juce::var()).set ("level", pads_.level()));
+        .set ("pad", Obj().set ("key", pads_.key() >= 0 ? juce::var (pads_.key()) : juce::var()).set ("level", pads_.level()))
+        .set ("next", nxt().song != nullptr
+                          ? Obj().set ("songId", juce::String (nxt().song->id)).set ("buffered", nxt().song->isBuffered()).set ("state", stateName (nxt().player.state()))
+                          : juce::var())
+        .set ("transition", transitionName());
 }
 
 void Engine::timerCallback()
 {
     if (! callbackActive_.load())
-        player_.processCommandsOnly();
+        for (auto& slot : slots_)
+            slot.player.processCommandsOnly();
     collectRetired();
+
+    // The next song took over (a segue or a crossfade), or the current one reached its end (SL-30, PB-25).
+    if (transitions_.takeHandover())
+        promote();
+    if (cur().player.takeEnded())
+    {
+        const auto phase = transitions_.phase();
+        if ((phase == audio::Transitioner::Phase::idle || phase == audio::Transitioner::Phase::armed) && cur().song != nullptr)
+            push (Obj().set ("type", "songEnded").set ("songId", juce::String (cur().song->id)));
+    }
+    nxt().player.takeEnded(); // the song that has just handed over
+    auto& s = cur();
 
     const bool playing = isPlaying();
     if (playing && getTimerInterval() != 16)
@@ -776,8 +837,8 @@ void Engine::timerCallback()
         startTimer (100);
 
     // While playing: every tick. Otherwise only when something changed, plus a slow heartbeat.
-    const auto key = stateName (player_.state()).toString() + ":" + juce::String (player_.position()) + ":"
-                   + (song_ != nullptr ? juce::String (song_->id) + (song_->isBuffered() ? "b" : "") : juce::String())
+    const auto key = stateName (s.player.state()).toString() + ":" + juce::String (s.player.position()) + ":"
+                   + (s.song != nullptr ? juce::String (s.song->id) + (s.song->isBuffered() ? "b" : "") : juce::String())
                    + (callbackActive_.load() ? "d" : "");
     ++idleTicks_;
     if (playing || key != lastSnapshotKey_ || idleTicks_ >= 10)
@@ -789,24 +850,183 @@ void Engine::timerCallback()
 }
 
 //==============================================================================
+// Transitions (protocol 7, SL-20, SL-30). The app describes the transition out of the current song; the
+// audio thread starts the next song on the exact sample.
+namespace
+{
+    const char* kindName (audio::Transitioner::Phase phase)
+    {
+        switch (phase)
+        {
+            case audio::Transitioner::Phase::armed: return "armed";
+            case audio::Transitioner::Phase::segueGap: return "segue";
+            case audio::Transitioner::Phase::padWait: return "waiting";
+            case audio::Transitioner::Phase::handing: return "handing";
+            case audio::Transitioner::Phase::idle: break;
+        }
+        return "none";
+    }
+} // namespace
+
+juce::String Engine::transitionName() const
+{
+    return kindName (transitions_.phase());
+}
+
+void Engine::armTransition()
+{
+    const auto& s = cur();
+    audio::TransitionCommand command;
+    command.type = audio::TransitionCommand::Type::arm;
+    command.kind = s.song != nullptr ? transitionSpec_.kind : audio::TransitionCommand::Kind::none;
+
+    if (command.kind != audio::TransitionCommand::Kind::none)
+    {
+        const auto rate = s.song->sampleRate;
+        const auto frames = [rate] (double seconds) { return static_cast<std::int64_t> (std::llround (seconds * rate)); };
+        command.trigger = static_cast<std::int64_t> (std::llround (transitionSpec_.atSec / s.tempo * rate)); // plan seconds to output frames
+        command.gap = frames (transitionSpec_.gapSec);
+        command.fade = frames (transitionSpec_.crossfadeSec);
+        command.padKey = transitionSpec_.padKey;
+        command.fadePadOut = transitionSpec_.fadePadOut;
+        command.autoStart = transitionSpec_.autoStartSec >= 0.0 ? frames (transitionSpec_.autoStartSec) : -1;
+        command.clickChannel = transitionSpec_.clickChannel;
+        command.clickWidth = transitionSpec_.clickWidth;
+
+        if (command.kind == audio::TransitionCommand::Kind::pad && transitionSpec_.click && transitionSpec_.clickBpm > 0.0)
+        {
+            // The transition click runs in real time at its own tempo, from the trigger.
+            auto plan = std::make_unique<audio::Plan>();
+            audio::PlanSegment segment;
+            segment.start = 0;
+            segment.end = std::int64_t (1) << 50;
+            segment.src = -1;
+            segment.click = true;
+            plan->segments.push_back (segment);
+            plan->lengthFrames = segment.end;
+            plan->gridOrigin = 0.0;
+            plan->beatFrames = 60.0 / transitionSpec_.clickBpm * rate;
+            plan->beatsPerBar = std::max (1, transitionSpec_.beatsPerBar);
+            command.click = true;
+            command.clickPlan = plan.get();
+            transitionPlans_.push_back (std::move (plan)); // the audio thread may hold an earlier one: keep them all (a few hundred bytes each)
+        }
+    }
+
+    transitions_.post (command);
+}
+
+juce::var Engine::setTransition (const juce::var& message)
+{
+    const auto type = text (message, "kind");
+    TransitionSpec spec;
+    if (type == "segue")
+        spec.kind = audio::TransitionCommand::Kind::segue;
+    else if (type == "crossfade")
+        spec.kind = audio::TransitionCommand::Kind::crossfade;
+    else if (type == "pad")
+        spec.kind = audio::TransitionCommand::Kind::pad;
+    else if (type != "none" && type != "stop" && type != "carryOver")
+        return makeError ({}, "badMessage", "Unknown transition type: " + type);
+
+    spec.atSec = std::max (0.0, number (message, "at", 0.0));
+    spec.gapSec = std::max (0.0, number (message, "gapSec", 0.0));
+    spec.crossfadeSec = std::max (0.0, number (message, "crossfadeSec", 0.0));
+    spec.autoStartSec = number (message, "autoStartSec", -1.0);
+    if (const auto padInfo = message.getProperty ("pad", {}); padInfo.isObject())
+    {
+        const auto key = padInfo.getProperty ("key", {});
+        spec.padKey = key.isInt() || key.isInt64() || key.isDouble() ? juce::jlimit (-1, audio::kPadKeys - 1, static_cast<int> (key)) : -1;
+        spec.fadePadOut = flag (padInfo, "fadeOut", true);
+        if (const auto click = padInfo.getProperty ("click", {}); click.isObject())
+        {
+            spec.click = true;
+            spec.clickBpm = number (click, "bpm", 120.0);
+            spec.beatsPerBar = static_cast<int> (number (click, "beatsPerBar", 4.0));
+            spec.clickChannel = static_cast<int> (number (click, "channel", 0.0));
+            spec.clickWidth = static_cast<int> (number (click, "width", 2.0)) == 1 ? 1 : 2;
+        }
+    }
+
+    transitionSpec_ = spec;
+    armTransition();
+    return Obj().set ("type", "ok");
+}
+
+juce::var Engine::startNext (const juce::var& message)
+{
+    if (nxt().song == nullptr)
+        return makeError ({}, "noSong", "No next song is loaded.");
+    audio::TransitionCommand command;
+    command.type = audio::TransitionCommand::Type::startNext;
+    const auto retune = message.getProperty ("retuneTo", {});
+    command.retune = retune.isInt() || retune.isInt64() || retune.isDouble() ? juce::jlimit (-1, audio::kPadKeys - 1, static_cast<int> (retune)) : -1;
+    transitions_.post (command);
+    disk_->wake();
+    return Obj().set ("type", "ok");
+}
+
+// The next song becomes the current one: after a segue or a crossfade, or when the app moves on from a stopped song (SL-12).
+void Engine::promote()
+{
+    if (nxt().song == nullptr)
+        return;
+    cur_.store (1 - cur_.load());
+    transitionSpec_ = {};
+    armTransition();
+    auto& s = cur();
+    push (Obj().set ("type", "songChanged").set ("songId", juce::String (s.song->id)));
+}
+
+juce::var Engine::promoteNext()
+{
+    if (nxt().song == nullptr)
+        return makeError ({}, "noSong", "No next song is loaded.");
+    if (cur().player.state() == audio::TransportState::playing)
+        return makeError ({}, "badMessage", "The current song is playing.");
+    promote();
+    auto reply = songInfo (cur());
+    reply.getDynamicObject()->setProperty ("type", "song");
+    return reply;
+}
+
+//==============================================================================
 void Engine::audioDeviceIOCallbackWithContext (const float* const*, int, float* const* outputs, int numOutputs,
                                                int numSamples, const juce::AudioIODeviceCallbackContext&)
 {
-    player_.process (outputs, numOutputs, numSamples, false);
-    pads_.process (outputs, numOutputs, numSamples, false);
+    processBlock (outputs, numOutputs, numSamples, false);
+}
+
+void Engine::processBlock (float* const* outputs, int numOutputs, int numSamples, bool offline) noexcept
+{
+    for (int ch = 0; ch < numOutputs; ++ch)
+        if (outputs[ch] != nullptr)
+            std::memset (outputs[ch], 0, sizeof (float) * static_cast<std::size_t> (numSamples));
+
+    // Both songs play into the same buffers; the transition runner starts the next one on its sample.
+    transitions_.process (cur().player, nxt().player, pads_, outputs, numOutputs, numSamples, offline);
+    pads_.process (outputs, numOutputs, numSamples, offline);
 }
 
 void Engine::audioDeviceAboutToStart (juce::AudioIODevice* device)
 {
     const auto rate = device->getCurrentSampleRate();
-    player_.prepare (rate, device->getCurrentBufferSizeSamples(), device->getActiveOutputChannels().getHighestBit() + 1);
+    for (auto& slot : slots_)
+        slot.player.prepare (rate, device->getCurrentBufferSizeSamples(), device->getActiveOutputChannels().getHighestBit() + 1);
+    transitions_.prepare (rate);
     pads_.prepare (rate);
     deviceRate_.store (rate);
     outputLatency_.store (device->getOutputLatencyInSamples());
     callbackActive_.store (true);
 
-    if (song_ != nullptr && std::abs (song_->sampleRate - rate) > 0.5)
-        juce::MessageManager::callAsync ([this, rate] { reloadAtRate (rate); });
+    for (const auto& slot : slots_)
+    {
+        if (slot.song != nullptr && std::abs (slot.song->sampleRate - rate) > 0.5)
+        {
+            juce::MessageManager::callAsync ([this, rate] { reloadAtRate (rate); });
+            break;
+        }
+    }
 }
 
 void Engine::audioDeviceStopped()

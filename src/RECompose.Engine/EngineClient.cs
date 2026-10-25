@@ -99,6 +99,23 @@ public enum TransportState
     Paused,
 }
 
+/// <summary>How the current song hands over to the next one (protocol 7, SL-20, SL-30).</summary>
+/// <param name="Type">"none" (stop, carry over), "segue", "crossfade" or "pad".</param>
+/// <param name="AtSec">Plan seconds of the current plan where the transition starts: the tail, or the start of the fade.</param>
+/// <param name="GapSec">Segue: seconds of silence between the songs, as heard.</param>
+/// <param name="CrossfadeSec">Crossfade: seconds the current song fades out over.</param>
+/// <param name="AutoStartSec">Pad: seconds after the start when the next song starts by itself, or null to wait for Play.</param>
+public sealed record EngineTransition(string Type, double AtSec, double GapSec = 0, double CrossfadeSec = 0, double? AutoStartSec = null, PadTransition? Pad = null)
+{
+    public static EngineTransition None { get; } = new("none", 0);
+}
+
+/// <summary>The pad of a pad transition and its click (SL-20).</summary>
+/// <param name="Key">The pitch class that fades in, or null.</param>
+/// <param name="FadeOut">Fade the pad out when the next song starts.</param>
+/// <param name="ClickBpm">The click tempo, or null for no click.</param>
+public sealed record PadTransition(int? Key, bool FadeOut, double? ClickBpm, int BeatsPerBar, int ClickChannel, int ClickWidth);
+
 /// <summary>The engine's state, sent at display rate while playing and on change otherwise.</summary>
 public sealed record EngineSnapshot(
     TransportState State,
@@ -119,7 +136,10 @@ public sealed record EngineSnapshot(
     float MasterRight,
     long PlanFrames = 0,
     int? PadKey = null,
-    float PadLevel = 0)
+    float PadLevel = 0,
+    string? NextSongId = null,
+    bool NextBuffered = false,
+    string Transition = "none")
 {
     /// <summary>The frame being heard: the render position minus the output latency while playing (PB-4).</summary>
     public long HeardFrame => State == TransportState.Playing ? Math.Max(0, Frame - Latency) : Frame;
@@ -150,7 +170,10 @@ public sealed record EngineSnapshot(
             (float?)master?[1] ?? 0,
             (long?)o["planFrames"] ?? 0,
             (int?)o["pad"]?["key"],
-            (float?)o["pad"]?["level"] ?? 0);
+            (float?)o["pad"]?["level"] ?? 0,
+            (string?)o["next"]?["songId"],
+            (bool?)o["next"]?["buffered"] ?? false,
+            (string?)o["transition"] ?? "none");
     }
 }
 
@@ -174,6 +197,12 @@ public sealed class EngineClient : IAsyncDisposable
     public event Action<string>? DeviceError;
     public event Action<string, string>? FileMissing; // track id, problem
     public event Action<LoadedSong>? SongReloaded;
+
+    /// <summary>The next song took over as the current one (a segue, a crossfade, or promoteNext); its id.</summary>
+    public event Action<string>? SongChanged;
+
+    /// <summary>The current song played to its end with nothing handing over (a Stop transition); its id.</summary>
+    public event Action<string>? SongEnded;
     public event Action? Disconnected;
 
     public async Task<(IReadOnlyList<DeviceTypeInfo> Types, DeviceInfo? Current)> ListDevicesAsync(CancellationToken ct = default)
@@ -198,7 +227,14 @@ public sealed class EngineClient : IAsyncDisposable
         return DeviceInfo.From(reply["device"]);
     }
 
-    public async Task<LoadedSong> LoadSongAsync(string songId, IEnumerable<EngineTrack> tracks, double masterGainDb, long startFrame = 0, CancellationToken ct = default)
+    public Task<LoadedSong> LoadSongAsync(string songId, IEnumerable<EngineTrack> tracks, double masterGainDb, long startFrame = 0, CancellationToken ct = default) =>
+        LoadAsync(songId, tracks, masterGainDb, startFrame, next: false, ct);
+
+    /// <summary>Loads the next entry into the engine's second slot while the current one plays (protocol 7, PB-11).</summary>
+    public Task<LoadedSong> LoadNextSongAsync(string songId, IEnumerable<EngineTrack> tracks, double masterGainDb, CancellationToken ct = default) =>
+        LoadAsync(songId, tracks, masterGainDb, 0, next: true, ct);
+
+    private async Task<LoadedSong> LoadAsync(string songId, IEnumerable<EngineTrack> tracks, double masterGainDb, long startFrame, bool next, CancellationToken ct)
     {
         var list = new JsonArray();
         foreach (var t in tracks)
@@ -220,17 +256,56 @@ public sealed class EngineClient : IAsyncDisposable
             list.Add(track);
         }
 
-        var reply = await Session.Connection.RequestAsync("loadSong", new JsonObject
+        var request = new JsonObject
         {
             ["songId"] = songId,
             ["tracks"] = list,
             ["masterGainDb"] = masterGainDb,
             ["startFrame"] = startFrame,
-        }, ct).ConfigureAwait(false);
+        };
+        if (next)
+            request["slot"] = "next";
+        var reply = await Session.Connection.RequestAsync("loadSong", request, ct).ConfigureAwait(false);
         return LoadedSong.From(reply) ?? throw new EngineProtocolException("loadSong returned no song.");
     }
 
     public Task UnloadSongAsync(CancellationToken ct = default) => Session.Connection.RequestAsync("unloadSong", cancellationToken: ct);
+
+    public Task UnloadNextSongAsync(CancellationToken ct = default) =>
+        Session.Connection.RequestAsync("unloadSong", new JsonObject { ["slot"] = "next" }, ct);
+
+    /// <summary>Describes how the current song hands over to the next (protocol 7); resent whenever the plan changes.</summary>
+    public Task SetTransitionAsync(EngineTransition transition, CancellationToken ct = default)
+    {
+        var request = new JsonObject { ["kind"] = transition.Type, ["at"] = transition.AtSec, ["gapSec"] = transition.GapSec, ["crossfadeSec"] = transition.CrossfadeSec };
+        if (transition.AutoStartSec is { } auto)
+            request["autoStartSec"] = auto;
+        if (transition.Pad is { } pad)
+        {
+            var p = new JsonObject { ["key"] = pad.Key, ["fadeOut"] = pad.FadeOut };
+            if (pad.ClickBpm is { } bpm)
+                p["click"] = new JsonObject { ["bpm"] = bpm, ["beatsPerBar"] = pad.BeatsPerBar, ["channel"] = pad.ClickChannel, ["width"] = pad.ClickWidth };
+            request["pad"] = p;
+        }
+
+        return Session.Connection.RequestAsync("setTransition", request, ct);
+    }
+
+    /// <summary>Play with a song cued: starts the next song (on the next click downbeat in a pad transition). <paramref name="retuneTo"/> moves a sounding pad to that pitch class.</summary>
+    public Task StartNextAsync(int? retuneTo = null, CancellationToken ct = default)
+    {
+        var request = new JsonObject();
+        if (retuneTo is { } key)
+            request["retuneTo"] = key;
+        return Session.Connection.RequestAsync("startNext", request, ct);
+    }
+
+    /// <summary>Makes the cued next song the current one while the current one is stopped (Auto-advance, ⏭); returns it.</summary>
+    public async Task<LoadedSong?> PromoteNextAsync(CancellationToken ct = default)
+    {
+        var reply = await Session.Connection.RequestAsync("promoteNext", cancellationToken: ct).ConfigureAwait(false);
+        return LoadedSong.From(reply);
+    }
 
     public Task PlayAsync(CancellationToken ct = default) => Session.Connection.RequestAsync("play", cancellationToken: ct);
     public Task PauseAsync(CancellationToken ct = default) => Session.Connection.RequestAsync("pause", cancellationToken: ct);
@@ -258,7 +333,7 @@ public sealed class EngineClient : IAsyncDisposable
     /// Returns the plan length in plan frames.
     /// </summary>
     public async Task<long> SetPlanAsync(IEnumerable<PlanSegment> segments, double? positionSec = null, PlanGrid? grid = null, double tempo = 1,
-        CancellationToken ct = default)
+        bool next = false, CancellationToken ct = default)
     {
         var list = new JsonArray();
         foreach (var s in segments)
@@ -287,6 +362,8 @@ public sealed class EngineClient : IAsyncDisposable
         }
 
         var request = new JsonObject { ["segments"] = list };
+        if (next)
+            request["slot"] = "next";
         if (Math.Abs(tempo - 1) > 1e-9)
             request["tempo"] = tempo;
         if (grid is not null)
@@ -364,8 +441,14 @@ public sealed class EngineClient : IAsyncDisposable
                 FileMissing?.Invoke((string?)message["trackId"] ?? string.Empty, (string?)message["problem"] ?? "File missing");
                 break;
             case "songReloaded":
-                if (LoadedSong.From(message) is { } song)
+                if (LoadedSong.From(message) is { } song && (string?)message["slot"] != "next")
                     SongReloaded?.Invoke(song);
+                break;
+            case "songChanged":
+                SongChanged?.Invoke((string?)message["songId"] ?? string.Empty);
+                break;
+            case "songEnded":
+                SongEnded?.Invoke((string?)message["songId"] ?? string.Empty);
                 break;
         }
     }

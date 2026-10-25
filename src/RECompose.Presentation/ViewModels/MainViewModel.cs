@@ -82,7 +82,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         ImportCommand = new RelayCommand(ImportAsync);
         PlayPauseCommand = new RelayCommand(PlayPauseAsync, () => _song is not null);
         StopCommand = new RelayCommand(StopAsync, () => _song is not null);
-        ToStartCommand = new RelayCommand(() => SeekAsync(0), () => _song is not null);
+        ToStartCommand = new RelayCommand(ToStartAsync, () => _song is not null);
         OpenSettingsCommand = new RelayCommand(OpenAudioSettingsAsync);
         UndoCommand = new RelayCommand(Undo);
         KeyDownCommand = new RelayCommand(() => StepKey(-1, LoadedEntry?.Id), () => LoadedEntry is not null);
@@ -445,6 +445,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         engine.DeviceError += m => _ui.Post(() => Banner = $"The audio device reported a problem: {m}");
         engine.FileMissing += (id, problem) => _ui.Post(() => MarkMissing(id, problem));
         engine.SongReloaded += song => _ui.Post(() => { if (_song is not null && _song.Id == song.SongId) _song.Loaded = song; });
+        engine.SongChanged += id => _ui.Post(() => _ = OnSongChangedAsync(id));
+        engine.SongEnded += id => _ui.Post(() => _ = OnSongEndedAsync(id));
+        ClearNext(); // a new engine has nothing in its next slot
         engine.Disconnected += () => _ui.Post(() => _ = OnEngineLostAsync());
         _engine = engine;
 
@@ -710,21 +713,10 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         if (_engine is { } engine)
         {
             var mix = model.MixPresets.FirstOrDefault(p => p.Id == entry?.MixPresetId) ?? model.DefaultMix;
-            var tracks = model.Tracks.Where(t => !t.Hidden).Select(t =>
-            {
-                var (channel, width) = _settings.Audio.Resolve(t.Output);
-                var m = mix.For(t.Id);
-                return new EngineTrack(t.Id, t.File, channel, width, m.GainDb <= TrackViewModel.MinimumDb ? -100 : m.GainDb, m.Mute, m.Solo, t.IsClickOrGuide)
-                {
-                    Transposes = mix.Transposes(t),
-                };
-            }).ToList();
-            // The engine's click for count-ins and click bars, on the Cue output (PB-70, PB-85).
-            var (cueChannel, cueWidth) = _settings.Audio.Resolve("cue");
-            tracks.Add(EngineTrack.Click(cueChannel, cueWidth));
-            loaded = await engine.LoadSongAsync(model.Id, tracks, mix.MasterGainDb, startFrame);
+            loaded = await engine.LoadSongAsync(model.Id, BuildEngineTracks(model, mix), mix.MasterGainDb, startFrame);
         }
 
+        _awaitingNext = false;
         BindSong(model, loaded, entry, serviceId);
         var resumeSec = startFrame > 0 ? startFrame / (loaded?.SampleRate ?? 48000.0) : 0.0;
         if (resumeSec > 0)
@@ -736,6 +728,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
         foreach (var missing in _song!.Tracks.Where(t => t.Missing))
             AddToastLine($"File missing: {missing.Name}");
+        _ = RefreshNextAsync(); // PB-11: the entry after this one is loaded and ready
     }
 
     private void BindSong(Song model, LoadedSong? loaded, ServiceEntry? entry = null, string? serviceId = null)
@@ -783,6 +776,15 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     {
         if (_engine is null || _song is null)
             return;
+        if (_transition == "waiting" || (_awaitingNext && !IsPlaying))
+        {
+            // Between two songs Play starts the next one: on the next click downbeat in a pad transition (SL-30).
+            var retune = CarryRetuneKey();
+            _awaitingNext = false;
+            await _engine.StartNextAsync(retune);
+            return;
+        }
+
         if (IsPlaying)
             await _engine.PauseAsync();
         else
@@ -792,7 +794,10 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private async Task StopAsync()
     {
         if (_engine is not null && _song is not null)
+        {
+            _awaitingNext = false;
             await _engine.StopAsync();
+        }
     }
 
     /// <summary>Seeks to a source time (click on the as-written ruler, section jumps, PB-26). Does nothing when the arrangement doesn't play that moment.</summary>
@@ -866,6 +871,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             }
 
             await engine.SetPlanAsync(song.Plan.Segments(), positionSec, song.Plan.Grid, song.Plan.TempoFactor);
+            await SendTransitionAsync(); // the transition point is a time of this plan
         }
         catch (Exception ex) when (ex is EngineErrorException or EngineDisconnectedException or OperationCanceledException)
         {
@@ -903,6 +909,15 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         Status = s.State == TransportState.Playing
             ? (s.Waiting ? "LOADING" : "PLAYING")
             : (s.Buffered || !s.DeviceOpen ? "READY" : "LOADING");
+        var transition = s.Transition;
+        if (transition != _transition)
+        {
+            _transition = transition;
+            UpdateReadouts();
+        }
+
+        if (TransitionPending || transition is "segue" or "handing")
+            Status = "TRANSITION"; // between two songs (UI-13)
 
         // Meters fall about 20 dB per second at the 60 Hz playing rate (PB-84).
         const double decay = 0.006;
@@ -945,6 +960,14 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         NowPassText = r.NowPass;
         NowNoteText = r.NowNote;
         NextNoteText = r.NextNote;
+
+        if (TransitionPending && _nextSong is { } next)
+        {
+            // LIVE-20 rule 0: between songs the card names the next song.
+            NextTag = "NEXT SONG";
+            NextLabel = next.Title.ToUpperInvariant();
+            CountdownText = "Press Play";
+        }
     }
 
     // ---- Mixer (PB-80…84) with undo and autosave ------------------------------------

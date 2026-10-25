@@ -291,6 +291,13 @@ void PadPlayer::handle (const PadCommand& command) noexcept
     }
 }
 
+void PadPlayer::playNow (int key) noexcept
+{
+    PadCommand command;
+    command.key = key;
+    handle (command);
+}
+
 void PadPlayer::onSegment (const PlanSegment& segment) noexcept
 {
     drain();

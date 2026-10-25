@@ -70,11 +70,16 @@ Song* Player::takeRetiredSong() noexcept
     return song;
 }
 
-void Player::prepare (double sampleRate, int /*maxBlockSize*/, int /*numOutputChannels*/)
+void Player::prepare (double sampleRate, int /*maxBlockSize*/, int numOutputChannels)
 {
     sampleRate_ = sampleRate > 0.0 ? sampleRate : 48000.0;
     for (auto& s : scratch_)
         s.assign (kChunk, 0.0f);
+    const auto rows = static_cast<std::size_t> (std::clamp (numOutputChannels, 2, 64));
+    accum_.assign (rows, std::vector<float> (kChunk, 0.0f));
+    accumPointers_.assign (rows, nullptr);
+    for (std::size_t i = 0; i < rows; ++i)
+        accumPointers_[i] = accum_[i].data();
 }
 
 void Player::drainCommands() noexcept
@@ -330,13 +335,28 @@ void Player::processCommandsOnly() noexcept
     publish();
 }
 
-void Player::process (float* const* outputs, int numOutputs, int numSamples, bool offline) noexcept
+void Player::playNow() noexcept
+{
+    Command command;
+    command.type = Command::Type::play;
+    handle (command);
+}
+
+void Player::fadeStopNow (std::int64_t frames) noexcept
+{
+    if (song_ == nullptr || transport_ != TransportState::playing || waiting_)
+        return;
+    startFade (0.0f, static_cast<float> (static_cast<double> (frames) * 1000.0 / sampleRate_), AfterFade::stopAndRewind);
+}
+
+void Player::process (float* const* outputs, int numOutputs, int numSamples, bool offline, bool accumulate) noexcept
 {
     drainCommands();
 
-    for (int ch = 0; ch < numOutputs; ++ch)
-        if (outputs[ch] != nullptr)
-            std::memset (outputs[ch], 0, sizeof (float) * static_cast<std::size_t> (numSamples));
+    if (! accumulate)
+        for (int ch = 0; ch < numOutputs; ++ch)
+            if (outputs[ch] != nullptr)
+                std::memset (outputs[ch], 0, sizeof (float) * static_cast<std::size_t> (numSamples));
 
     if (song_ == nullptr || transport_ != TransportState::playing)
     {
@@ -378,7 +398,21 @@ void Player::process (float* const* outputs, int numOutputs, int numSamples, boo
                     pads_->onSegment (*segment); // Follow song and pad bars (SL-44, ARR-39)
             }
         }
-        renderChunk (outputs, numOutputs, done, frames, offline);
+        if (accumulate)
+        {
+            const int rows = std::min (numOutputs, static_cast<int> (accum_.size()));
+            for (int ch = 0; ch < rows; ++ch)
+                std::fill_n (accumPointers_[static_cast<std::size_t> (ch)], frames, 0.0f);
+            renderChunk (accumPointers_.data(), rows, 0, frames, offline);
+            for (int ch = 0; ch < rows; ++ch)
+                if (outputs[ch] != nullptr)
+                    for (int i = 0; i < frames; ++i)
+                        outputs[ch][done + i] += accum_[static_cast<std::size_t> (ch)][static_cast<std::size_t> (i)];
+        }
+        else
+        {
+            renderChunk (outputs, numOutputs, done, frames, offline);
+        }
         done += frames;
     }
 
@@ -561,6 +595,8 @@ void Player::renderChunk (float* const* outputs, int numOutputs, int offset, int
         transport_ = TransportState::stopped;
         after_ = AfterFade::none;
         rewindToStart();
+        endCount_.fetch_add (1, std::memory_order_release);
+        ended_.store (true, std::memory_order_release);
     }
 }
 

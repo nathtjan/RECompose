@@ -104,6 +104,7 @@ public sealed class SetlistViewModel : ObservableObject
         MakeCustomCommand = new RelayCommand(() => { if (_selected is { } row) _main.MakeEntryCustom(row.Id); }, () => _selected?.Entry.Arrangement.Type == ArrangementChoiceType.Variant);
         RevertCommand = new RelayCommand(() => { if (_selected is { } row) _main.RevertEntry(row.Id); }, () => RevertText is not null);
         SaveAsVariantCommand = new RelayCommand(() => _selected is { } row ? _main.SaveEntryAsVariantAsync(row.Id) : Task.CompletedTask, () => IsCustom);
+        AutoAdvanceCommand = new RelayCommand(_main.ToggleAutoAdvance, () => HasService);
         KeyDownCommand = new RelayCommand(() => _main.StepKey(-1, _selected?.Id), () => HasSelection);
         KeyUpCommand = new RelayCommand(() => _main.StepKey(1, _selected?.Id), () => HasSelection);
         TempoDownCommand = new RelayCommand(() => _main.StepTempo(-1, _selected?.Id), () => HasSelection);
@@ -142,6 +143,10 @@ public sealed class SetlistViewModel : ObservableObject
     public RelayCommand NewServiceCommand { get; }
     public RelayCommand DuplicateServiceCommand { get; }
     public RelayCommand RenameServiceCommand { get; }
+    public RelayCommand AutoAdvanceCommand { get; }
+
+    /// <summary>"Auto-advance: on" (SL-12): after a Stop transition the next song is cued.</summary>
+    public string AutoAdvanceLabel => _main.CurrentService is { AutoAdvance: true } ? "Auto-advance: on" : "Auto-advance: off";
     public RelayCommand DeleteServiceCommand { get; }
     public RelayCommand LoadSelectedCommand { get; }
     public RelayCommand RemoveSelectedCommand { get; }
@@ -284,7 +289,7 @@ public sealed class SetlistViewModel : ObservableObject
 
         foreach (var name in new[]
                  {
-                     nameof(CurrentChoice), nameof(HasService), nameof(HasNoService), nameof(Title), nameof(Summary), nameof(IsEmpty), nameof(Selected),
+                     nameof(CurrentChoice), nameof(HasService), nameof(HasNoService), nameof(Title), nameof(Summary), nameof(IsEmpty), nameof(Selected), nameof(AutoAdvanceLabel),
                  })
             OnPropertyChanged(name);
         foreach (var c in new[]

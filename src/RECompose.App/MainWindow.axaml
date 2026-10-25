@@ -170,6 +170,7 @@
                     <MenuItem Header="New service…" Command="{Binding NewServiceCommand}" />
                     <MenuItem Header="Duplicate service…" Command="{Binding DuplicateServiceCommand}" />
                     <MenuItem Header="Rename…" Command="{Binding RenameServiceCommand}" />
+                    <MenuItem Header="{Binding AutoAdvanceLabel}" Command="{Binding AutoAdvanceCommand}" />
                     <Separator />
                     <MenuItem Header="Delete" Command="{Binding DeleteServiceCommand}" />
                   </MenuFlyout>
@@ -367,6 +368,9 @@
               </Button>
               <Button Command="{Binding StopCommand}" ToolTip.Tip="Stop" AutomationProperties.Name="Stop" Width="44">
                 <c:Icon Glyph="stop" IconSize="16" HorizontalAlignment="Center" />
+              </Button>
+              <Button Command="{Binding NextSongCommand}" ToolTip.Tip="Next song" AutomationProperties.Name="Next song" Width="44">
+                <c:Icon Glyph="next" IconSize="16" HorizontalAlignment="Center" />
               </Button>
               <Button Classes="primary" Command="{Binding PlayPauseCommand}" ToolTip.Tip="Play or pause (Space)" Width="96">
                 <StackPanel Orientation="Horizontal" Spacing="6">

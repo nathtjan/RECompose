@@ -296,6 +296,47 @@ public class EngineClientTests
         }
     }
 
+    [Fact]
+    public async Task SL30_a_segue_starts_the_next_song_and_the_engine_promotes_it()
+    {
+        var folder = Folder();
+        var a = TestWav.Write(Path.Combine(folder, "A.wav"), 48000, 1, 48000 * 4, (_, _) => 0.5);
+        var b = TestWav.Write(Path.Combine(folder, "B.wav"), 48000, 1, 48000 * 4, (_, _) => 0.25);
+        var ct = TestContext.Current.CancellationToken;
+
+        await using var client = await StartAsync();
+        var changed = new TaskCompletionSource<string>();
+        client.SongChanged += id => changed.TrySetResult(id);
+
+        await client.LoadSongAsync("song-a", [new EngineTrack("a", a, 0, 1, 0, false, false, false)], 0, 0, ct);
+        var next = await client.LoadNextSongAsync("song-b", [new EngineTrack("b", b, 1, 1, 0, false, false, false)], 0, ct);
+        Assert.Equal("song-b", next.SongId);
+        await client.SetPlanAsync([new RECompose.Core.Planning.PlanSegment(0, 3, 0, 0, 0, [])], 0, ct: ct);
+        await client.SetPlanAsync([new RECompose.Core.Planning.PlanSegment(0, 3, 0, 0, 0, [])], 0, next: true, ct: ct);
+
+        // The tail begins at plan second 2: the next song starts there, and the engine reports it has the next song cued.
+        await client.SetTransitionAsync(new EngineTransition("segue", 2), ct);
+        try
+        {
+            await client.PlayAsync(ct);
+            var (peak, _, snapshot) = await client.RenderOfflineAsync(48000, 2, ct: ct);
+            Assert.Equal(0, peak[1], 3);
+            Assert.Equal("song-b", snapshot.NextSongId);
+
+            (peak, _, _) = await client.RenderOfflineAsync(48000 * 2, 2, ct: ct); // to second 3: the first song's plan ends
+            Assert.Equal(0.25, peak[1], 2);                                          // the next song sounds
+
+            Assert.Equal("song-b", await changed.Task.WaitAsync(TimeSpan.FromSeconds(5), ct));
+            (_, _, snapshot) = await client.RenderOfflineAsync(4800, 2, ct: ct);
+            Assert.Equal("song-b", snapshot.SongId);
+        }
+        finally
+        {
+            await client.StopAsync(ct);
+            await client.RenderOfflineAsync(4800, 2, ct: ct); // with no device the stop's fade only finishes when something renders
+        }
+    }
+
     /// <summary>One channel of a 32-bit float WAV written by renderOffline.</summary>
     private static float[] ReadFloatWav(string path, int channel)
     {

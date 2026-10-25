@@ -88,6 +88,9 @@ public:
     // Audio thread: adds the pads to the outputs.
     void process (float* const* outputs, int numOutputs, int numSamples, bool offline) noexcept;
 
+    // Audio thread: a key (or -1 for none) right now, as a transition needs it (SL-30).
+    void playNow (int key) noexcept;
+
     // Audio thread, from the song player at each segment it enters: Follow song and pad bars.
     void onSegment (const PlanSegment& segment) noexcept;
 

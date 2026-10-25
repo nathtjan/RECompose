@@ -9,11 +9,13 @@
 #include "audio/pads.h"
 #include "audio/player.h"
 #include "audio/song.h"
+#include "audio/transition.h"
 
 #include <juce_audio_devices/juce_audio_devices.h>
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <juce_events/juce_events.h>
 
+#include <array>
 #include <atomic>
 #include <map>
 #include <memory>
@@ -41,21 +43,85 @@ public:
 
     // Any thread.
     // A song playing, or a pad sounding: either keeps the engine alive without an app (REL-34, SL-40).
-    bool isPlaying() const noexcept { return player_.state() == audio::TransportState::playing || pads_.key() >= 0; }
+    bool isPlaying() const noexcept
+    {
+        return slots_[0].player.state() == audio::TransportState::playing || slots_[1].player.state() == audio::TransportState::playing || pads_.key() >= 0;
+    }
 
     // Exposed for tests (message thread).
-    audio::Player& player() noexcept { return player_; }
+    audio::Player& player() noexcept { return cur().player; }
 
 private:
+    // The plan as the app sent it, in plan seconds, so a device rate change can derive it again.
+    struct PlanSegmentSpec
+    {
+        double start = 0, end = 0, src = 0, fadeIn = 0, fadeOut = 0;
+        bool silent = false;
+        bool click = false;
+        int key = 0;
+        int songKey = -1;
+        int pad = -1;
+        std::vector<std::string> mute;
+    };
+
+    // The song grid of the plan in seconds (protocol 4): bar 1 beat 1, the beat length, beats per bar.
+    struct GridSpec
+    {
+        double origin = 0, beat = 0;
+        int beatsPerBar = 4;
+    };
+
+    // A loaded song with its player and the state the app sent for it. The engine keeps the current song
+    // and the next one (protocol 7); they swap roles when the next takes over (SL-30).
+    struct Slot
+    {
+        audio::Player player;
+        std::unique_ptr<audio::Song> song;
+        std::vector<std::unique_ptr<audio::Song>> retiring;
+        std::vector<audio::TrackSpec> specs; // current mixer state of the loaded song, for getState/reload
+        std::vector<PlanSegmentSpec> planSpec;
+        GridSpec grid;
+        double tempo = 1.0; // the entry tempo (protocol 5): plan seconds per output second
+        bool hasPlan = false;
+
+        // The app's frames are plan frames; the engine counts output frames.
+        std::int64_t toPlanFrames (std::int64_t outputFrames) const { return static_cast<std::int64_t> (std::llround (static_cast<double> (outputFrames) * tempo)); }
+        std::int64_t toOutputFrames (std::int64_t planFrames) const { return static_cast<std::int64_t> (std::llround (static_cast<double> (planFrames) / tempo)); }
+    };
+
+    // The transition out of the current song as the app sent it (protocol 7), kept so it can be armed
+    // again when the plan or the device rate changes.
+    struct TransitionSpec
+    {
+        audio::TransitionCommand::Kind kind = audio::TransitionCommand::Kind::none;
+        double atSec = 0, gapSec = 0, crossfadeSec = 0, autoStartSec = -1;
+        int padKey = -1;
+        bool click = false, fadePadOut = true;
+        double clickBpm = 120;
+        int beatsPerBar = 4, clickChannel = 0, clickWidth = 2;
+    };
+
+    Slot& cur() noexcept { return slots_[static_cast<std::size_t> (cur_.load())]; }
+    Slot& nxt() noexcept { return slots_[static_cast<std::size_t> (1 - cur_.load())]; }
+    const Slot& cur() const noexcept { return slots_[static_cast<std::size_t> (cur_.load())]; }
+    Slot& slotFor (const juce::var& message);
+
     // Requests.
     juce::var listDevices();
     juce::var setDevice (const juce::var& message);
-    juce::var loadSong (const juce::var& message);
-    juce::var unloadSong();
+    juce::var loadSong (const juce::var& message, Slot& s);
+    juce::var unloadSong (Slot& s);
+    juce::var setTransition (const juce::var& message);
+    juce::var startNext (const juce::var& message);
+    juce::var promoteNext();
+    void armTransition();
+    juce::String transitionName() const;
+    void promote();
+    void processBlock (float* const* outputs, int numOutputs, int numSamples, bool offline) noexcept;
     juce::var transport (const juce::String& type, const juce::var& message);
     juce::var setTrack (const juce::var& message);
     juce::var setMaster (const juce::var& message);
-    juce::var setPlan (const juce::var& message);
+    juce::var setPlan (const juce::var& message, Slot& s);
     juce::var getState();
     juce::var renderOffline (const juce::var& message);
     juce::var loadPadSet (const juce::var& message);
@@ -64,15 +130,16 @@ private:
 
     // Helpers.
     juce::var deviceInfo();
-    juce::var songInfo();
+    juce::var songInfo (const Slot& s);
     juce::var snapshot();
-    void post (const audio::Command& command);
-    void replaceSong (std::unique_ptr<audio::Song> next);
+    void post (Slot& s, const audio::Command& command);
+    void replaceSong (Slot& s, std::unique_ptr<audio::Song> next);
     void collectRetired();
     double engineRate();
     void push (const juce::var& message);
     void reloadAtRate (double rate);
-    std::unique_ptr<audio::Plan> buildPlan (double rate) const;
+    std::unique_ptr<audio::Plan> buildPlan (double rate, const Slot& s) const;
+    void reloadSlotAtRate (Slot& s, double rate);
 
     // juce::AudioIODeviceCallback (audio thread except where noted)
     void audioDeviceIOCallbackWithContext (const float* const* inputs, int numInputs, float* const* outputs,
@@ -92,42 +159,15 @@ private:
     juce::AudioDeviceManager devices_;
     bool deviceInitialised_ = false;
     std::unique_ptr<audio::DiskStreamer> disk_;
-    audio::Player player_;
+    std::array<Slot, 2> slots_;
+    std::atomic<int> cur_ { 0 };
+    audio::Transitioner transitions_;
+    TransitionSpec transitionSpec_;
+    std::vector<std::unique_ptr<audio::Plan>> transitionPlans_; // click grids the audio thread may still hold
     audio::PadPlayer pads_;
     std::vector<std::unique_ptr<audio::PadBank>> padBanks_; // the one sounding and any still fading out
     std::string padSetId_;
     std::array<std::string, audio::kPadKeys> padFiles_;
-    std::unique_ptr<audio::Song> song_;
-    std::vector<std::unique_ptr<audio::Song>> retiring_;
-    std::vector<audio::TrackSpec> specs_; // current mixer state of the loaded song, for getState/reload
-
-    // The plan as the app sent it, in plan seconds, so a device rate change can derive it again.
-    struct PlanSegmentSpec
-    {
-        double start = 0, end = 0, src = 0, fadeIn = 0, fadeOut = 0;
-        bool silent = false;
-        bool click = false;
-        int key = 0;
-        int songKey = -1;
-        int pad = -1;
-        std::vector<std::string> mute;
-    };
-
-    // The entry tempo (protocol 5): plan seconds per output second. The engine counts output frames;
-    // everything the app sends or receives in frames is in plan frames and is converted here.
-    double tempo_ = 1.0;
-    std::int64_t toPlanFrames (std::int64_t outputFrames) const { return static_cast<std::int64_t> (std::llround (static_cast<double> (outputFrames) * tempo_)); }
-    std::int64_t toOutputFrames (std::int64_t planFrames) const { return static_cast<std::int64_t> (std::llround (static_cast<double> (planFrames) / tempo_)); }
-    std::vector<PlanSegmentSpec> planSpec_;
-
-    // The song grid of the plan in seconds (protocol 4): bar 1 beat 1, the beat length, beats per bar.
-    struct GridSpec
-    {
-        double origin = 0, beat = 0;
-        int beatsPerBar = 4;
-    };
-    GridSpec gridSpec_;
-    bool hasPlan_ = false;
 
     std::atomic<bool> callbackActive_ { false };
     std::atomic<int> outputLatency_ { 0 };

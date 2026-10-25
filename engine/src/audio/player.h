@@ -62,9 +62,24 @@ public:
     void prepare (double sampleRate, int maxBlockSize, int numOutputChannels);
 
     // Audio thread (or message thread when no device runs). Writes numSamples frames to
-    // every output channel. With offline = true it waits for missing data instead of
-    // playing silence, so renders are deterministic.
-    void process (float* const* outputs, int numOutputs, int numSamples, bool offline) noexcept;
+    // every output channel (or adds to them with accumulate, for a second player on the same
+    // buffers). With offline = true it waits for missing data instead of playing silence, so
+    // renders are deterministic.
+    void process (float* const* outputs, int numOutputs, int numSamples, bool offline, bool accumulate = false) noexcept;
+
+    // Audio thread only, for the transition runner (SL-30): where the playhead is, whether it is
+    // playing, and starting or fading out right now without going through the command FIFO.
+    std::int64_t audioPosition() const noexcept { return position_frames_; }
+    bool playingNow() const noexcept { return transport_ == TransportState::playing; }
+    void playNow() noexcept;
+    void fadeStopNow (std::int64_t frames) noexcept;
+
+    // True once after the plan played to its end (any thread).
+    bool takeEnded() noexcept { return ended_.exchange (false); }
+
+    // How many times the plan has played to its end: the transition runner counts it as crossing a
+    // trigger at the very end of the plan (a song with no tail).
+    std::uint32_t endCount() const noexcept { return endCount_.load (std::memory_order_acquire); }
 
     // Message thread: applies queued commands without producing audio (no device running).
     void processCommandsOnly() noexcept;
@@ -143,11 +158,18 @@ private:
     std::vector<float> scratch_[kMaxTrackChannels];
     std::vector<float> mixScratch_;
 
+    // A player that adds to buffers someone else filled renders into its own and adds, because the
+    // master gain and the transport fade scale the whole buffer they render into.
+    std::vector<std::vector<float>> accum_;
+    std::vector<float*> accumPointers_;
+
     // Published.
     std::atomic<int> state_ { 0 };
     std::atomic<std::int64_t> position_ { 0 };
     std::atomic<std::int64_t> positionTimeNs_ { 0 };
     std::atomic<std::uint64_t> starved_ { 0 };
     std::atomic<bool> waitingPublished_ { false };
+    std::atomic<bool> ended_ { false };
+    std::atomic<std::uint32_t> endCount_ { 0 };
 };
 } // namespace rec::audio

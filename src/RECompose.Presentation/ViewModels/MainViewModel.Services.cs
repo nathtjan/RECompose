@@ -513,6 +513,8 @@ public sealed partial class MainViewModel
         }
 
         Setlist.Refresh();
+        if (_loadedServiceId == service.Id)
+            _ = RefreshNextAsync(); // the next entry, or the transition out of this one, may have changed
     }
 
     /// <summary>The strips, the master and the engine take the gains of the mix preset in use (PB-81).</summary>

@@ -154,6 +154,7 @@ add_library(recompose_engine_core STATIC
     src/audio/click.cpp
     src/audio/stretcher.cpp
     src/audio/pads.cpp
+    src/audio/transition.cpp
     src/audio/disk_streamer.cpp
     src/audio/player.cpp)
 

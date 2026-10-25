@@ -343,6 +343,9 @@ public sealed partial class MainViewModel
             OnPropertyChanged(nameof(HasSections));
             UpdateReadouts();
         }
+
+        if (_nextEntry?.SongId == songId)
+            _ = RefreshNextAsync(); // the preloaded next song changed
     }
 
     /// <summary>
