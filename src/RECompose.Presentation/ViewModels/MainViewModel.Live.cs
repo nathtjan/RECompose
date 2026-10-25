@@ -42,12 +42,18 @@ public sealed partial class MainViewModel
             ? throw new InvalidOperationException("No song is loaded.")
             : PerformReadouts.Build(live, _planPosition, _holding, _holdSec);
         Perform = perform;
+        SyncTiles(perform.Strip);
+        RefreshLiveCommands();
         OnPropertyChanged(nameof(Strip));
         OnPropertyChanged(nameof(NextState));
         OnPropertyChanged(nameof(NextDetail));
         OnPropertyChanged(nameof(IsPending));
         OnPropertyChanged(nameof(PendingAtSec));
         OnPropertyChanged(nameof(HoldText));
+        OnPropertyChanged(nameof(HoldTimerText));
+        OnPropertyChanged(nameof(SongBarValue));
+        OnPropertyChanged(nameof(ShowPauseIcon));
+        OnPropertyChanged(nameof(ShowGoIcon));
         OnPropertyChanged(nameof(IsHolding));
         OnPropertyChanged(nameof(ElapsedText));
         OnPropertyChanged(nameof(RemainingText));
@@ -67,6 +73,17 @@ public sealed partial class MainViewModel
 
     /// <summary>"Holding for 0:23" (PB-33).</summary>
     public string HoldText => _holding ? PerformReadouts.HoldText(_holdSec) : string.Empty;
+
+    /// <summary>The hold timer on its own, "0:23", under the label HOLDING FOR.</summary>
+    public string HoldTimerText => _holding ? RECompose.Core.Timing.Format.Clock(_holdSec) : string.Empty;
+
+    /// <summary>"3.2 / 49": the song bar without its word, for the narrow readouts column.</summary>
+    public string SongBarValue => SongBarText.StartsWith("bar ", StringComparison.Ordinal) ? SongBarText[4..] : SongBarText;
+
+    /// <summary>The play key shows a pause glyph while playing, GO in a hold.</summary>
+    public bool ShowPauseIcon => IsPlaying && !_holding;
+
+    public bool ShowGoIcon => _holding;
 
     /// <summary>The elapsed and the remaining time of PB-33, one value each.</summary>
     public string ElapsedText => TimeText.Split(" / ", 2)[0];
@@ -112,7 +129,7 @@ public sealed partial class MainViewModel
     /// <summary>Runs a live action on the playing song (PB-44…47, PB-50…52). Returns what happened.</summary>
     public async Task<LiveResult> LiveAsync(LiveActionKind kind, string? itemId = null, string? sectionId = null, ActionSource source = ActionSource.Manual)
     {
-        if (_engine is null || EnsureLive() is not { } live)
+        if (EnsureLive() is not { } live)
             return new LiveResult(LiveOutcome.Rejected, null, "Nothing is loaded.");
         if (State != TransportState.Playing)
             return new LiveResult(LiveOutcome.Rejected, null, "Live changes need the song playing.");
@@ -151,6 +168,9 @@ public sealed partial class MainViewModel
         await SendPlanAsync(null, live.Committed, pending.ExecuteAt);
         UpdateReadouts();
     }
+
+    /// <summary>Tests: feeds the view model a snapshot as if the engine had sent it.</summary>
+    internal void ApplySnapshotForTests(EngineSnapshot snapshot) => ApplySnapshot(snapshot);
 
     /// <summary>GO: releases the hold (PB-52).</summary>
     public async Task GoAsync()

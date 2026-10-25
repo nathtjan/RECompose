@@ -243,7 +243,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     }
 
     /// <summary>"bar 32.2 / 124" (PB-32).</summary>
-    public string SongBarText { get => _songBar; private set => Set(ref _songBar, value); }
+    public string SongBarText { get => _songBar; private set { if (Set(ref _songBar, value)) OnPropertyChanged(nameof(SongBarValue)); } }
 
     /// <summary>"1:18 / −3:51" (PB-33).</summary>
     public string TimeText { get => _time; private set => Set(ref _time, value); }
@@ -744,6 +744,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         _committed["master"] = (vm.Master.GainDb, false, false);
 
         vm.PlanChanged += OnPlanChanged;
+        _live = null;
         TimelineAsHeard = !vm.IsAsWritten;
         Song = vm;
         SelectedSong ??= _allSongs.FirstOrDefault(s => s.Id == model.Id);
@@ -850,6 +851,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             return;
         if (!sameArrangement)
             TimelineAsHeard = !_song.IsAsWritten; // the timeline follows the variant that plays
+        _live = null; // an edit rebuilds the plan: a pending live change no longer applies
         var position = SongPlan.Remap(previous, _planPosition, _song.Plan, sameArrangement);
         PlanPositionSec = position;
         Sections.Refresh();
@@ -1240,7 +1242,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         Toast = text;
         ToastCanUndo = canUndo;
         var version = ++_toastVersion;
-        _ui.After(TimeSpan.FromSeconds(canUndo ? 4 : 3), () => _ui.Post(() =>
+        _ui.After(TimeSpan.FromSeconds(canUndo ? (IsServiceLock ? 2 : 4) : 3), () => _ui.Post(() =>
         {
             if (version == _toastVersion)
             {

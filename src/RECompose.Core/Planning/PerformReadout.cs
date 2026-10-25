@@ -76,7 +76,7 @@ public static class PerformReadouts
         var current = plan.Items[index];
 
         if (holding)
-            now = now with { NowLabel = "HOLD", NowDetail = HoldText(holdElapsedSec), NowPass = string.Empty, SectionProgress = 0 };
+            now = now with { NowLabel = "HOLD", NowDetail = string.Empty, NowPass = string.Empty, SectionProgress = 0 };
 
         var next = BuildNext(plan, pending, now, current, index, planSec, holding);
         return new PerformReadout(now, next, Strip(live, index), holding, holding ? HoldText(holdElapsedSec) : string.Empty, pending?.ExecuteAt);

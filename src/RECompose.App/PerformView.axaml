@@ -1,0 +1,362 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<!-- Perform (UI-40, design/perform-view.md): status row, setlist rail, NOW with the readouts column, the NEXT card, the plan
+     strip, the mini timeline and the key deck. Designed at 1280 x 760. -->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:RECompose.Presentation.ViewModels"
+             xmlns:c="using:RECompose.App.Controls"
+             x:Class="RECompose.App.PerformView"
+             x:DataType="vm:MainViewModel">
+
+  <UserControl.Styles>
+    <!-- The plan strip: one tile per plan item (UI-14) -->
+    <Style Selector="Button.tile">
+      <Setter Property="Height" Value="{DynamicResource size-tile}" />
+      <Setter Property="MinHeight" Value="{DynamicResource size-tile}" />
+      <Setter Property="MinWidth" Value="104" />
+      <Setter Property="Margin" Value="0,0,8,0" />
+      <Setter Property="Padding" Value="12,0" />
+      <Setter Property="HorizontalContentAlignment" Value="Left" />
+    </Style>
+    <Style Selector="Button.tile.played">
+      <Setter Property="Opacity" Value="0.55" />
+    </Style>
+    <Style Selector="Button.tile.current /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource accent-subtle}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource accent}" />
+      <Setter Property="BorderThickness" Value="2" />
+    </Style>
+    <Style Selector="Button.tile.armed /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="BorderBrush" Value="{DynamicResource state-warning}" />
+      <Setter Property="BorderThickness" Value="2" />
+    </Style>
+    <Style Selector="Button.tile.skipped TextBlock">
+      <Setter Property="TextDecorations" Value="Strikethrough" />
+      <Setter Property="Opacity" Value="0.6" />
+    </Style>
+    <Style Selector="Button.tile.target /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource state-pending-subtle}" />
+    </Style>
+
+    <!-- The NEXT card: its ground turns blue while an action is pending, yellow in a hold (design: Rules) -->
+    <Style Selector="Border.nextcard">
+      <Setter Property="Background" Value="{DynamicResource bg-inset}" />
+      <Setter Property="CornerRadius" Value="{DynamicResource radius-m-corner}" />
+      <Setter Property="Padding" Value="16,10" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="BorderBrush" Value="{DynamicResource border}" />
+    </Style>
+    <Style Selector="Border.nextcard.pending">
+      <Setter Property="Background" Value="{DynamicResource state-pending-subtle}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource state-pending}" />
+    </Style>
+    <Style Selector="Border.nextcard.holding">
+      <Setter Property="BorderBrush" Value="{DynamicResource state-hold}" />
+    </Style>
+
+    <Style Selector="Button.key">
+      <Setter Property="Height" Value="{DynamicResource size-key}" />
+      <Setter Property="MinHeight" Value="{DynamicResource size-key}" />
+      <Setter Property="MinWidth" Value="64" />
+      <Setter Property="Padding" Value="6,0" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Button.key TextBlock">
+      <Setter Property="FontSize" Value="{DynamicResource type-key-label-size}" />
+      <Setter Property="FontWeight" Value="Bold" />
+    </Style>
+    <Style Selector="Button.danger /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource state-error}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource state-error}" />
+      <Setter Property="Foreground" Value="{DynamicResource text-on-accent}" />
+    </Style>
+    <Style Selector="Button.danger:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource state-error}" />
+      <Setter Property="Foreground" Value="{DynamicResource text-on-accent}" />
+    </Style>
+    <Style Selector="ToggleButton.lock">
+      <Setter Property="MinHeight" Value="40" />
+      <Setter Property="Padding" Value="14,0" />
+    </Style>
+    <Style Selector="Ellipse.cancelled">
+      <Setter Property="Width" Value="8" />
+      <Setter Property="Height" Value="8" />
+      <Setter Property="Fill" Value="{DynamicResource border}" />
+    </Style>
+    <Style Selector="Ellipse.cancelled.lit">
+      <Setter Property="Fill" Value="{DynamicResource state-pending}" />
+    </Style>
+  </UserControl.Styles>
+
+  <Grid RowDefinitions="60,Auto,*,108">
+
+    <!-- Status row (60 px) -->
+    <Border Grid.Row="0" Classes="topbar" Padding="12,0">
+      <DockPanel>
+        <c:HoldButton x:Name="LeavePerform" DockPanel.Dock="Left" Command="{Binding TogglePerformCommand}" HoldRequired="{Binding IsServiceLock}"
+                      Height="44" MinHeight="44" Padding="16,0" VerticalAlignment="Center" AutomationProperties.Name="Prepare"
+                      ToolTip.Tip="Back to Prepare (Ctrl+P). In Service lock, hold to leave.">
+          <TextBlock Text="Prepare" VerticalAlignment="Center" />
+        </c:HoldButton>
+        <StackPanel DockPanel.Dock="Left" Margin="16,0,0,0" VerticalAlignment="Center" Spacing="0">
+          <TextBlock x:Name="ServiceName" Text="{Binding Setlist.Title}" FontWeight="Bold" TextTrimming="CharacterEllipsis" MaxWidth="260" />
+          <TextBlock x:Name="ClockLine" Classes="meta" Text="Perform" />
+        </StackPanel>
+
+        <Button DockPanel.Dock="Right" Classes="key danger" Command="{Binding PanicCommand}" MinWidth="104" Margin="16,0,0,0" VerticalAlignment="Center"
+                AutomationProperties.Name="Panic" ToolTip.Tip="Stop everything now">
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <c:Icon Glyph="panic" IconSize="18" VerticalAlignment="Center" />
+            <TextBlock Text="PANIC" VerticalAlignment="Center" />
+          </StackPanel>
+        </Button>
+        <Rectangle DockPanel.Dock="Right" Width="1" Fill="{DynamicResource divider}" Margin="12,12,0,12" />
+        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="16" VerticalAlignment="Center">
+          <Border Classes="pill" Classes.playing="{Binding IsPlaying}" Classes.loading="{Binding IsLoadingStatus}">
+            <TextBlock Text="{Binding Status}" />
+          </Border>
+          <Button Classes="ghost" Command="{Binding OpenSettingsCommand}" ToolTip.Tip="Audio device. Click to change it." AutomationProperties.Name="Audio">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Ellipse Classes="led" Classes.ok="{Binding AudioOk}" VerticalAlignment="Center" />
+              <TextBlock Classes="label" Text="AUDIO" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+        </StackPanel>
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="2">
+          <ToggleButton Classes="lock" IsChecked="{Binding IsRehearsalLock, Mode=TwoWay}" AutomationProperties.Name="Rehearsal" ToolTip.Tip="Rehearsal: every key acts at once">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <c:Icon Glyph="unlock" IconSize="16" VerticalAlignment="Center" />
+              <TextBlock Text="Rehearsal" VerticalAlignment="Center" />
+            </StackPanel>
+          </ToggleButton>
+          <ToggleButton Classes="lock" IsChecked="{Binding IsServiceLock, Mode=TwoWay}" AutomationProperties.Name="Service lock" ToolTip.Tip="Service lock: stopping, jumping and loading need a deliberate press">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <c:Icon Glyph="lock" IconSize="16" VerticalAlignment="Center" />
+              <TextBlock Text="Service lock" VerticalAlignment="Center" />
+            </StackPanel>
+          </ToggleButton>
+        </StackPanel>
+      </DockPanel>
+    </Border>
+
+    <!-- Banners push the body down (UI-70) -->
+    <Border Grid.Row="1" Classes="banner" IsVisible="{Binding HasBanner}">
+      <DockPanel>
+        <Button DockPanel.Dock="Right" Classes="ghost" Content="Dismiss" Command="{Binding DismissBannerCommand}" />
+        <TextBlock Text="{Binding Banner}" TextWrapping="Wrap" VerticalAlignment="Center" />
+      </DockPanel>
+    </Border>
+
+    <!-- Body -->
+    <Grid Grid.Row="2" ColumnDefinitions="248,*">
+
+      <!-- Setlist rail -->
+      <Border Grid.Column="0" Classes="panel" BorderThickness="0,0,1,0">
+        <DockPanel>
+          <TextBlock DockPanel.Dock="Top" Classes="label" Text="SETLIST" Margin="16,14,16,8" />
+          <ItemsControl x:Name="Rail" ItemsSource="{Binding Setlist.Rows}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:SetlistRowViewModel">
+                <c:HoldButton Classes="ghost" Click="OnRailRowClick" Tag="{Binding Id}" HoldRequired="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).IsServiceLock}"
+                              HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Padding="16,8" Height="NaN" MinHeight="56"
+                              AutomationProperties.Name="{Binding AccessibleName}">
+                  <Grid ColumnDefinitions="24,*,Auto">
+                    <TextBlock Grid.Column="0" Classes="mono" Text="{Binding Index}" Foreground="{DynamicResource text-secondary}" VerticalAlignment="Center" />
+                    <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
+                      <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                      <TextBlock Classes="meta" Text="{Binding VariantText}" TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                      <c:Icon Glyph="play" IconSize="12" IsVisible="{Binding IsLoaded}" TextElement.Foreground="{DynamicResource state-playing}" />
+                      <TextBlock Classes="mono" Text="{Binding KeyText}" />
+                    </StackPanel>
+                  </Grid>
+                </c:HoldButton>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </DockPanel>
+      </Border>
+
+      <!-- Main column -->
+      <Grid Grid.Column="1" RowDefinitions="*,Auto,Auto,Auto" Margin="16,12,16,12" RowSpacing="12">
+
+        <!-- NOW and the readouts column -->
+        <Grid Grid.Row="0" ColumnDefinitions="*,280" ColumnSpacing="12">
+          <Border Grid.Column="0" Classes="inset" Padding="20,12">
+            <StackPanel VerticalAlignment="Center" Spacing="6">
+              <TextBlock Classes="label" Text="NOW" />
+              <StackPanel Orientation="Horizontal" Spacing="20">
+                <TextBlock x:Name="NowLabel" Text="{Binding NowLabel}" FontSize="{DynamicResource type-now-size}" FontWeight="Bold" TextTrimming="CharacterEllipsis" />
+                <TextBlock Classes="readout" FontSize="{DynamicResource type-readout-xl-size}" Text="{Binding NowDetail}" VerticalAlignment="Bottom" Margin="0,0,0,14" />
+              </StackPanel>
+              <StackPanel Orientation="Horizontal" Spacing="12">
+                <TextBlock Classes="meta" Text="{Binding NowPassText}" IsVisible="{Binding NowPassText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                <TextBlock Classes="meta" Text="{Binding NowNoteText}" TextTrimming="CharacterEllipsis"
+                           IsVisible="{Binding NowNoteText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+              </StackPanel>
+              <ProgressBar Minimum="0" Maximum="1" Value="{Binding SectionProgress}" Height="6" MinHeight="6" />
+            </StackPanel>
+          </Border>
+          <Border Grid.Column="1" Classes="inset" Padding="16,12">
+            <StackPanel VerticalAlignment="Center" Spacing="10">
+              <StackPanel Spacing="0">
+                <TextBlock Classes="label" Text="SONG BAR" />
+                <TextBlock x:Name="SongBar" Classes="readout" FontSize="{DynamicResource type-readout-xl-size}" Text="{Binding SongBarValue}" />
+              </StackPanel>
+              <StackPanel Spacing="0" IsVisible="{Binding !IsHolding}">
+                <TextBlock Classes="label" Text="ELAPSED" />
+                <TextBlock x:Name="Elapsed" Classes="readout" FontSize="{DynamicResource type-readout-xl-size}" Text="{Binding ElapsedText}" />
+              </StackPanel>
+              <StackPanel Spacing="0" IsVisible="{Binding IsHolding}">
+                <TextBlock Classes="label" Text="HOLDING FOR" />
+                <TextBlock x:Name="Holding" Classes="readout" FontSize="{DynamicResource type-readout-xl-size}" Foreground="{DynamicResource state-hold}"
+                           Text="{Binding HoldTimerText}" />
+              </StackPanel>
+              <StackPanel Spacing="0">
+                <TextBlock Classes="label" Text="REMAINING" />
+                <TextBlock x:Name="Remaining" Classes="readout" FontSize="{DynamicResource type-readout-xl-size}" Text="{Binding RemainingText}" />
+              </StackPanel>
+            </StackPanel>
+          </Border>
+        </Grid>
+
+        <!-- NEXT card -->
+        <Border Grid.Row="1" x:Name="NextCard" Classes="nextcard" Classes.pending="{Binding IsPending}" Classes.holding="{Binding IsHolding}">
+          <Grid ColumnDefinitions="*,Auto">
+            <StackPanel Grid.Column="0" Spacing="2">
+              <TextBlock x:Name="NextTagText" Classes="label" Text="{Binding NextTag}" />
+              <TextBlock x:Name="NextLabelText" FontSize="{DynamicResource type-next-size}" FontWeight="Bold" Text="{Binding NextLabel}" TextTrimming="CharacterEllipsis" />
+              <TextBlock Classes="meta" Text="{Binding NextDetail}" IsVisible="{Binding NextDetail, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+            </StackPanel>
+            <StackPanel Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Right">
+              <TextBlock x:Name="NextCountdown" Classes="readout" FontSize="{DynamicResource type-readout-xl-size}" Text="{Binding CountdownText}" TextAlignment="Right" />
+            </StackPanel>
+          </Grid>
+        </Border>
+
+        <!-- Plan strip -->
+        <ScrollViewer Grid.Row="2" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+          <ItemsControl x:Name="Strip" ItemsSource="{Binding Tiles}">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:TileViewModel">
+                <Button Classes="tile" Classes.played="{Binding IsPlayed}" Classes.current="{Binding IsCurrent}" Classes.armed="{Binding Armed}"
+                        Classes.skipped="{Binding IsSkipped}" Classes.target="{Binding IsTarget}" Click="OnTileClick" Tag="{Binding Id}"
+                        AutomationProperties.Name="{Binding Label}">
+                  <Panel>
+                    <StackPanel VerticalAlignment="Center" Spacing="2">
+                      <TextBlock Text="{Binding Label}" FontWeight="Bold" TextTrimming="CharacterEllipsis" />
+                      <TextBlock Classes="meta" Text="{Binding Detail}" IsVisible="{Binding HasDetail}" />
+                      <TextBlock Classes="meta" Text="tap again to jump" IsVisible="{Binding Armed}" Foreground="{DynamicResource state-warning}" />
+                    </StackPanel>
+                    <Rectangle IsVisible="{Binding IsTarget}" Stroke="{DynamicResource pending-marker}" StrokeThickness="2" StrokeDashArray="3,2"
+                               RadiusX="6" RadiusY="6" IsHitTestVisible="False" Margin="-10,-6" />
+                  </Panel>
+                </Button>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </ScrollViewer>
+
+        <!-- Mini timeline -->
+        <c:MiniTimeline x:Name="Mini" Grid.Row="3" Plan="{Binding Song.Plan, FallbackValue={x:Null}}" Position="{Binding PlanPositionSec}"
+                        PendingAt="{Binding PendingAtSec}" Locked="{Binding IsServiceLock}" />
+      </Grid>
+    </Grid>
+
+    <!-- Key deck (108 px) -->
+    <Border Grid.Row="3" Background="{DynamicResource bg-app}" BorderBrush="{DynamicResource border}" BorderThickness="0,1,0,0" Padding="16,10">
+      <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Left">
+
+        <StackPanel Spacing="6">
+          <TextBlock Classes="label" Text="TRANSPORT" />
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <Button Classes="key" Command="{Binding ToStartCommand}" ToolTip.Tip="To the start" AutomationProperties.Name="To the start">
+              <c:Icon Glyph="restart" IconSize="18" HorizontalAlignment="Center" />
+            </Button>
+            <c:HoldButton x:Name="StopKey" Classes="key" Command="{Binding StopCommand}" HoldRequired="{Binding IsServiceLock}" ToolTip.Tip="Stop" AutomationProperties.Name="Stop">
+              <c:Icon Glyph="stop" IconSize="18" HorizontalAlignment="Center" />
+            </c:HoldButton>
+            <Button x:Name="PlayKey" Classes="key primary" Command="{Binding PlayPauseCommand}" MinWidth="96" ToolTip.Tip="Play, pause, or GO in a hold (Space)">
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <c:Icon Glyph="play" IconSize="18" IsVisible="{Binding !IsPlaying}" VerticalAlignment="Center" />
+                <c:Icon Glyph="pause" IconSize="18" IsVisible="{Binding ShowPauseIcon}" VerticalAlignment="Center" />
+                <c:Icon Glyph="go" IconSize="18" IsVisible="{Binding ShowGoIcon}" VerticalAlignment="Center" />
+                <TextBlock Text="{Binding PlayLabel}" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+            <c:HoldButton x:Name="NextSongKey" Classes="key" Command="{Binding NextSongCommand}" HoldRequired="{Binding IsServiceLock}" ToolTip.Tip="Next song" AutomationProperties.Name="Next song">
+              <c:Icon Glyph="next" IconSize="18" HorizontalAlignment="Center" />
+            </c:HoldButton>
+          </StackPanel>
+        </StackPanel>
+
+        <Rectangle Width="1" Fill="{DynamicResource divider}" Margin="2,0" />
+
+        <StackPanel Spacing="6">
+          <TextBlock Classes="label" Text="LIVE" />
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <Button x:Name="VampKey" Classes="key" MinWidth="76" Command="{Binding VampCommand}" ToolTip.Tip="Repeat this section until moved on" AutomationProperties.Name="Vamp">
+              <StackPanel Spacing="2" VerticalAlignment="Center"><c:Icon Glyph="vamp" IconSize="18" HorizontalAlignment="Center" /><TextBlock Text="Vamp" HorizontalAlignment="Center" /></StackPanel>
+            </Button>
+            <Button x:Name="RepeatKey" Classes="key" MinWidth="76" Command="{Binding RepeatCommand}" ToolTip.Tip="Play this section once more" AutomationProperties.Name="Repeat">
+              <StackPanel Spacing="2" VerticalAlignment="Center"><c:Icon Glyph="repeat" IconSize="18" HorizontalAlignment="Center" /><TextBlock Text="Repeat" HorizontalAlignment="Center" /></StackPanel>
+            </Button>
+            <Button x:Name="MoveOnKey" Classes="key" MinWidth="76" Command="{Binding MoveOnCommand}" ToolTip.Tip="Leave a repeat or a hold" AutomationProperties.Name="Move on">
+              <StackPanel Spacing="2" VerticalAlignment="Center"><c:Icon Glyph="go" IconSize="18" HorizontalAlignment="Center" /><TextBlock Text="Move on" HorizontalAlignment="Center" /></StackPanel>
+            </Button>
+            <Button x:Name="EndKey" Classes="key" MinWidth="76" Command="{Binding EndCommand}" ToolTip.Tip="Go to the ending" AutomationProperties.Name="End">
+              <StackPanel Spacing="2" VerticalAlignment="Center"><c:Icon Glyph="end" IconSize="18" HorizontalAlignment="Center" /><TextBlock Text="End" HorizontalAlignment="Center" /></StackPanel>
+            </Button>
+            <Button x:Name="CancelKey" Classes="key" MinWidth="76" Command="{Binding CancelCommand}" ToolTip.Tip="Cancel the pending change (Esc)" AutomationProperties.Name="Cancel">
+              <StackPanel Spacing="2" VerticalAlignment="Center">
+                <Ellipse Classes="cancelled" Classes.lit="{Binding CanCancel}" HorizontalAlignment="Center" />
+                <TextBlock Text="Cancel" HorizontalAlignment="Center" />
+              </StackPanel>
+            </Button>
+          </StackPanel>
+        </StackPanel>
+
+        <Rectangle Width="1" Fill="{DynamicResource divider}" Margin="2,0" />
+
+        <StackPanel Spacing="6">
+          <TextBlock Classes="label" Text="JUMP TIMING" />
+          <ComboBox x:Name="TimingSelect" ItemsSource="{Binding TimingChoices}" SelectedItem="{Binding SelectedTiming}" Width="140" Height="{DynamicResource size-key}"
+                    VerticalContentAlignment="Center" AutomationProperties.Name="Jump timing" />
+        </StackPanel>
+
+        <Rectangle Width="1" Fill="{DynamicResource divider}" Margin="2,0" />
+
+        <StackPanel Spacing="6" IsVisible="{Binding HasLoadedEntry}">
+          <TextBlock Classes="label" Text="KEY" />
+          <StackPanel Orientation="Horizontal" Spacing="4">
+            <Button Classes="key" MinWidth="40" Command="{Binding KeyDownCommand}" AutomationProperties.Name="Key down"><c:Icon Glyph="minus" IconSize="16" HorizontalAlignment="Center" /></Button>
+            <TextBlock x:Name="KeyValue" Classes="readout" Text="{Binding EntryKeyText}" MinWidth="52" TextAlignment="Center" VerticalAlignment="Center" />
+            <Button Classes="key" MinWidth="40" Command="{Binding KeyUpCommand}" AutomationProperties.Name="Key up"><c:Icon Glyph="plus" IconSize="16" HorizontalAlignment="Center" /></Button>
+          </StackPanel>
+        </StackPanel>
+
+        <StackPanel Spacing="6" IsVisible="{Binding HasLoadedEntry}">
+          <TextBlock Classes="label" Text="TEMPO" />
+          <StackPanel Orientation="Horizontal" Spacing="4">
+            <Button Classes="key" MinWidth="40" Command="{Binding TempoDownCommand}" AutomationProperties.Name="Tempo down"><c:Icon Glyph="minus" IconSize="16" HorizontalAlignment="Center" /></Button>
+            <TextBlock x:Name="TempoValue" Classes="readout" Text="{Binding EntryTempoText}" MinWidth="52" TextAlignment="Center" VerticalAlignment="Center" />
+            <Button Classes="key" MinWidth="40" Command="{Binding TempoUpCommand}" AutomationProperties.Name="Tempo up"><c:Icon Glyph="plus" IconSize="16" HorizontalAlignment="Center" /></Button>
+          </StackPanel>
+        </StackPanel>
+      </StackPanel>
+    </Border>
+
+    <!-- A toast over the body (UI-70) -->
+    <Border Grid.Row="2" Classes="toast" IsVisible="{Binding HasToast}" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,24">
+      <StackPanel Orientation="Horizontal" Spacing="12">
+        <TextBlock Text="{Binding Toast}" VerticalAlignment="Center" />
+        <Button Classes="ghost" Content="Undo" Command="{Binding UndoCommand}" IsVisible="{Binding ToastCanUndo}" />
+      </StackPanel>
+    </Border>
+  </Grid>
+</UserControl>

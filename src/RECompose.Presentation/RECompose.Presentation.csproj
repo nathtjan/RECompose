@@ -12,5 +12,6 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="RECompose.Presentation.Tests" />
+    <InternalsVisibleTo Include="RECompose.App.Tests" />
   </ItemGroup>
 </Project>

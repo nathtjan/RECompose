@@ -84,7 +84,7 @@ public sealed class ServiceWindowTests : IDisposable
     public async Task The_service_sidebar_entry_settings_and_mixer_presets_render()
     {
         var sink = new CollectingSink();
-        await Session.Dispatch(async () =>
+        await HeadlessApp.RunAsync(async () =>
         {
             Logger.Sink = sink;
             var store = SaveLibrary();

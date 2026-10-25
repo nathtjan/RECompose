@@ -2,7 +2,7 @@
 
 **Goal:** the MD runs the service. Prepare and Perform are two modes of the same window. In Perform the screen is sparse and large: what is playing and where in it, what comes next and when, a plan strip in play order, the setlist, and a key deck of big keys. During a song the MD redirects it by keys, a foot pedal or a tapped tile: jump to a section, vamp, repeat once, move on, end, cancel. Holds wait for GO, open repeats wait for MOVE ON, the lock keeps stray touches from stopping the music, and Rehearsal mode loops a section with a count-in.
 
-**Status:** in progress (25 Oct 2026). WP1–WP5 and the view-model half of WP6 (live plan, swaps, GO, hold state) are on `main`; the Perform screen is next.
+**Status:** in progress (25 Oct 2026). WP1–WP8 are on `main`: live plan, engine swap and holds (protocol 8), the Perform screen with its lock and panic. Controls (WP9), Rehearsal (WP10) and the wrap-up (WP11) remain.
 
 **Starting point:** milestone 4. A service plays from song to song; the plan is built once per entry and changes only when the MD edits it. Holds and until-cued repeats are stored but passed over; there is no Perform view, no lock, no foot control.
 

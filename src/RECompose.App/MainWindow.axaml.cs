@@ -431,6 +431,10 @@ public partial class MainWindow : Window
                     vm.RedoCommand.Execute(null);
                     e.Handled = true;
                     return;
+                case Key.P:
+                    vm.TogglePerformCommand.Execute(null);
+                    e.Handled = true;
+                    return;
                 case Key.OemComma:
                     vm.OpenSettingsCommand.Execute(null);
                     e.Handled = true;

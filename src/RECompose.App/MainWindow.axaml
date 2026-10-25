@@ -6,6 +6,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:RECompose.Presentation.ViewModels"
         xmlns:c="using:RECompose.App.Controls"
+        xmlns:local="using:RECompose.App"
         x:Class="RECompose.App.MainWindow"
         x:DataType="vm:MainViewModel"
         Title="RECompose"
@@ -101,14 +102,14 @@
   <Grid RowDefinitions="48,Auto,*">
 
     <!-- Top bar (UI-11) -->
-    <Border Grid.Row="0" Classes="topbar" Padding="16,0">
+    <Border Grid.Row="0" Classes="topbar" Padding="16,0" IsVisible="{Binding IsPrepare}">
       <DockPanel>
         <TextBlock DockPanel.Dock="Left" VerticalAlignment="Center" FontSize="18" Margin="0,0,24,0">
           <Run Text="REC" FontWeight="ExtraBold" /><Run Text="ompose" FontWeight="Medium" />
         </TextBlock>
         <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center" Spacing="2">
-          <ToggleButton Content="Prepare" IsChecked="True" IsHitTestVisible="False" />
-          <ToggleButton Content="Perform" IsEnabled="False" ToolTip.Tip="The Perform view arrives in milestone 5." />
+          <ToggleButton Content="Prepare" IsChecked="{Binding IsPrepare, Mode=OneWay}" IsHitTestVisible="False" />
+          <ToggleButton x:Name="PerformToggle" Content="Perform" IsChecked="{Binding IsPerform, Mode=TwoWay}" ToolTip.Tip="Perform (Ctrl+P). Playback keeps going." AutomationProperties.Name="Perform" />
         </StackPanel>
         <ComboBox x:Name="ServicePicker" DockPanel.Dock="Left" Margin="24,0,0,0" VerticalAlignment="Center" MinWidth="240"
                   ItemsSource="{Binding Setlist.Services}" SelectedItem="{Binding Setlist.CurrentChoice}" PlaceholderText="No service"
@@ -144,7 +145,13 @@
     </Border>
 
     <!-- Banner (UI-70): stays until dismissed or resolved -->
-    <Border Grid.Row="1" Classes="banner" IsVisible="{Binding HasBanner}">
+    <Border Grid.Row="1" Classes="banner">
+      <Border.IsVisible>
+        <MultiBinding Converter="{x:Static BoolConverters.And}">
+          <Binding Path="HasBanner" />
+          <Binding Path="IsPrepare" />
+        </MultiBinding>
+      </Border.IsVisible>
       <DockPanel>
         <Button DockPanel.Dock="Right" Classes="ghost" Content="Dismiss" Command="{Binding DismissBannerCommand}" />
         <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
@@ -154,7 +161,7 @@
       </DockPanel>
     </Border>
 
-    <Grid Grid.Row="2" ColumnDefinitions="300,*">
+    <Grid Grid.Row="2" ColumnDefinitions="300,*" IsVisible="{Binding IsPrepare}">
 
       <!-- Sidebar (UI-12): the service (SL-1…7) over the library (SL-56) -->
       <Border Grid.Column="0" Classes="panel" BorderThickness="0,0,1,0">
@@ -966,5 +973,8 @@
                 Padding="8,0" MinHeight="24" Height="24" ToolTip.Tip="Ctrl+Z" />
       </StackPanel>
     </Border>
-  </Grid>
+  
+    <!-- Perform replaces the whole window below the title (UI-40); playback never stops when it opens -->
+    <local:PerformView x:Name="Perform" Grid.Row="0" Grid.RowSpan="3" IsVisible="{Binding IsPerform}" />
+</Grid>
 </Window>
