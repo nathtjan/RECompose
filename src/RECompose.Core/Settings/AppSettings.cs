@@ -65,6 +65,12 @@ public sealed record AppSettings
 
     public bool ShowImportReview { get; init; } = true;
     public bool FollowPlayhead { get; init; } = true;
+
+    /// <summary>When a jump or a vamp takes effect: EndOfSection, NextBar, NextBeat or Immediately (PB-44, SET-20).</summary>
+    public string JumpTiming { get; init; } = "EndOfSection";
+
+    /// <summary>After a jump to a section the plan does not play again, the written sections that follow it play on (PB-47, SET-20).</summary>
+    public bool ContinueAsWritten { get; init; }
     public string? LastSongId { get; init; }
 
     /// <summary>The service shown in the sidebar (DM-80 currentServiceId).</summary>

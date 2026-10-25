@@ -231,6 +231,16 @@ public sealed class SongViewModel : ObservableObject
 
     public IReadOnlyList<Arrangement> Variants => _model.Arrangements;
 
+    /// <summary>The options the plan is built with: the service entry's key, tempo and count-in, or the song's own.</summary>
+    public PlanOptions CurrentPlanOptions => _entry is { } entry ? PlanOptions.For(entry, _model) : PlanOptions.For(_model);
+
+    /// <summary>A live change has landed (a jump, a vamp, a move on): the plan that plays is now this one (PB-47).</summary>
+    public void AdoptLivePlan(SongPlan plan)
+    {
+        _plan = plan;
+        OnPropertyChanged(nameof(Plan));
+    }
+
     /// <summary>Raised after the plan was rebuilt: the previous plan and whether it was the same variant.</summary>
     public event Action<SongPlan, bool>? PlanChanged;
 
@@ -255,8 +265,7 @@ public sealed class SongViewModel : ObservableObject
     {
         var previous = _plan;
         _sections = SectionList.Describe(_model.Sections, _model.Grid, DurationSec);
-        var options = _entry is { } entry ? PlanOptions.For(entry, _model) : PlanOptions.For(_model);
-        _plan = PlanBuilder.Build(_model.Grid, _sections, DurationSec, Playing, _model.Tracks.Where(t => !t.Hidden).ToList(), options);
+        _plan = PlanBuilder.Build(_model.Grid, _sections, DurationSec, Playing, _model.Tracks.Where(t => !t.Hidden).ToList(), CurrentPlanOptions);
         OnPropertyChanged(nameof(Sections));
         OnPropertyChanged(nameof(HasSections));
         OnPropertyChanged(nameof(Plan));

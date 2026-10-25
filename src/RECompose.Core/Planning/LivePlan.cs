@@ -152,9 +152,8 @@ public sealed class LivePlan
             _ => new LiveResult(LiveOutcome.Rejected),
         };
 
-        Pending = result.Pending;
-        if (result.Outcome != LiveOutcome.Queued)
-            Pending = null;
+        if (result.Outcome == LiveOutcome.Queued)
+            Pending = result.Pending;
         return result;
     }
 

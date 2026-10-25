@@ -108,7 +108,7 @@ public static class PerformReadouts
         if (holding)
         {
             var after = plan.Items.Skip(index + 1).FirstOrDefault(i => i.Kind == PlanItemKind.Section);
-            return new NextCard(NextState.Holding, after?.Label.ToUpperInvariant() ?? "END OF SONG", "NEXT · GO", "waiting for GO", string.Empty, after?.Note ?? string.Empty);
+            return new NextCard(NextState.Holding, after?.Label.ToUpperInvariant() ?? "END OF SONG", "NEXT · GO", "waiting for GO", "on GO", after?.Note ?? string.Empty);
         }
 
         if (current.IsOpen)

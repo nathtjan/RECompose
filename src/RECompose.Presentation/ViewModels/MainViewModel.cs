@@ -177,7 +177,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     }
 
     public bool IsPlaying => _state == TransportState.Playing;
-    public string PlayLabel => IsPlaying ? "Pause" : "Play";
+    public string PlayLabel => _holding ? "GO" : IsPlaying ? "Pause" : "Play";
 
     /// <summary>The position being heard, in plan seconds: the arrangement's own clock (PB-40).</summary>
     public double PlanPositionSec
@@ -785,7 +785,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             return;
         }
 
-        if (IsPlaying)
+        if (_holding)
+            await _engine.GoAsync(); // in a hold the play key is GO (PB-52)
+        else if (IsPlaying)
             await _engine.PauseAsync();
         else
             await _engine.PlayAsync();
@@ -858,7 +860,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     }
 
     /// <summary>Sends the current plan to the engine; <paramref name="positionSec"/> null keeps the engine's frame.</summary>
-    private async Task SendPlanAsync(double? positionSec)
+    private async Task SendPlanAsync(double? positionSec, SongPlan? plan = null, double? swapAtSec = null)
     {
         if (_engine is not { } engine || _song is not { } song)
             return;
@@ -870,8 +872,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                 _seekSentAt = DateTime.UtcNow;
             }
 
-            await engine.SetPlanAsync(song.Plan.Segments(), positionSec, song.Plan.Grid, song.Plan.TempoFactor);
-            await SendTransitionAsync(); // the transition point is a time of this plan
+            plan ??= song.Plan;
+            await engine.SetPlanAsync(plan.Segments(), positionSec, plan.Grid, plan.TempoFactor, holds: plan.Holds(), swapAtSec: swapAtSec);
+            await SendTransitionAsync(plan); // the transition point is a time of this plan
         }
         catch (Exception ex) when (ex is EngineErrorException or EngineDisconnectedException or OperationCanceledException)
         {
@@ -902,12 +905,18 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             if (s.Frame == pending || s.State == TransportState.Playing || DateTime.UtcNow - _seekSentAt > TimeSpan.FromSeconds(2))
                 _seekFrame = null;
         }
+        var holdChanged = _holding != s.Holding;
+        _holding = s.Holding;
+        _holdSec = s.HoldSec;
         if (_seekFrame is null && s.SampleRate > 0)
-            PlanPositionSec = s.HeardFrame / s.SampleRate;
+            PlanPositionSec = (s.Holding ? s.Frame : s.HeardFrame) / s.SampleRate; // a hold waits at its frame, not behind it
+        if (holdChanged)
+            OnHoldChanged();
+        TickLive();
         CheckRangeEnd(s.State);
 
         Status = s.State == TransportState.Playing
-            ? (s.Waiting ? "LOADING" : "PLAYING")
+            ? (s.Waiting ? "LOADING" : s.Holding ? "HOLD" : "PLAYING")
             : (s.Buffered || !s.DeviceOpen ? "READY" : "LOADING");
         var transition = s.Transition;
         if (transition != _transition)
@@ -947,19 +956,20 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             return;
         }
 
-        var r = _song.Plan.At(_planPosition);
+        var perform = UpdatePerform();
+        var r = perform.Now;
         SongBarText = r.SongBar;
         TimeText = r.Time;
         ChartBarText = r.ChartBar;
         NowLabel = r.NowLabel;
         NowDetail = r.NowDetail;
-        NextLabel = r.NextLabel ?? string.Empty;
-        NextTag = r.NextTag;
-        CountdownText = r.Countdown;
+        NextLabel = perform.Next.Label;
+        NextTag = perform.Next.Tag;
+        CountdownText = perform.Next.Countdown;
         SectionProgress = r.SectionProgress;
         NowPassText = r.NowPass;
         NowNoteText = r.NowNote;
-        NextNoteText = r.NextNote;
+        NextNoteText = perform.Next.Note;
 
         if (TransitionPending && _nextSong is { } next)
         {

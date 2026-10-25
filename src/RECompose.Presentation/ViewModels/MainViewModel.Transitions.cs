@@ -136,13 +136,13 @@ public sealed partial class MainViewModel
     }
 
     /// <summary>Describes the transition out of the loaded entry to the engine (SL-20, SL-30); resent whenever the plan, the entry or the next song changes.</summary>
-    private async Task SendTransitionAsync()
+    private async Task SendTransitionAsync(SongPlan? planOverride = null)
     {
         if (_engine is not { } engine || _song is not { Entry: { } entry } song)
             return;
 
         var transition = entry.TransitionAfter;
-        var plan = song.Plan;
+        var plan = planOverride ?? song.Plan;
         var tf = plan.TempoFactor;
         var result = EngineTransition.None;
         if (_nextEntry is { } nextEntry && _nextSong is { } next && !plan.IsEmpty)

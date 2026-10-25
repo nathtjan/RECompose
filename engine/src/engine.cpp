@@ -284,6 +284,10 @@ juce::var Engine::listDevices()
 
 juce::var Engine::setDevice (const juce::var& message)
 {
+    // Tests that render offline set this so a machine with an audio device does not also play in real time.
+    if (juce::SystemStats::getEnvironmentVariable ("RECOMPOSE_NO_DEVICE", {}) == "1")
+        return makeError ({}, "deviceError", "Audio output is switched off for this run.");
+
     if (! deviceInitialised_)
     {
         const auto error = devices_.initialise (0, kMaxOutputChannels, nullptr, true);
