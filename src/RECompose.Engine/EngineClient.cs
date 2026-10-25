@@ -54,6 +54,9 @@ public sealed record EngineTrack(string Id, string File, int Channel, int Width,
     /// <summary>"click": no file, the engine synthesizes the click from the plan's grid (protocol 4, PB-70).</summary>
     public string? Generated { get; init; }
 
+    /// <summary>The track follows each segment's key (protocol 5, DM-12): music yes, click and guide no.</summary>
+    public bool Transposes { get; init; }
+
     /// <summary>The engine's own click, on the given device channels (the Cue output, PB-85).</summary>
     public static EngineTrack Click(int channel, int width) =>
         new(ClickTrackId, string.Empty, channel, width, 0, false, false, SoloSafe: true) { Generated = "click" };
@@ -208,6 +211,8 @@ public sealed class EngineClient : IAsyncDisposable
             };
             if (t.Generated is { } generated)
                 track["generated"] = generated;
+            if (t.Transposes)
+                track["transposes"] = true;
             list.Add(track);
         }
 
@@ -230,21 +235,26 @@ public sealed class EngineClient : IAsyncDisposable
     public Task SeekAsync(long frame, CancellationToken ct = default) =>
         Session.Connection.RequestAsync("seek", new JsonObject { ["frame"] = frame }, ct);
 
-    public Task SetTrackAsync(string trackId, double? gainDb = null, bool? mute = null, bool? solo = null, (int Channel, int Width)? output = null, CancellationToken ct = default)
+    public Task SetTrackAsync(string trackId, double? gainDb = null, bool? mute = null, bool? solo = null, (int Channel, int Width)? output = null,
+        bool? transposes = null, CancellationToken ct = default)
     {
         var request = new JsonObject { ["trackId"] = trackId };
         if (gainDb is { } g) request["gainDb"] = g;
         if (mute is { } m) request["mute"] = m;
         if (solo is { } s) request["solo"] = s;
+        if (transposes is { } t) request["transposes"] = t;
         if (output is { } o) request["output"] = new JsonObject { ["channel"] = o.Channel, ["width"] = o.Width };
         return Session.Connection.RequestAsync("setTrack", request, ct);
     }
 
     /// <summary>
     /// Sends the arrangement as timed segments (PB-40). <paramref name="positionSec"/> is where the playhead
-    /// resumes, in plan seconds; null keeps the engine's current frame. Returns the plan length in frames.
+    /// resumes, in plan seconds; null keeps the engine's current frame. <paramref name="tempo"/> is the entry
+    /// tempo as a factor (PB-60): plan time stays in source seconds and the engine plays it that much faster.
+    /// Returns the plan length in plan frames.
     /// </summary>
-    public async Task<long> SetPlanAsync(IEnumerable<PlanSegment> segments, double? positionSec = null, PlanGrid? grid = null, CancellationToken ct = default)
+    public async Task<long> SetPlanAsync(IEnumerable<PlanSegment> segments, double? positionSec = null, PlanGrid? grid = null, double tempo = 1,
+        CancellationToken ct = default)
     {
         var list = new JsonArray();
         foreach (var s in segments)
@@ -263,10 +273,14 @@ public sealed class EngineClient : IAsyncDisposable
             };
             if (s.Click)
                 segment["click"] = true;
+            if (s.Key != 0)
+                segment["key"] = s.Key;
             list.Add(segment);
         }
 
         var request = new JsonObject { ["segments"] = list };
+        if (Math.Abs(tempo - 1) > 1e-9)
+            request["tempo"] = tempo;
         if (grid is not null)
             request["grid"] = new JsonObject { ["origin"] = grid.Origin, ["beat"] = grid.Beat, ["beatsPerBar"] = grid.BeatsPerBar };
         if (positionSec is { } position)

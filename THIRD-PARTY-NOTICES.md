@@ -4,6 +4,7 @@
 |---|---|---|
 | [JUCE](https://github.com/juce-framework/JUCE) 9 | audio devices, file decoding (engine) | AGPLv3 (JUCE's open-source option) |
 | [r8brain-free-src](https://github.com/avaneev/r8brain-free-src) 6.5 | sample-rate conversion (engine) | MIT |
+| [Signalsmith Stretch](https://github.com/Signalsmith-Audio/signalsmith-stretch) 1.4.0 with [Signalsmith Linear](https://github.com/Signalsmith-Audio/linear) 0.6.4 | live key and tempo (engine) | MIT |
 | [Steinberg ASIO SDK](https://www.steinberg.net/developers/) 2.3.4 | ASIO on Windows (engine) | GPLv3 (the SDK's open-source option) |
 | [whisper.cpp](https://github.com/ggml-org/whisper.cpp) 1.9.5 with ggml | offline guide transcription (engine) | MIT |
 | Whisper `ggml-base.en` model (OpenAI Whisper weights converted by whisper.cpp) | speech model, shipped in `models/` | MIT |

@@ -98,8 +98,15 @@ private:
         double start = 0, end = 0, src = 0, fadeIn = 0, fadeOut = 0;
         bool silent = false;
         bool click = false;
+        int key = 0;
         std::vector<std::string> mute;
     };
+
+    // The entry tempo (protocol 5): plan seconds per output second. The engine counts output frames;
+    // everything the app sends or receives in frames is in plan frames and is converted here.
+    double tempo_ = 1.0;
+    std::int64_t toPlanFrames (std::int64_t outputFrames) const { return static_cast<std::int64_t> (std::llround (static_cast<double> (outputFrames) * tempo_)); }
+    std::int64_t toOutputFrames (std::int64_t planFrames) const { return static_cast<std::int64_t> (std::llround (static_cast<double> (planFrames) / tempo_)); }
     std::vector<PlanSegmentSpec> planSpec_;
 
     // The song grid of the plan in seconds (protocol 4): bar 1 beat 1, the beat length, beats per bar.

@@ -101,6 +101,62 @@ namespace
         stream.pos = track.resampling ? static_cast<std::int64_t> (std::floor (static_cast<double> (engineFrame) * ratio)) : engineFrame;
         stream.valid = true;
     }
+
+    // Pointers to the track's stretch input, grown on the disk thread when a block needs more.
+    void stretchInput (Track& track, int frames, float* (&in)[kMaxTrackChannels])
+    {
+        for (int c = 0; c < track.channels; ++c)
+        {
+            if (static_cast<int> (track.stretchInput[c].size()) < frames)
+                track.stretchInput[c].resize (static_cast<std::size_t> (frames));
+            in[c] = track.stretchInput[c].data();
+        }
+        if (track.channels < kMaxTrackChannels)
+            in[1] = nullptr;
+    }
+
+    // Starts a stream at engine-rate source frame `want`. A stretched one is primed so its first
+    // output frame is `want` exactly (PB-58: shifted and unshifted tracks stay on one grid).
+    void openStream (Track& track, SourceStream& stream, double want, double ratio, double rate,
+                     bool stretched, int semitones, double tempo)
+    {
+        startStream (track, stream, static_cast<std::int64_t> (std::floor (want)), ratio);
+        stream.nextSource = want;
+        stream.stretched = stretched;
+        stream.semitones = semitones;
+        stream.inputOwed = 0.0;
+        if (! stretched)
+            return;
+
+        if (stream.stretcher == nullptr)
+            stream.stretcher = std::make_unique<Stretcher> (track.channels, rate);
+        const int length = stream.stretcher->startLength (tempo);
+        float* in[kMaxTrackChannels] {};
+        stretchInput (track, length, in);
+        readStream (track, stream, in, length, rate);
+        stream.stretcher->start (in, length, semitones);
+    }
+
+    // `frames` output frames from a stream: straight from the file, or through its stretcher, which
+    // takes `tempo` source frames per output frame (PB-60).
+    void produce (Track& track, SourceStream& stream, float* const* out, int frames, double rate, double tempo)
+    {
+        if (! stream.stretched)
+        {
+            readStream (track, stream, out, frames, rate);
+            stream.nextSource += frames;
+            return;
+        }
+
+        stream.inputOwed += frames * tempo;
+        const int inputFrames = static_cast<int> (std::floor (stream.inputOwed));
+        stream.inputOwed -= inputFrames;
+        float* in[kMaxTrackChannels] {};
+        stretchInput (track, inputFrames, in);
+        readStream (track, stream, in, inputFrames, rate);
+        stream.stretcher->process (in, inputFrames, out, frames);
+        stream.nextSource += frames * tempo;
+    }
 } // namespace
 
 // The generated click track: silence with a click on every beat that starts in a click segment.
@@ -156,6 +212,9 @@ int DiskStreamer::fillTrack (Song& song, Track& track, int maxBlocks)
     const double ratio = track.sourceRate / song.sampleRate;
     const int spliceOut = static_cast<int> (std::lround (kSpliceOutMs * song.sampleRate / 1000.0));
     const int spliceIn = static_cast<int> (std::lround (kSpliceInMs * song.sampleRate / 1000.0));
+    const int keyChange = static_cast<int> (std::lround (kKeyChangeMs * song.sampleRate / 1000.0));
+    const double tempo = plan->tempo > 0.0 ? plan->tempo : 1.0;
+    const bool transposes = track.transposes.load (std::memory_order_relaxed);
 
     if (request.generation != track.diskGeneration)
     {
@@ -199,10 +258,26 @@ int DiskStreamer::fillTrack (Song& song, Track& track, int maxBlocks)
 
         if (segment != nullptr && segment->src >= 0)
         {
-            const auto want = segment->src + (position - segment->start);
-            if (current.valid && std::llabs (current.nextEngine - want) <= 1)
+            const double want = static_cast<double> (segment->src) + static_cast<double> (position - segment->start) * tempo;
+            const int semitones = transposes ? segment->key : 0;
+            const bool stretched = std::abs (tempo - 1.0) > 1.0e-9 || semitones != 0;
+            // Segment starts are rounded once in output frames, so under a tempo a contiguous source may
+            // land a frame further off than it does at 100 %.
+            const bool contiguous = current.valid && std::abs (current.nextSource - want) <= (tempo == 1.0 ? 1.0 : 2.0);
+
+            if (contiguous && current.stretched == stretched && current.semitones == semitones)
             {
-                current.nextEngine = want; // contiguous: no seam, no resampler reset
+                if (! stretched)
+                    current.nextSource = want; // contiguous: no seam, no resampler reset
+            }
+            else if (contiguous)
+            {
+                // Same audio, another key (a lift, the "#" switch) or tempo: the two crossfade over 50 ms
+                // on the same output frames (PB-58).
+                track.mainStream ^= 1;
+                track.tailRemaining = track.tailLength = keyChange;
+                track.fadeInRemaining = track.fadeInLength = keyChange;
+                openStream (track, track.streams[track.mainStream], want, ratio, song.sampleRate, stretched, semitones, tempo);
             }
             else
             {
@@ -213,22 +288,22 @@ int DiskStreamer::fillTrack (Song& song, Track& track, int maxBlocks)
                 if (atBoundary && current.valid)
                 {
                     track.mainStream ^= 1;
-                    track.tailRemaining = spliceOut;
+                    track.tailRemaining = track.tailLength = spliceOut;
                 }
                 if (atBoundary)
-                    track.fadeInRemaining = spliceIn;
-                startStream (track, track.streams[track.mainStream], want, ratio);
+                    track.fadeInRemaining = track.fadeInLength = spliceIn;
+                openStream (track, track.streams[track.mainStream], want, ratio, song.sampleRate, stretched, semitones, tempo);
             }
 
             auto& stream = track.streams[track.mainStream];
-            readStream (track, stream, main, frames, song.sampleRate);
+            produce (track, stream, main, frames, song.sampleRate, tempo);
 
             if (track.fadeInRemaining > 0)
             {
                 const int k = std::min (frames, track.fadeInRemaining);
                 for (int i = 0; i < k; ++i)
                 {
-                    const float gain = 1.0f - static_cast<float> (track.fadeInRemaining - i) / static_cast<float> (spliceIn);
+                    const float gain = 1.0f - static_cast<float> (track.fadeInRemaining - i) / static_cast<float> (track.fadeInLength);
                     for (int c = 0; c < channels; ++c)
                         main[c][i] *= gain;
                 }
@@ -241,7 +316,7 @@ int DiskStreamer::fillTrack (Song& song, Track& track, int maxBlocks)
             if (current.valid && track.tailRemaining == 0 && track.diskLastEnd == position)
             {
                 track.mainStream ^= 1;
-                track.tailRemaining = spliceOut;
+                track.tailRemaining = track.tailLength = spliceOut;
             }
             track.streams[track.mainStream].valid = false;
         }
@@ -261,10 +336,10 @@ int DiskStreamer::fillTrack (Song& song, Track& track, int maxBlocks)
             {
                 const int k = std::min (frames, track.tailRemaining);
                 float* out[kMaxTrackChannels] { track.tailBuffer[0].data(), channels > 1 ? track.tailBuffer[1].data() : nullptr };
-                readStream (track, tail, out, k, song.sampleRate);
+                produce (track, tail, out, k, song.sampleRate, tempo);
                 for (int i = 0; i < k; ++i)
                 {
-                    const float gain = static_cast<float> (track.tailRemaining - i) / static_cast<float> (spliceOut);
+                    const float gain = static_cast<float> (track.tailRemaining - i) / static_cast<float> (track.tailLength);
                     for (int c = 0; c < channels; ++c)
                         main[c][i] += out[c][i] * gain;
                 }

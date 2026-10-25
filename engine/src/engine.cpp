@@ -291,6 +291,7 @@ juce::var Engine::loadSong (const juce::var& message)
         spec.solo = flag (t, "solo", false);
         spec.soloSafe = flag (t, "soloSafe", false);
         spec.generated = text (t, "generated").toStdString();
+        spec.transposes = flag (t, "transposes", false);
         specs.push_back (spec);
     }
 
@@ -302,6 +303,7 @@ juce::var Engine::loadSong (const juce::var& message)
     specs_ = std::move (specs);
     planSpec_.clear(); // a new song plays as written until the app sends its plan
     gridSpec_ = {};
+    tempo_ = 1.0;
     hasPlan_ = false;
     replaceSong (std::move (song));
 
@@ -319,6 +321,7 @@ juce::var Engine::unloadSong()
     specs_.clear();
     planSpec_.clear();
     gridSpec_ = {};
+    tempo_ = 1.0;
     hasPlan_ = false;
     replaceSong (nullptr);
     return Obj().set ("type", "ok");
@@ -364,7 +367,7 @@ juce::var Engine::transport (const juce::String& type, const juce::var& message)
     else
     {
         command.type = audio::Command::Type::seek;
-        command.frame = std::clamp<std::int64_t> (static_cast<std::int64_t> (number (message, "frame", 0.0)), 0, song_->planFrames());
+        command.frame = std::clamp<std::int64_t> (toOutputFrames (static_cast<std::int64_t> (number (message, "frame", 0.0))), 0, song_->planFrames());
         command.generation = song_->requestFrame (command.frame).generation; // start buffering now (PB-56)
     }
 
@@ -394,6 +397,12 @@ juce::var Engine::setTrack (const juce::var& message)
             track.mute.store (spec.mute = static_cast<bool> (v));
         if (const auto v = message.getProperty ("solo", {}); v.isBool())
             track.solo.store (spec.solo = static_cast<bool> (v));
+        if (const auto v = message.getProperty ("transposes", {}); v.isBool())
+        {
+            // The disk thread crossfades into the new key from the blocks it has not written yet, at most the
+            // read-ahead (4 s) later; it is a preparation setting (PB-80 "#"), so no re-stream and no gap.
+            track.transposes.store (spec.transposes = static_cast<bool> (v));
+        }
         if (const auto output = message.getProperty ("output", {}); output.isObject())
         {
             spec.outputChannel = static_cast<int> (number (output, "channel", spec.outputChannel));
@@ -417,10 +426,14 @@ juce::var Engine::setMaster (const juce::var& message)
 
 std::unique_ptr<audio::Plan> Engine::buildPlan (double rate) const
 {
+    // Plan seconds become output frames (divided by the tempo); sources stay source frames.
     auto plan = std::make_unique<audio::Plan>();
-    const auto frames = [rate] (double seconds) { return static_cast<std::int64_t> (std::llround (seconds * rate)); };
-    plan->gridOrigin = gridSpec_.origin * rate;
-    plan->beatFrames = gridSpec_.beat * rate;
+    const double tempo = tempo_;
+    const auto frames = [rate, tempo] (double planSeconds) { return static_cast<std::int64_t> (std::llround (planSeconds / tempo * rate)); };
+    const auto sourceFrames = [rate] (double seconds) { return static_cast<std::int64_t> (std::llround (seconds * rate)); };
+    plan->tempo = tempo;
+    plan->gridOrigin = gridSpec_.origin / tempo * rate;
+    plan->beatFrames = gridSpec_.beat / tempo * rate;
     plan->beatsPerBar = gridSpec_.beatsPerBar;
 
     for (const auto& spec : planSpec_)
@@ -432,10 +445,11 @@ std::unique_ptr<audio::Plan> Engine::buildPlan (double rate) const
             continue;
 
         const auto length = segment.end - segment.start;
-        segment.src = spec.silent ? -1 : std::max<std::int64_t> (0, frames (spec.src));
+        segment.src = spec.silent ? -1 : std::max<std::int64_t> (0, sourceFrames (spec.src));
         segment.fadeIn = std::min (length, frames (spec.fadeIn));
         segment.fadeOut = std::min (length, frames (spec.fadeOut));
         segment.click = spec.click;
+        segment.key = spec.key;
         segment.muted.assign (specs_.size(), 0);
         for (const auto& id : spec.mute)
             for (std::size_t i = 0; i < specs_.size(); ++i)
@@ -479,6 +493,7 @@ juce::var Engine::setPlan (const juce::var& message)
         spec.fadeIn = std::max (0.0, number (s, "fadeIn", 0.0));
         spec.fadeOut = std::max (0.0, number (s, "fadeOut", 0.0));
         spec.click = flag (s, "click", false);
+        spec.key = juce::jlimit (-24, 24, static_cast<int> (number (s, "key", 0.0)));
         if (const auto* mute = s.getProperty ("mute", {}).getArray())
             for (const auto& id : *mute)
                 if (id.isString())
@@ -488,6 +503,9 @@ juce::var Engine::setPlan (const juce::var& message)
 
     planSpec_ = std::move (parsed);
     hasPlan_ = true;
+
+    // Protocol 5: the entry tempo, 50–150 % (PB-60).
+    tempo_ = juce::jlimit (0.5, 1.5, number (message, "tempo", 1.0));
 
     // Protocol 4: the song grid the click follows (PB-70). Without it the click has no beats.
     const auto grid = message.getProperty ("grid", {});
@@ -503,7 +521,7 @@ juce::var Engine::setPlan (const juce::var& message)
     const auto length = plan->lengthFrames;
     const auto position = message.getProperty ("position", {});
     const auto wanted = position.isVoid() ? player_.position()
-                                          : static_cast<std::int64_t> (std::llround (number (message, "position", 0.0) * song_->sampleRate));
+                                          : static_cast<std::int64_t> (std::llround (number (message, "position", 0.0) / tempo_ * song_->sampleRate));
     const auto frame = std::clamp<std::int64_t> (wanted, 0, length);
 
     audio::Command command;
@@ -513,7 +531,7 @@ juce::var Engine::setPlan (const juce::var& message)
     command.generation = song_->requestFrame (frame).generation;
     post (command);
 
-    return Obj().set ("type", "plan").set ("frames", static_cast<juce::int64> (length));
+    return Obj().set ("type", "plan").set ("frames", static_cast<juce::int64> (toPlanFrames (length)));
 }
 
 juce::var Engine::getState()
@@ -600,7 +618,7 @@ juce::var Engine::snapshot()
     {
         songId = juce::String (song_->id);
         length = song_->lengthFrames;
-        planLength = song_->planFrames();
+        planLength = toPlanFrames (song_->planFrames());
         buffered = song_->isBuffered();
         rate = song_->sampleRate;
         for (std::size_t i = 0; i < song_->tracks.size(); ++i)
@@ -618,9 +636,9 @@ juce::var Engine::snapshot()
     return Obj()
         .set ("type", "snapshot")
         .set ("state", stateName (player_.state()))
-        .set ("frame", static_cast<juce::int64> (player_.position()))
+        .set ("frame", static_cast<juce::int64> (toPlanFrames (player_.position())))
         .set ("t", static_cast<juce::int64> (player_.positionTimeNs()))
-        .set ("latency", outputLatency_.load())
+        .set ("latency", static_cast<juce::int64> (toPlanFrames (outputLatency_.load())))
         .set ("sampleRate", rate)
         .set ("songId", songId)
         .set ("lengthFrames", length)

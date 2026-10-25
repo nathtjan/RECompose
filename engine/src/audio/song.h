@@ -7,6 +7,7 @@
 #pragma once
 
 #include "audio/block_queue.h"
+#include "audio/stretcher.h"
 
 #include <juce_audio_formats/juce_audio_formats.h>
 
@@ -52,6 +53,7 @@ struct TrackSpec
     bool solo = false;
     bool soloSafe = false; // click, guide, spoken guide keep playing when others solo (PB-82)
     std::string generated; // "click": no file, the engine synthesizes it (PB-70)
+    bool transposes = false; // follows the segment's key (DM-12: music yes, click and guide no)
 };
 
 // The arrangement as the engine executes it (PB-40): contiguous segments in plan frames, each
@@ -67,6 +69,7 @@ struct PlanSegment
     std::int64_t fadeOut = 0; // frames
     std::vector<std::uint8_t> muted; // per track index, 1 = silenced in this segment
     bool click = false;              // the click generator sounds on the beats in this segment (PB-70)
+    int key = 0;                     // semitones for tracks that transpose: entry key + lift (PB-41, PB-58)
 };
 
 struct Plan
@@ -78,17 +81,28 @@ struct Plan
     double gridOrigin = 0.0;
     double beatFrames = 0.0;
     int beatsPerBar = 4;
+
+    // Source frames per output frame (tf, PB-30). The engine's frames are output frames: segment
+    // times and the grid are divided by it, sources advance by it (protocol 5).
+    double tempo = 1.0;
 };
 
 // A read position in one stem: resampler state for the engine rate, kept across contiguous
-// segments so a plan that plays on straight through has no seam.
+// segments so a plan that plays on straight through has no seam. A stretched stream also runs
+// its stem through a Stretcher for key and tempo (PB-58, PB-60); a bypassed one is untouched.
 struct SourceStream
 {
     std::unique_ptr<r8b::CDSPResampler24> resamplers[kMaxTrackChannels];
     std::int64_t pos = 0;         // next source frame to read (at the file's rate)
-    std::int64_t nextEngine = 0;  // engine-rate source frame of the next output frame
+    std::int64_t nextEngine = 0;  // engine-rate source frame the reader delivers next
     bool valid = false;
     std::vector<double> pending[kMaxTrackChannels]; // resampled frames not yet used
+
+    double nextSource = 0.0;      // engine-rate source frame of the next output frame
+    bool stretched = false;
+    int semitones = 0;
+    double inputOwed = 0.0;       // fractional input frames carried between blocks (tempo)
+    std::unique_ptr<Stretcher> stretcher; // made on first use, on the disk thread
 
     SourceStream();
     ~SourceStream();
@@ -114,6 +128,7 @@ struct Track
 
     // Mixer settings: written by the message thread, read by the audio thread.
     std::atomic<float> gain { 1.0f }; // linear
+    std::atomic<bool> transposes { false }; // read by the disk thread (PB-80 "#")
     std::atomic<bool> mute { false };
     std::atomic<bool> solo { false };
     std::atomic<int> outputChannel { 0 };
@@ -135,7 +150,10 @@ struct Track
     SourceStream streams[2];          // the playing stream and, briefly, the one it replaced
     int mainStream = 0;
     int tailRemaining = 0;            // frames of the outgoing stream still to blend in (PB-55)
+    int tailLength = 1;               // the whole blend: 10 ms at a splice, 50 ms at a key change
     int fadeInRemaining = 0;          // frames of the incoming fade-in still to apply
+    int fadeInLength = 1;
+    std::vector<float> stretchInput[kMaxTrackChannels];
     std::vector<float> readBuffer[kMaxTrackChannels];
     std::vector<float> mainBuffer[kMaxTrackChannels];
     std::vector<float> tailBuffer[kMaxTrackChannels];
@@ -191,7 +209,9 @@ float decibelsToGain (float db) noexcept;
 // sends a plan, and what the M1 tests exercise.
 std::unique_ptr<Plan> identityPlan (std::int64_t lengthFrames);
 
-// The blend lengths of a seam where the source jumps (PB-55).
+// The blend lengths of a seam where the source jumps (PB-55), and of a key change on a contiguous
+// boundary (PB-58: the outgoing and the incoming key crossfade).
 inline constexpr int kSpliceOutMs = 10; // milliseconds
 inline constexpr int kSpliceInMs = 2;
+inline constexpr int kKeyChangeMs = 50;
 } // namespace rec::audio

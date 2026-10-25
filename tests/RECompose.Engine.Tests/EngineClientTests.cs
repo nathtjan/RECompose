@@ -187,7 +187,7 @@ public class EngineClientTests
         [
             new RECompose.Core.Planning.PlanSegment(0, 2, null, 0, 0, []) { Click = true },
             new RECompose.Core.Planning.PlanSegment(2, 4, 0, 0, 0, []),
-        ], 0, new RECompose.Core.Planning.PlanGrid(2, 0.5, 4), ct);
+        ], 0, new RECompose.Core.Planning.PlanGrid(2, 0.5, 4), ct: ct);
 
         await client.PlayAsync(ct);
         var (peak, _, _) = await client.RenderOfflineAsync(48000 * 4, 2, wav, ct);
@@ -203,6 +203,61 @@ public class EngineClientTests
         }
 
         Assert.All(right.Skip(96000).Take(96000), x => Assert.Equal(0, x, 6));
+    }
+
+    [Fact]
+    public async Task PB60_tempo_and_key_keep_plan_frames_and_only_transposing_tracks_change_pitch()
+    {
+        var folder = Folder();
+        var sine = TestWav.Write(Path.Combine(folder, "Keys.wav"), 48000, 1, 48000 * 6, (i, _) => 0.5 * Math.Sin(2 * Math.PI * 440 * i / 48000.0));
+        var guide = TestWav.Write(Path.Combine(folder, "Guide.wav"), 48000, 1, 48000 * 6, (i, _) => 0.25 * Math.Sin(2 * Math.PI * 1000 * i / 48000.0));
+        var wav = Path.Combine(folder, "render.wav");
+        var ct = TestContext.Current.CancellationToken;
+
+        await using var client = await StartAsync();
+        await client.LoadSongAsync("song-key",
+        [
+            new EngineTrack("keys", sine, 0, 1, 0, false, false, false) { Transposes = true },
+            new EngineTrack("guide", guide, 1, 1, 0, false, false, true),
+        ], 0, 0, ct);
+
+        // 4 plan seconds at 80 %, two semitones up: 5 seconds of audio; frames come back as plan frames.
+        var frames = await client.SetPlanAsync(
+            [new RECompose.Core.Planning.PlanSegment(0, 4, 0, 0, 0, []) { Key = 2 }], 0, tempo: 0.8, ct: ct);
+        Assert.Equal(48000 * 4, frames);
+
+        await client.PlayAsync(ct);
+        try
+        {
+            var (_, _, snapshot) = await client.RenderOfflineAsync(48000 * 2, 2, wav, ct);
+            Assert.Equal(76800, snapshot.Frame);               // 2 s of audio at 80 % is 1.6 plan seconds
+
+            // One second of output: the keys are two semitones up (440 → 493.9 Hz); the guide is slower but keeps its
+            // pitch, because it doesn't transpose (DM-12) and tempo never changes pitch (PB-60).
+            int Crossings(float[] x)
+            {
+                var n = 0;
+                for (var i = 48001; i < 96000; i++)
+                    if (x[i - 1] < 0 && x[i] >= 0)
+                        n++;
+                return n;
+            }
+
+            Assert.InRange(Crossings(ReadFloatWav(wav, channel: 0)), 487, 501);
+            Assert.InRange(Crossings(ReadFloatWav(wav, channel: 1)), 990, 1010);
+
+            // A seek in plan frames lands on that plan frame (after Pause's 20 ms fade has played out).
+            await client.PauseAsync(ct);
+            await client.RenderOfflineAsync(4800, 2, ct: ct);
+            await client.SeekAsync(48000 * 3, ct);
+            (_, _, snapshot) = await client.RenderOfflineAsync(0, 2, ct: ct);
+            Assert.Equal(TransportState.Paused, snapshot.State);
+            Assert.Equal(48000 * 3, snapshot.Frame);
+        }
+        finally
+        {
+            await client.StopAsync(ct); // a playing engine never exits by itself (REL-34)
+        }
     }
 
     /// <summary>One channel of a 32-bit float WAV written by renderOffline.</summary>

@@ -405,8 +405,10 @@
                   <Button Grid.Row="1" Grid.Column="3" Classes="cell" Command="{Binding TempoUpCommand}" ToolTip.Tip="Tempo +1% (Ctrl+→, Shift for 5%)" AutomationProperties.Name="Tempo up">
                     <c:Icon Glyph="plus" IconSize="14" />
                   </Button>
-                  <TextBlock Grid.Row="2" Grid.ColumnSpan="4" Classes="meta warning" Text="{Binding LiveKeyBadge}" IsVisible="{Binding HasLiveKeyBadge}"
-                             ToolTip.Tip="Key and tempo are stored and counted; the audio changes once live key processing is in the engine" />
+                  <Border Grid.Row="2" Grid.ColumnSpan="4" Classes="tag warning" HorizontalAlignment="Left" IsVisible="{Binding HasLiveKeyBadge}"
+                          ToolTip.Tip="Key and tempo are processed live; rendered stems for the service come with the service check">
+                    <TextBlock Text="{Binding LiveKeyBadge}" />
+                  </Border>
                 </Grid>
               </Border>
             </Grid>
@@ -658,7 +660,7 @@
                         </StackPanel>
                         <TextBlock Grid.Row="2" Text="Key lift" VerticalAlignment="Center" Margin="0,0,0,6" />
                         <TextBox Grid.Row="2" Grid.Column="1" Classes="cell" Text="{Binding Lift}" Width="56" HorizontalAlignment="Left" Margin="0,0,0,6"
-                                 ToolTip.Tip="Semitones, −6 to +6, on top of the entry key. Stored now; it sounds once live key processing is in the engine" AutomationProperties.Name="Key lift" />
+                                 ToolTip.Tip="Semitones, −6 to +6, on top of the entry key" AutomationProperties.Name="Key lift" />
                         <TextBlock Grid.Row="3" Text="Mute" VerticalAlignment="Center" Margin="0,0,0,6" />
                         <StackPanel Grid.Row="3" Grid.Column="1" Spacing="4" Margin="0,0,0,6">
                           <ComboBox ItemsSource="{Binding MuteChoices}" SelectedItem="{Binding Mute}" HorizontalAlignment="Stretch" AutomationProperties.Name="Mute" />

@@ -8,7 +8,7 @@ namespace RECompose.Engine;
 public static class EngineProtocol
 {
     /// <summary>Must equal REC_PROTOCOL_VERSION in engine/src/protocol.h.</summary>
-    public const int Version = 4;
+    public const int Version = 5;
 
     /// <summary>Frames larger than this are a protocol error (both directions).</summary>
     public const int MaxFrameBytes = 16 * 1024 * 1024;

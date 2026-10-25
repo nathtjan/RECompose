@@ -44,6 +44,14 @@ if(WIN32)
 endif()
 set_target_properties(r8brain PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
+# Signalsmith Stretch (MIT) with Signalsmith Linear (MIT): live key and tempo on the disk thread when
+# no rendered stems exist yet (PB-5 fallback, PB-58, PB-60). Header-only; its CMake fetches Linear 0.6.4.
+FetchContent_Declare(signalsmith-stretch
+    GIT_REPOSITORY https://github.com/Signalsmith-Audio/signalsmith-stretch.git
+    GIT_TAG 1.4.0
+    GIT_SHALLOW TRUE)
+FetchContent_MakeAvailable(signalsmith-stretch)
+
 # Steinberg ASIO SDK (GPLv3 option, compatible with this project's AGPLv3) for ASIO on
 # Windows (PLAT-10). Downloaded at configure time; turn off with -DRECOMPOSE_ASIO=OFF.
 option(RECOMPOSE_ASIO "Build with ASIO support on Windows" ON)
@@ -144,12 +152,13 @@ add_library(recompose_engine_core STATIC
     src/analysis.cpp
     src/audio/song.cpp
     src/audio/click.cpp
+    src/audio/stretcher.cpp
     src/audio/disk_streamer.cpp
     src/audio/player.cpp)
 
 target_include_directories(recompose_engine_core PUBLIC src)
 target_compile_definitions(recompose_engine_core PUBLIC RECOMPOSE_ENGINE_VERSION="${PROJECT_VERSION}")
-target_link_libraries(recompose_engine_core PUBLIC recompose_juce r8brain)
+target_link_libraries(recompose_engine_core PUBLIC recompose_juce r8brain signalsmith-stretch)
 if(WIN32)
     target_link_libraries(recompose_engine_core PUBLIC ws2_32)
 endif()

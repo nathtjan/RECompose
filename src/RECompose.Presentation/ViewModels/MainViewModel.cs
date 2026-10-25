@@ -390,11 +390,11 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public bool EntryKeyWarning => _song?.Entry is { KeyOffset: > 5 or < -5 };
 
     /// <summary>
-    /// PB-5, PB-61: the badge shown while the entry plays in another key or tempo. Live processing arrives with the
-    /// engine part of milestone 4; until then key and tempo are stored and counted but the audio plays as recorded.
+    /// PB-5, PB-61: the badge shown while the entry plays in another key or tempo through live processing. The
+    /// render cache (M6) adds "rendering 43 %" and then removes the badge when rendered stems play.
     /// </summary>
     public string? LiveKeyBadge => _song is { Entry: { } e } song && (e.KeyOffset != 0 || e.TempoPercent != 100 || song.Plan.Items.Any(i => i.Transpose != 0))
-        ? "Live key — not audible yet"
+        ? "Live key"
         : null;
 
     public bool HasLiveKeyBadge => LiveKeyBadge is not null;
@@ -708,7 +708,10 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             {
                 var (channel, width) = _settings.Audio.Resolve(t.Output);
                 var m = mix.For(t.Id);
-                return new EngineTrack(t.Id, t.File, channel, width, m.GainDb <= TrackViewModel.MinimumDb ? -100 : m.GainDb, m.Mute, m.Solo, t.IsClickOrGuide);
+                return new EngineTrack(t.Id, t.File, channel, width, m.GainDb <= TrackViewModel.MinimumDb ? -100 : m.GainDb, m.Mute, m.Solo, t.IsClickOrGuide)
+                {
+                    Transposes = mix.Transposes(t),
+                };
             }).ToList();
             // The engine's click for count-ins and click bars, on the Cue output (PB-70, PB-85).
             var (cueChannel, cueWidth) = _settings.Audio.Resolve("cue");
@@ -856,7 +859,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                 _seekSentAt = DateTime.UtcNow;
             }
 
-            await engine.SetPlanAsync(song.Plan.Segments(), positionSec, song.Plan.Grid);
+            await engine.SetPlanAsync(song.Plan.Segments(), positionSec, song.Plan.Grid, song.Plan.TempoFactor);
         }
         catch (Exception ex) when (ex is EngineErrorException or EngineDisconnectedException or OperationCanceledException)
         {
@@ -1008,8 +1011,6 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         if (_engine is not { } engine)
             return;
 
-        if (what == "transposes")
-            return; // the engine takes it with live key processing (protocol 4)
         Task request = track.IsMaster
             ? engine.SetMasterAsync(track.EngineGainDb)
             : what switch
@@ -1017,6 +1018,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                 "gain" => engine.SetTrackAsync(track.Id, gainDb: track.EngineGainDb),
                 "mute" => engine.SetTrackAsync(track.Id, mute: track.Mute),
                 "solo" => engine.SetTrackAsync(track.Id, solo: track.Solo),
+                "transposes" => engine.SetTrackAsync(track.Id, transposes: track.Transposes),
                 _ => engine.SetTrackAsync(track.Id, gainDb: track.EngineGainDb, mute: track.Mute, solo: track.Solo),
             };
         _ = request.ContinueWith(t => _ui.Post(() => Banner = t.Exception?.InnerException?.Message), TaskContinuationOptions.OnlyOnFaulted);

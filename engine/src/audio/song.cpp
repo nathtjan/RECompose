@@ -32,6 +32,9 @@ void SourceStream::clear()
     for (auto& p : pending)
         p.clear();
     valid = false;
+    stretched = false;
+    semitones = 0;
+    inputOwed = 0.0;
 }
 
 Track::Track (TrackSpec s, std::size_t queueCapacity) : spec (std::move (s)), queue (queueCapacity) {}
@@ -93,6 +96,7 @@ std::unique_ptr<Song> loadSong (std::string id, std::vector<TrackSpec> specs, do
         auto track = std::make_unique<Track> (spec, capacity);
         track->gain.store (decibelsToGain (spec.gainDb));
         track->mute.store (spec.mute);
+        track->transposes.store (spec.transposes);
         track->solo.store (spec.solo);
         track->outputChannel.store (spec.outputChannel);
         track->outputWidth.store (spec.outputWidth == 1 ? 1 : 2);

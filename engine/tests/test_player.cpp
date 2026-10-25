@@ -12,8 +12,10 @@
 
 #include <juce_audio_formats/juce_audio_formats.h>
 
+#include <chrono>
 #include <cmath>
 #include <functional>
+#include <string>
 #include <vector>
 
 using namespace rec::audio;
@@ -611,4 +613,156 @@ TEST ("click: rendering in pieces gives the same samples as in one go (PB-70)")
     CHECK (same);
     CHECK (near (whole[static_cast<std::size_t> (beatFrame (plan, 0))], kClickPeak, 1.0e-4f));
     CHECK (beatFrame (plan, 1) == 21834); // 1000.5 + 20833.333 = 21833.833, rounded once
+}
+
+namespace
+{
+constexpr double kPi = 3.141592653589793;
+
+// Rising zero crossings per second over [from, from + count): the pitch of a sine.
+double frequency (const std::vector<float>& x, std::size_t from, std::size_t count)
+{
+    int crossings = 0;
+    for (auto i = from + 1; i < from + count; ++i)
+        if (x[i - 1] < 0.0f && x[i] >= 0.0f)
+            ++crossings;
+    return crossings * kRate / static_cast<double> (count);
+}
+
+float rms (const std::vector<float>& x, std::size_t from, std::size_t count)
+{
+    double sum = 0.0;
+    for (auto i = from; i < from + count; ++i)
+        sum += static_cast<double> (x[i]) * x[i];
+    return static_cast<float> (std::sqrt (sum / static_cast<double> (count)));
+}
+
+std::size_t loudest (const std::vector<float>& x, std::size_t from, std::size_t to)
+{
+    std::size_t best = from;
+    for (auto i = from; i < to; ++i)
+        if (std::abs (x[i]) > std::abs (x[best]))
+            best = i;
+    return best;
+}
+
+TrackSpec transposing (const juce::File& file, const char* id, int channel)
+{
+    auto s = spec (file, id, channel, 1);
+    s.transposes = true;
+    return s;
+}
+} // namespace
+
+TEST ("key: +12 doubles the pitch of a transposing track; a track that doesn't transpose is untouched (PB-58, DM-12, AT-11)")
+{
+    const auto sine = writeWav ("key-sine.wav", kRate, 1, 200000, [] (int i, int) { return 0.5f * static_cast<float> (std::sin (2.0 * kPi * 440.0 * i / kRate)); });
+    const auto click = writeWav ("key-ramp.wav", kRate, 1, 200000, [] (int i, int) { return ramp (i); });
+    Rig rig ({ transposing (sine, "music", 0), spec (click, "click", 1, 1) }, 2);
+
+    auto plan = makePlan ({ seg (0, 96000, 0) });
+    plan->segments[0].key = 12;
+    rig.setPlan (std::move (plan));
+
+    rig.send (Command::Type::play);
+    const auto out = rig.render (96000);
+
+    const auto f = frequency (out[0], 24000, 48000);
+    CHECK (f > 870.0 && f < 890.0);
+
+    bool exact = true; // the click's samples come through bit for bit (after Play's 10 ms fade-in)
+    for (int i = 1000; i < 96000; ++i)
+        exact = exact && decodeRamp (out[1][static_cast<std::size_t> (i)]) == i;
+    CHECK (exact);
+}
+
+TEST ("key: a shifted track stays on the source's timeline (PB-58)")
+{
+    // A single impulse at source frame 30000 on silence.
+    const auto file = writeWav ("key-impulse.wav", kRate, 1, 120000, [] (int i, int) { return i == 30000 ? 0.9f : 0.0f; });
+    Rig rig ({ transposing (file, "music", 0) }, 1);
+
+    auto plan = makePlan ({ seg (0, 96000, 0) });
+    plan->segments[0].key = 2;
+    rig.setPlan (std::move (plan));
+
+    rig.send (Command::Type::play);
+    const auto out = rig.render (96000);
+
+    const auto at = static_cast<long> (loudest (out[0], 0, 96000));
+    CHECK (std::abs (at - 30000) <= 240); // within 5 ms: the stretcher smears a click, it doesn't move it
+}
+
+TEST ("tempo: at 80 % the pitch stays and the plan takes 1.25 times as long (PB-60)")
+{
+    const auto sine = writeWav ("tempo-sine.wav", kRate, 1, 200000, [] (int i, int) { return 0.5f * static_cast<float> (std::sin (2.0 * kPi * 440.0 * i / kRate)); });
+    Rig rig ({ transposing (sine, "music", 0) }, 1);
+
+    // 1 s of source played at 80 %: 1.25 s of output frames (the engine converts plan seconds this way).
+    auto plan = makePlan ({ seg (0, 60000, 0) });
+    plan->tempo = 0.8;
+    rig.setPlan (std::move (plan));
+
+    rig.send (Command::Type::play);
+    const auto out = rig.render (60000);
+    const auto f = frequency (out[0], 12000, 36000);
+    CHECK (f > 432.0 && f < 448.0);
+    CHECK (rms (out[0], 12000, 36000) > 0.25f);
+
+    rig.render (512); // the end of the plan: stopped, back at the start
+    CHECK (rig.player.state() == TransportState::stopped);
+}
+
+TEST ("key: a key change on a contiguous boundary crossfades with no gap (PB-58)")
+{
+    const auto sine = writeWav ("lift-sine.wav", kRate, 1, 200000, [] (int i, int) { return 0.5f * static_cast<float> (std::sin (2.0 * kPi * 440.0 * i / kRate)); });
+    Rig rig ({ transposing (sine, "music", 0) }, 1);
+
+    // The second segment continues the same audio two semitones up: a key lift without a jump.
+    auto plan = makePlan ({ seg (0, 48000, 0), seg (48000, 96000, 48000) });
+    plan->segments[1].key = 2;
+    rig.setPlan (std::move (plan));
+
+    rig.send (Command::Type::play);
+    const auto out = rig.render (96000);
+
+    const auto before = frequency (out[0], 12000, 30000);
+    const auto after = frequency (out[0], 60000, 30000);
+    CHECK (before > 435.0 && before < 445.0);
+    CHECK (after > 487.0 && after < 501.0); // 440 · 2^(2/12) = 493.9 Hz
+
+    // The two keys beat against each other while they crossfade (440 and 494 Hz cancel for a moment every
+    // 18.5 ms), so the level is measured over 20 ms windows, longer than a beat: a gap would be silence
+    // across a whole window, beating isn't.
+    bool noGap = true;
+    for (std::size_t at = 46000; at < 52000; at += 480)
+        noGap = noGap && rms (out[0], at, 960) > 0.5f * 0.354f;
+    CHECK (noGap);
+}
+
+TEST ("key: 16 shifted stereo stems are produced well ahead of real time (PB-91)")
+{
+    const auto file = writeWav ("load-noise.wav", kRate, 2, 48000 * 12, [] (int i, int c) {
+        return 0.2f * static_cast<float> (std::sin (0.031 * i + c) * std::sin (0.0007 * i));
+    });
+    std::vector<TrackSpec> specs;
+    for (int t = 0; t < 16; ++t)
+    {
+        auto s = spec (file, "", 0, 2);
+        s.id = "stem-" + std::to_string (t);
+        s.transposes = true;
+        specs.push_back (s);
+    }
+    Rig rig (std::move (specs), 2);
+    auto plan = makePlan ({ seg (0, 48000 * 10, 0) });
+    plan->segments[0].key = 2;
+    rig.setPlan (std::move (plan));
+
+    rig.send (Command::Type::play);
+    const auto started = std::chrono::steady_clock::now();
+    rig.render (48000 * 10);
+    const auto seconds = std::chrono::duration<double> (std::chrono::steady_clock::now() - started).count();
+    const auto speed = 10.0 / seconds;
+    std::fprintf (stderr, "  16 stereo stems at +2 semitones: %.1fx real time\n", speed);
+    CHECK (speed > 2.0); // the disk thread has to stay ahead with room for jumps and the next song
 }
