@@ -16,12 +16,12 @@ Read `README.md` for the layout and build commands, `docs/adr/` for decisions, a
 
 ## Where things stand
 
-Milestones 0–3 are on `main`; the next one is M4 (services). Start from `docs/milestones/M3-arrangements.md` (status, known gaps) and the handoff doc in the Claude project.
+Milestones 0–4 are on `main`; the next one is M5 (Perform view and live control). Start from `docs/milestones/M4-services.md` (status, known gaps) and the handoff doc in the Claude project.
 
 - Two clocks: *plan time* is the engine position and the as-heard timeline; *source time* is stems, sections, M and review. Convert only through `SongPlan` (`SourceAt`, `PlanAt`, `Remap`).
 - `MainViewModel` owns the playhead (`PlanPositionSec`, `PositionSec`, `TimelinePosition`); never mix them.
-- The engine plays a plan sent with `setPlan` (protocol 3); plan building lives in `RECompose.Core.Planning`.
-- Key lift, click/pad bars, holds and until-cued repeats are stored but not audible until M4–M6.
+- The engine plays a plan sent with `setPlan` (protocol 7 now, see `docs/engine-protocol.md`); plan building lives in `RECompose.Core.Planning`.
+- Services (M4): a service entry picks a variant, a custom arrangement or as written, plus key, tempo, count-in, mix preset and the transition after it. `EntryPlan`/`PlanOptions.For(entry, song)` build its plan; the engine plays key and tempo live (protocol 5), click and count-ins (4), pads (6), and a second song slot with segue, crossfade and pad transitions (7). Holds and until-cued repeats are still stored but not audible until M5; rendered keys come in M6; spoken counts in M7.
 
 ## Commands
 
