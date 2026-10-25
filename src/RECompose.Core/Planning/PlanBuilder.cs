@@ -282,6 +282,7 @@ public static class PlanBuilder
             {
                 FadeInSec = first ? Math.Min(entry.FadeInBars * barLen, length) : 0,
                 FadeOutSec = last ? Math.Min(entry.FadeOutBars * barLen, length) : 0,
+                NominalFadeOutSec = Math.Min(entry.FadeOutBars * barLen, length),
             });
         }
     }
@@ -343,21 +344,27 @@ public static class PlanBuilder
     /// </summary>
     private static void AddTail(List<PlanItem> items, PlanOptions options, TempoGrid grid, double durationSec, string id = "tail")
     {
-        var last = items.LastOrDefault();
+        if (TailAfter(items.LastOrDefault(), options, grid, durationSec, id) is { } tail)
+            items.Add(tail);
+    }
+
+    /// <summary>The ring-out after a section item, or null when there is none to play (cut, no audio left, under half a beat).</summary>
+    internal static PlanItem? TailAfter(PlanItem? last, PlanOptions options, TempoGrid grid, double durationSec, string id)
+    {
         if (last is null || last.Kind != PlanItemKind.Section || last.Ending == EndingMode.Cut || options.TailBars <= 0)
-            return;
+            return null;
 
         var available = durationSec - last.SrcEnd;
         var length = Math.Min(options.TailBars * grid.BarLength, available);
         if (length < grid.BeatLength / 2)
-            return;
+            return null;
 
         // A whole number of beats keeps the plan on the grid when the file allows it.
         var beats = Math.Floor(length / grid.BeatLength + Tolerance);
         if (beats >= 1)
             length = beats * grid.BeatLength;
 
-        items.Add(new PlanItem
+        return new PlanItem
         {
             Id = id,
             Kind = PlanItemKind.Tail,
@@ -371,6 +378,56 @@ public static class PlanBuilder
             FadeOutSec = length,
             KeyTotal = last.KeyTotal,
             SongPitchClass = last.SongPitchClass,
-        });
+        };
+    }
+
+    /// <summary>A whole written section as the live plan plays it: one pass, the entry key, no options (PB-47).</summary>
+    internal static PlanItem LiveSection(SectionInfo section, string id, double start, PlanOptions options)
+    {
+        var cursor = start;
+        return SectionItem(section, id, null, -1, 1, 1, section.LengthBars, section.StartSec, section.EndSec, ref cursor, null, options) with { IsLive = true };
+    }
+
+    /// <summary>
+    /// Puts an edited item list back in order after a live change: the ring-out after every section that is followed by a
+    /// hold or ends the plan is built again from the section it follows, the last pass of each entry gets the entry's
+    /// fade-out, and the times run on from the first item (PB-47).
+    /// </summary>
+    internal static List<PlanItem> Relayout(IEnumerable<PlanItem> edited, PlanOptions options, TempoGrid grid, double durationSec)
+    {
+        var items = edited.Where(i => i.Kind != PlanItemKind.Tail).ToList();
+
+        // Ring-outs: before each hold that follows a section, and at the end.
+        for (var i = items.Count - 1; i >= 0; i--)
+        {
+            if (items[i].Kind == PlanItemKind.Hold && i > 0 && items[i - 1].Kind == PlanItemKind.Section
+                && TailAfter(items[i - 1], options, grid, durationSec, $"tail:{items[i].EntryId ?? items[i].Id}") is { } beforeHold)
+                items.Insert(i, beforeHold);
+        }
+
+        if (TailAfter(items.LastOrDefault(), options, grid, durationSec, "tail") is { } final)
+            items.Add(final);
+
+        // The last pass of each group fades out as the entry asks; the passes before it do not.
+        var lastOfGroup = new Dictionary<string, int>();
+        for (var i = 0; i < items.Count; i++)
+        {
+            if (items[i].Kind == PlanItemKind.Section && items[i].EntryId is { } entry)
+                lastOfGroup[entry] = i;
+        }
+
+        var cursor = items.Count > 0 ? items[0].PlanStart : 0;
+        for (var i = 0; i < items.Count; i++)
+        {
+            var item = items[i];
+            var length = item.Length;
+            if (item.Kind == PlanItemKind.Tail)
+                length = Math.Min(item.Length, item.SrcEnd - item.SrcStart);
+            var fadeOut = item.Kind == PlanItemKind.Section && item.EntryId is { } e ? (lastOfGroup[e] == i ? Math.Min(item.NominalFadeOutSec, length) : 0) : item.FadeOutSec;
+            items[i] = item with { PlanStart = cursor, PlanEnd = cursor + length, FadeOutSec = fadeOut };
+            cursor += length;
+        }
+
+        return items;
     }
 }

@@ -72,6 +72,9 @@ public sealed record PlanItem
     public IReadOnlyList<string> MutedGroups { get; init; } = [];
     public double FadeInSec { get; init; }
     public double FadeOutSec { get; init; }
+
+    /// <summary>The fade-out the entry asks for on its last pass; a live change that ends a repeat moves it to the pass that is last then.</summary>
+    public double NominalFadeOutSec { get; init; }
     public string? Note { get; init; }
     public EndingMode Ending { get; init; }
 
