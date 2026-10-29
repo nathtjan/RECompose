@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- The app bundle's Info.plist (PLAT-2, PLAT-35). The release workflow replaces VERSION. -->
+<plist version="1.0">
+<dict>
+  <key>CFBundleIdentifier</key>
+  <string>io.github.nathtjan.recompose</string>
+  <key>CFBundleName</key>
+  <string>RECompose</string>
+  <key>CFBundleDisplayName</key>
+  <string>RECompose</string>
+  <key>CFBundleExecutable</key>
+  <string>RECompose</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>CFBundleShortVersionString</key>
+  <string>VERSION</string>
+  <key>CFBundleVersion</key>
+  <string>VERSION</string>
+  <key>LSMinimumSystemVersion</key>
+  <string>13.0</string>
+  <key>LSApplicationCategoryType</key>
+  <string>public.app-category.music</string>
+  <key>NSHighResolutionCapable</key>
+  <true/>
+  <key>NSMicrophoneUsageDescription</key>
+  <string>RECompose listens to your talkback mic for voice commands.</string>
+</dict>
+</plist>

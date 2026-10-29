@@ -21,6 +21,11 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        DataContextChanged += (_, _) =>
+        {
+            if (ViewModel is { } vm)
+                BuildMenu(vm);
+        };
 
         // The assistant's newest message stays in view (UI-17).
         AssistantScroll.PropertyChanged += (_, e) =>

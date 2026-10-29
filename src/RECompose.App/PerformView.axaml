@@ -143,12 +143,14 @@
               <TextBlock Classes="label" Text="MIDI" VerticalAlignment="Center" />
             </StackPanel>
           </Button>
-          <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" IsVisible="{Binding VoiceOn}"
-                      ToolTip.Tip="{Binding VoiceIndicator}" AutomationProperties.Name="Voice">
-            <Ellipse Classes="led" Classes.ok="{Binding VoiceOk}" VerticalAlignment="Center" />
-            <TextBlock Classes="label" Text="VOICE" VerticalAlignment="Center" />
-            <ProgressBar Minimum="0" Maximum="1" Value="{Binding VoiceLevel}" Width="40" Height="4" MinHeight="4" MinWidth="40" VerticalAlignment="Center" />
-          </StackPanel>
+          <Button Classes="ghost" Command="{Binding VoiceIndicatorCommand}" IsVisible="{Binding VoiceOn}"
+                  ToolTip.Tip="{Binding VoiceToolTip}" AutomationProperties.Name="Voice">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Ellipse Classes="led" Classes.ok="{Binding VoiceOk}" VerticalAlignment="Center" />
+              <TextBlock Classes="label" Text="VOICE" VerticalAlignment="Center" />
+              <ProgressBar Minimum="0" Maximum="1" Value="{Binding VoiceLevel}" Width="40" Height="4" MinHeight="4" MinWidth="40" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
         </StackPanel>
 
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="2">

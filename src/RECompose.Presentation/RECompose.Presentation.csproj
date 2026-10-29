@@ -17,5 +17,6 @@
 
   <ItemGroup>
     <PackageReference Include="Anthropic" />
+    <PackageReference Include="Velopack" />
   </ItemGroup>
 </Project>

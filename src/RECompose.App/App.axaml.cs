@@ -53,7 +53,7 @@ public partial class App : Application
                 e.SetObserved();
             };
             var engine = EngineHostOptions.Default();
-            _viewModel = new MainViewModel(store, engine, new EngineTools(engine.ExecutablePath), new AvaloniaDispatcher(), dialogs);
+            _viewModel = new MainViewModel(store, engine, new EngineTools(engine.ExecutablePath), new AvaloniaDispatcher(), dialogs) { Updates = new AppUpdates() };
             window.DataContext = _viewModel;
             desktop.MainWindow = window;
             desktop.ShutdownRequested += (_, _) => Shutdown();
@@ -118,6 +118,7 @@ public partial class App : Application
         if (_viewModel is { } vm)
         {
             _viewModel = null;
+            vm.InstallUpdateOnQuit(); // the updater waits for this process to exit
             vm.Flush(); // on the UI thread: saves the mix
             Task.Run(vm.ShutdownEngineAsync).Wait(TimeSpan.FromSeconds(2));
         }

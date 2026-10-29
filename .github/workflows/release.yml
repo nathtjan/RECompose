@@ -1,0 +1,177 @@
+name: Release
+
+# Installers and updates (PLAT-70). Push a tag such as v0.2.0 to build, sign when the signing secrets are set, and
+# publish a GitHub release that the installed apps update from (Velopack). Secrets are described in docs/packaging.md.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+env:
+  DOTNET_NOLOGO: "1"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  VPK_VERSION: "1.2.161" # the Velopack package's version (Directory.Packages.props)
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - name: Windows
+            os: windows-latest
+            rid: win-x64
+            cmake-args: ""
+          - name: macOS Apple Silicon
+            os: macos-latest
+            rid: osx-arm64
+            cmake-args: '"-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64"'
+          - name: macOS Intel
+            os: macos-latest
+            rid: osx-x64
+            cmake-args: '"-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64"'
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - name: Version
+        shell: bash
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      - name: Build engine
+        shell: bash
+        run: |
+          cmake -S engine -B build/engine -DCMAKE_BUILD_TYPE=Release ${{ matrix.cmake-args }}
+          cmake --build build/engine --config Release --parallel
+          ctest --test-dir build/engine -C Release --output-on-failure
+          cmake --install build/engine --config Release --component engine --prefix artifacts/native
+
+      - name: Cache speech model
+        uses: actions/cache@v4
+        with:
+          path: models
+          key: speech-model-ggml-base.en-137c40403d78fd54d454da0f9bd998f78703390c
+
+      - name: Speech model
+        shell: bash
+        run: |
+          PY=$(command -v python3 || command -v python)
+          mkdir -p models
+          if [ ! -f models/ggml-base.en.bin ]; then
+            curl -L --fail --retry 3 -o models/ggml-base.en.bin https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin
+          fi
+          "$PY" -c "import hashlib,sys; h=hashlib.sha1(open('models/ggml-base.en.bin','rb').read()).hexdigest(); print(h); sys.exit(h!='137c40403d78fd54d454da0f9bd998f78703390c')"
+
+      - name: Publish app
+        shell: bash
+        run: |
+          dotnet publish src/RECompose.App/RECompose.App.csproj -c Release -r ${{ matrix.rid }} --self-contained -p:Version=$VERSION -o publish
+          mkdir -p publish/models && cp models/ggml-base.en.bin publish/models/
+          test -f publish/recompose-engine || test -f publish/recompose-engine.exe
+
+      - name: Install vpk
+        run: dotnet tool install -g vpk --version ${{ env.VPK_VERSION }}
+
+      - name: Pack (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        env:
+          CERT: ${{ secrets.WINDOWS_CERTIFICATE_PFX }}
+          CERT_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          SIGN=()
+          if [ -n "$CERT" ]; then
+            echo "$CERT" | base64 -d > "$RUNNER_TEMP/cert.pfx"
+            SIGN=(--signParams "/f \"$RUNNER_TEMP/cert.pfx\" /p \"$CERT_PASSWORD\" /fd sha256 /tr http://timestamp.digicert.com /td sha256")
+          else
+            echo "::warning::WINDOWS_CERTIFICATE_PFX is not set: the installer is not signed"
+          fi
+          vpk pack -u RECompose -v "$VERSION" -r ${{ matrix.rid }} -c ${{ matrix.rid }} -p publish -e RECompose.exe \
+            --packTitle RECompose --packAuthors nathtjan -o releases "${SIGN[@]}"
+
+      - name: Pack (macOS)
+        if: runner.os == 'macOS'
+        env:
+          CERT: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          CERT_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          APP_IDENTITY: ${{ secrets.MACOS_APP_IDENTITY }}
+          INSTALL_IDENTITY: ${{ secrets.MACOS_INSTALL_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          mkdir -p build
+          sed "s/VERSION/$VERSION/g" packaging/macos/Info.plist > build/Info.plist
+
+          SIGN=()
+          if [ -n "$CERT" ]; then
+            KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
+            security create-keychain -p ci "$KEYCHAIN"
+            security set-keychain-settings -lut 21600 "$KEYCHAIN"
+            security unlock-keychain -p ci "$KEYCHAIN"
+            echo "$CERT" | base64 -D > "$RUNNER_TEMP/cert.p12"
+            security import "$RUNNER_TEMP/cert.p12" -P "$CERT_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN"
+            security set-key-partition-list -S apple-tool:,apple: -k ci "$KEYCHAIN" > /dev/null
+            security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+            xcrun notarytool store-credentials recompose --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --keychain "$KEYCHAIN"
+            SIGN=(--signAppIdentity "$APP_IDENTITY" --signInstallIdentity "$INSTALL_IDENTITY" --notaryProfile recompose --keychain "$KEYCHAIN")
+          else
+            echo "::warning::MACOS_CERTIFICATE_P12 is not set: the app is not signed or notarized"
+          fi
+
+          vpk pack -u RECompose -v "$VERSION" -r ${{ matrix.rid }} -c ${{ matrix.rid }} -p publish -e RECompose \
+            --packTitle RECompose --packAuthors nathtjan --bundleId io.github.nathtjan.recompose --plist build/Info.plist \
+            --signEntitlements packaging/macos/RECompose.entitlements -o releases "${SIGN[@]}"
+
+          # The DMG holds the same (signed, stapled) app as the portable zip, so it updates itself too.
+          mkdir -p build/dmg
+          ditto -x -k releases/*-Portable.zip build/dmg
+          ln -s /Applications build/dmg/Applications
+          DMG=releases/RECompose-${{ matrix.rid }}.dmg
+          hdiutil create -volname RECompose -srcfolder build/dmg -ov -format UDZO "$DMG"
+          if [ -n "$CERT" ]; then
+            codesign --sign "$APP_IDENTITY" --keychain "$KEYCHAIN" --timestamp "$DMG"
+            xcrun notarytool submit "$DMG" --keychain-profile recompose --keychain "$KEYCHAIN" --wait
+            xcrun stapler staple "$DMG"
+          fi
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: releases-${{ matrix.rid }}
+          path: releases
+          retention-days: 14
+
+  publish:
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: releases-*
+          path: releases
+          merge-multiple: true
+
+      - name: Upload the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          dotnet tool install -g vpk --version ${{ env.VPK_VERSION }}
+          for channel in win-x64 osx-arm64 osx-x64; do
+            vpk upload github -o releases -c $channel --repoUrl "https://github.com/${{ github.repository }}" --token "$GH_TOKEN" \
+              --tag "$GITHUB_REF_NAME" --releaseName "RECompose $VERSION" --publish --merge
+          done
+          gh release upload "$GITHUB_REF_NAME" releases/*.dmg --repo "${{ github.repository }}"

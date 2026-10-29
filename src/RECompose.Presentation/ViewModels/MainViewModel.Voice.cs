@@ -4,6 +4,7 @@ using RECompose.Core.Planning;
 using RECompose.Core.Sections;
 using RECompose.Core.Voice;
 using RECompose.Engine;
+using RECompose.Presentation.Mvvm;
 using RECompose.Presentation.Services;
 
 namespace RECompose.Presentation.ViewModels;
@@ -47,14 +48,41 @@ public sealed partial class MainViewModel
     /// <summary>VC-5: Off, Listening, Hearing…, PTT or Error.</summary>
     public string VoiceIndicator =>
         _settings.Audio.VoiceChannel < 0 ? "Off"
-        : _voiceError is not null || _voiceState is { On: false } ? "Error"
+        : _micDenied || _voiceError is not null || _voiceState is { On: false } ? "Error"
         : _voiceState?.Hearing == true ? "Hearing…"
         : _settings.Audio.VoicePushToTalk && !_talkHeld ? "PTT"
         : "Listening";
 
     public bool VoiceOn => _settings.Audio.VoiceChannel >= 0;
     public bool VoiceOk => VoiceIndicator is "Listening" or "Hearing…" or "PTT";
-    public string VoiceToolTip => _voiceError ?? "Voice control";
+    public string VoiceToolTip => _micDenied ? $"{MicrophoneAccess.Problem} Click to open it." : _voiceError ?? "Voice control";
+
+    /// <summary>AT-61: with the microphone blocked, the Voice indicator opens the system's privacy page; otherwise Settings › Audio.</summary>
+    public RelayCommand VoiceIndicatorCommand => _voiceIndicator ??= new RelayCommand(() =>
+    {
+        if (_micDenied)
+            MicrophoneAccess.OpenSettings();
+        else
+            OpenSettingsCommand.Execute(null);
+    });
+
+    private RelayCommand? _voiceIndicator;
+    private bool _micDenied;
+    private long _micCheckedAt;
+
+    /// <summary>Reads the microphone permission at most every 2 s, so turning it on in the system settings is picked up.</summary>
+    private void CheckMicrophone(bool now = false)
+    {
+        if (!now && Environment.TickCount64 - _micCheckedAt < 2000)
+            return;
+        _micCheckedAt = Environment.TickCount64;
+        var denied = _settings.Audio.VoiceChannel >= 0 && MicrophoneAccess.Denied();
+        if (denied == _micDenied)
+            return;
+        _micDenied = denied;
+        AppLog.Write("Voice", denied ? "Microphone access is off in the system settings" : "Microphone access is on");
+        RefreshVoice();
+    }
 
     /// <summary>The mic's level, 0 to 1 (−60 to 0 dBFS), for the indicator's meter.</summary>
     public double VoiceLevel => Math.Clamp(((_voiceState?.LevelDb ?? -100) + 60) / 60, 0, 1);
@@ -88,11 +116,13 @@ public sealed partial class MainViewModel
             AppLog.Error("Voice", ex);
         }
 
+        CheckMicrophone(now: true);
         RefreshVoice();
     }
 
     private void ApplyVoice(VoiceState? state)
     {
+        CheckMicrophone();
         if (state == _voiceState)
             return;
         _voiceState = state;

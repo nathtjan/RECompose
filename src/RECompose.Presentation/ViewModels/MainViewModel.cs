@@ -428,6 +428,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         await ConnectEngineAsync(afterCrash: false);
         await OfferResumeAsync();
         After(TimeSpan.FromSeconds(2), () => QueueRenders(_service)); // after start-up, not during it
+        After(TimeSpan.FromSeconds(30), () => _ = CheckUpdatesAsync());
     }
 
     private async Task ConnectEngineAsync(bool afterCrash)

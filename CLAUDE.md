@@ -16,7 +16,7 @@ Read `README.md` for the layout and build commands, `docs/adr/` for decisions, a
 
 ## Where things stand
 
-Milestones 0–9 are on `main`; the next one is M10 (packaging). Start from `docs/milestones/M9-assistant.md` (status, known gaps) and the handoff doc in the Claude project.
+Milestones 0–10 are on `main`, the last of the build order; what is left is the known gaps in each milestone doc and the product owner's feedback. Start from `docs/milestones/M10-packaging.md` (status, known gaps) and the handoff doc in the Claude project.
 
 - Two clocks: *plan time* is the engine position and the as-heard timeline; *source time* is stems, sections, M and review. Convert only through `SongPlan` (`SourceAt`, `PlanAt`, `Remap`).
 - `MainViewModel` owns the playhead (`PlanPositionSec`, `PositionSec`, `TimelinePosition`); never mix them.
@@ -26,6 +26,7 @@ Milestones 0–9 are on `main`; the next one is M10 (packaging). Start from `doc
 - Voice (M7): the engine captures the voice input channel, finds utterances on its own thread and sends `utterance` events (protocol 12); recognition runs in a `recompose-engine listen <model>` worker (`VoiceWorker`), never in the engine. Understanding is Core (`RECompose.Core.Voice`: `VoiceGrammar`, `VoiceResolver`, `VoiceGate`, `VoiceSafeguards`, `VoiceLines`); `MainViewModel.Voice.cs` turns a transcript into the same `LiveAsync` actions with `ActionSource.Voice` (tests call `HearAsync` with a transcript). MD confirmations are TTS clips (`SpeechClips`, `cache/tts`) played with `playClip`.
 - Automation (M8): `AutomationPlan.Build` (Core) turns a plan into MIDI (section notes, cues), spoken calls (spoken guide, guide-call replacements, counts) and guide silences; `MainViewModel.Automation.cs` sends them with every `setPlan` (protocol 13: `midi`, `calls`, the `generated-speech` track) and logs the `midiOut` events by id. Every `AppLog` line is a `LogEntry` with a chip for the LOG tab (`MainViewModel.Log.cs`); the service report is `ServiceReport` (Core). `AppLog.Added` is static: a handler must not wait for its own dispatcher on the logging thread.
 - Assistant (M9): the tools are Core (`RECompose.Core.Assistant`: `AssistantCommands.Run` returns data or an `AssistantChange` built with the existing edits, never applies anything); `AssistantViewModel` runs the tool loop with the official `Anthropic` SDK (`AssistantClient`) and applies changes through `MainViewModel.ApplyAssistantChange` → `Commit`, one `UndoStack.Group` per message. Keep the request history append-only: the system prompt (`AssistantPrompt.System`) never changes in a conversation, the state goes with each message. The key is in the OS credential store (`OsSecretStore`); tests use `MemorySecretStore` and a fake `HttpMessageHandler`.
+- Packaging (M10): Velopack on both platforms (`Program.Main` runs its hooks with auto-apply off; `AppUpdates` downloads from GitHub releases and installs on quit, never in Perform or while playing). `.github/workflows/release.yml` packs on a `v*` tag and signs when the secrets in `docs/packaging.md` are set; `packaging/macos/` has the Info.plist and entitlements. Microphone permission is `MicrophoneAccess`; the menu is `MainWindow.Menu.cs`.
 
 ## Commands
 

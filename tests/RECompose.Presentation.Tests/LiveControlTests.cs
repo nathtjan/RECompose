@@ -553,6 +553,29 @@ public sealed class LiveControlTests : IDisposable
     }
 
     [Fact]
+    public async Task AT61_with_the_microphone_blocked_the_voice_indicator_is_an_error_that_names_the_system_setting()
+    {
+        var (vm, _) = await StartAsync();
+        try
+        {
+            MicrophoneAccess.Override = () => true;
+            vm.UpdateSettings(s => s with { Audio = s.Audio with { VoiceChannel = 0 } });
+            await PlayingAsync(vm);
+            await Eventually(() => vm.VoiceToolTip.StartsWith(MicrophoneAccess.Problem, StringComparison.Ordinal));
+            Assert.Equal("Error", vm.VoiceIndicator);
+            Assert.False(vm.VoiceOk);
+
+            MicrophoneAccess.Override = () => false;
+            await Eventually(() => !vm.VoiceToolTip.StartsWith(MicrophoneAccess.Problem, StringComparison.Ordinal));
+        }
+        finally
+        {
+            MicrophoneAccess.Override = null;
+            await FinishAsync(vm);
+        }
+    }
+
+    [Fact]
     public async Task VC70_a_voice_jump_shows_on_the_next_card_with_what_was_heard_and_never_mind_vamps_instead()
     {
         var (vm, _) = await StartAsync();
