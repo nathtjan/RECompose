@@ -59,7 +59,7 @@ public sealed class ControlsViewModel : ObservableObject
         _main = main;
         _bindings = [.. main.Settings.Bindings ?? ControlDefaults.PageTurner];
         _router = new ControlRouter(_bindings);
-        Rows = [.. Enum.GetValues<ControlAction>().Where(a => a != ControlAction.PlayPause).Select(a => new ControlRow(a, this))];
+        Rows = [.. Enum.GetValues<ControlAction>().Where(a => a is not (ControlAction.PlayPause or ControlAction.TalkEnd)).Select(a => new ControlRow(a, this))];
         RestoreDefaultsCommand = new RelayCommand(RestoreDefaults);
         Refresh();
     }

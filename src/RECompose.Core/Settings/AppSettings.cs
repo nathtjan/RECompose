@@ -29,6 +29,27 @@ public sealed record AudioSettings
     public int CueChannel { get; init; }
     public int CueWidth { get; init; } = 2;
 
+    /// <summary>
+    /// The talkback mic (VC-1): a 0-based channel of the device's input, or −1 for voice off (the mic is opened only once
+    /// one is chosen). <see cref="VoiceDevice"/> is another input device where the driver allows it.
+    /// </summary>
+    public int VoiceChannel { get; init; } = -1;
+    public string? VoiceDevice { get; init; }
+
+    /// <summary>Push-to-talk instead of always listening (VC-1, the Talk control).</summary>
+    public bool VoicePushToTalk { get; init; }
+
+    /// <summary>Ask before acting (VC-46).</summary>
+    public bool VoiceConfirm { get; init; }
+
+    /// <summary>Ignore speech while the guide is talking (VC-40).</summary>
+    public bool VoiceGate { get; init; } = true;
+
+    /// <summary>A section name alone means go there (VC-1).</summary>
+    public bool VoiceBareNames { get; init; } = true;
+
+    public double VoiceMinConfidence { get; init; } = 0.6;
+
     /// <summary>The Pad output (PB-85); null plays pads on Main, the default.</summary>
     public int? PadChannel { get; init; }
     public int? PadWidth { get; init; }

@@ -63,7 +63,9 @@ public sealed partial class MainViewModel
 
     public IReadOnlyList<StripTile> Strip => _perform?.Strip ?? [];
     public NextState NextState => _perform?.Next.State ?? NextState.Planned;
-    public string NextDetail => _perform?.Next.Detail ?? string.Empty;
+    /// <summary>The NEXT card's detail; a voice action adds what was heard (VC-70).</summary>
+    public string NextDetail => (_perform?.Next.Detail ?? string.Empty)
+        + (IsPending && _live?.Pending?.Action.Source == ActionSource.Voice && VoiceHeard.Length > 0 ? $" · {VoiceHeard}" : string.Empty);
     public bool IsPending => _perform?.Next.State == NextState.Pending;
     public double? PendingAtSec => _perform?.PendingAtSec;
     public bool CanCancel => _live?.Pending is not null;

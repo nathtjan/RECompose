@@ -32,12 +32,15 @@ public static class AppLog
 
     public static string? Folder => _folder;
 
-    public static void Write(string category, string message)
+    public static void Write(string category, string message) => Line($"{category}: {message}");
+
+    /// <summary>A line that names its own kind, as the voice lines do ("Voice ignored: …", VC-60).</summary>
+    public static void Line(string text)
     {
         if (_folder is null)
             return;
         var now = DateTime.Now;
-        var line = $"{now.ToString("HH:mm:ss", CultureInfo.InvariantCulture)}  {category}: {message}{Environment.NewLine}";
+        var line = $"{now.ToString("HH:mm:ss", CultureInfo.InvariantCulture)}  {text}{Environment.NewLine}";
         try
         {
             lock (Gate)

@@ -54,7 +54,18 @@ public sealed partial class MainViewModel
 
     internal async Task RunControlAsync(ControlAction action, ActionSource source)
     {
+        if (action is ControlAction.Talk or ControlAction.TalkEnd)
+        {
+            Talk(action == ControlAction.Talk);
+            return;
+        }
+
         AppLog.Write("Controls", $"{PerformReadouts.SourceTag(source)}: {ControlDefaults.Name(action)}");
+
+        // VC-46: GO or any pedal confirms what voice proposed.
+        if ((action == ControlAction.Go || source == ActionSource.Pedal) && await ConfirmVoiceAsync())
+            return;
+
         switch (action)
         {
             case ControlAction.Go:

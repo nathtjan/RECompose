@@ -62,7 +62,60 @@ public sealed class AudioSettingsViewModel : ObservableObject
         }
 
         _autoSwitchBack = settings.AutoSwitchBack;
+
+        VoiceInputs = [VoiceOff, .. (current?.InputChannels ?? []).Select((name, i) => VoiceLabel(i, name))];
+        _voiceInput = settings.VoiceChannel >= 0 && settings.VoiceChannel + 1 < VoiceInputs.Count ? VoiceInputs[settings.VoiceChannel + 1]
+            : settings.VoiceChannel >= 0 ? VoiceLabel(settings.VoiceChannel, null)
+            : VoiceOff;
+        if (!VoiceInputs.Contains(_voiceInput))
+            VoiceInputs = [.. VoiceInputs, _voiceInput]; // not on this device now: still the choice
+        _voiceChannels = VoiceInputs.Skip(1).Select((label, i) => (label, i)).ToDictionary(x => x.label, x => x.label == _voiceInput ? settings.VoiceChannel : x.i);
+        VoicePushToTalk = settings.VoicePushToTalk;
+        VoiceConfirm = settings.VoiceConfirm;
+        VoiceGate = settings.VoiceGate;
+        VoiceBareNames = settings.VoiceBareNames;
     }
+
+    // ---- Voice (VC-1) ---------------------------------------------------------------------------
+
+    public const string VoiceOff = "Off";
+
+    private static string VoiceLabel(int channel, string? name) =>
+        $"Input {(channel + 1).ToString(CultureInfo.InvariantCulture)}{(string.IsNullOrWhiteSpace(name) ? string.Empty : $" · {name.Trim()}")}";
+
+    private readonly Dictionary<string, int> _voiceChannels;
+    private string _voiceInput;
+    private string _voiceHeard = "Say \"let's go to the bridge\" to try it.";
+    private string _voiceWouldDo = string.Empty;
+    private double _voiceLevel;
+
+    /// <summary>"Off", then the open device's inputs ("Input 1 · Mic 1").</summary>
+    public IReadOnlyList<string> VoiceInputs { get; }
+
+    public string VoiceInput { get => _voiceInput; set => Set(ref _voiceInput, value ?? VoiceOff); }
+
+    public int VoiceChannel => _voiceChannels.TryGetValue(VoiceInput, out var channel) ? channel : -1;
+
+    public bool VoicePushToTalk { get; set; }
+    public bool VoiceConfirm { get; set; }
+    public bool VoiceGate { get; set; }
+    public bool VoiceBareNames { get; set; }
+
+    /// <summary>Test panel: the last transcript and what it would have done, without touching playback.</summary>
+    public string VoiceHeard { get => _voiceHeard; private set => Set(ref _voiceHeard, value); }
+
+    public string VoiceWouldDo { get => _voiceWouldDo; private set => Set(ref _voiceWouldDo, value); }
+
+    /// <summary>The mic's level, 0 to 1.</summary>
+    public double VoiceLevel { get => _voiceLevel; private set => Set(ref _voiceLevel, value); }
+
+    internal void ShowHeard(string heard, string wouldDo)
+    {
+        VoiceHeard = heard;
+        VoiceWouldDo = wouldDo;
+    }
+
+    internal void ShowLevel(double level) => VoiceLevel = level;
 
     private static string FallbackLabel(string type, string device) => type.Length > 0 ? $"{device} ({type})" : device;
 
@@ -145,6 +198,11 @@ public sealed class AudioSettingsViewModel : ObservableObject
             FallbackDeviceType = _fallbacks.TryGetValue(SelectedFallback, out var f) && f.Type.Length > 0 ? f.Type : null,
             FallbackDeviceName = _fallbacks.TryGetValue(SelectedFallback, out var g) ? g.Name : null,
             AutoSwitchBack = AutoSwitchBack,
+            VoiceChannel = VoiceChannel,
+            VoicePushToTalk = VoicePushToTalk,
+            VoiceConfirm = VoiceConfirm,
+            VoiceGate = VoiceGate,
+            VoiceBareNames = VoiceBareNames,
         };
     }
 

@@ -29,6 +29,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private readonly DataStore _store;
     private readonly EngineHostOptions _engineOptions;
     private readonly ImportService _import;
+    private readonly string _enginePath;
     private readonly AnalysisService _analysis;
     private readonly IUiDispatcher _ui;
     private readonly IDialogs _dialogs;
@@ -69,6 +70,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         _store = store;
         _engineOptions = engineOptions;
         _import = new ImportService(store, tools);
+        _enginePath = tools.ExecutablePath;
         _analysis = new AnalysisService(store, analysisTools ?? tools, speech ?? new SpeechModel(store.Root));
         Sections = new SectionsViewModel(this);
         Entry = new EntryViewModel(this);
@@ -450,6 +452,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         engine.DeviceChanged += d => _ui.Post(() => ShowDevice(d));
         engine.DeviceError += m => _ui.Post(() => Banner = $"The audio device reported a problem: {m}");
         HookDeviceEvents(engine);
+        HookVoice(engine);
         engine.FileMissing += (id, problem) => _ui.Post(() => MarkMissing(id, problem));
         engine.SongReloaded += song => _ui.Post(() => { if (_song is not null && _song.Id == song.SongId) _song.Loaded = song; });
         engine.SongChanged += id => _ui.Post(() => _ = OnSongChangedAsync(id));
@@ -470,6 +473,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             ShowDevice(device);
         ApplyRoute(snapshot);
         await SendFallbackAsync();
+        await SendVoiceInputAsync();
 
         try
         {
@@ -917,6 +921,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     {
         ShowEnginePad(s.PadKey); // pads sound whether or not a song is loaded (SL-40)
         ApplyRoute(s);
+        ApplyVoice(s.Voice);
         if (s.Xruns + s.Starved != _dropouts)
         {
             _dropouts = (int)(s.Xruns + s.Starved);
@@ -1247,7 +1252,18 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                 vm!.CacheText = RenderCacheText;
             }),
         };
-        if (!await _dialogs.EditAudioSettingsAsync(vm))
+        VoiceTest = vm; // while it is open, what the mic hears is only described (VC-1 test panel)
+        bool applied;
+        try
+        {
+            applied = await _dialogs.EditAudioSettingsAsync(vm);
+        }
+        finally
+        {
+            VoiceTest = null;
+        }
+
+        if (!applied)
             return;
         if (vm.CacheBudgetGb != _settings.RenderBudgetGb)
         {
@@ -1261,6 +1277,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         Banner = null;
         await OpenDeviceAsync();
         await SendFallbackAsync();
+        await SendVoiceInputAsync();
 
         // Re-route every track when Main or Cue moved (demo step 6).
         var a = _settings.Audio;
@@ -1317,6 +1334,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     {
         _shuttingDown = true;
         StopRenders();
+        await DisposeVoiceAsync();
         SystemPower.AllowSleep();
         try
         {

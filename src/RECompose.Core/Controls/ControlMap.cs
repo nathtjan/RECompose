@@ -24,6 +24,12 @@ public enum ControlAction
     Panic,
     RestartSection,
     LoopSection,
+
+    /// <summary>Push-to-talk (VC-1): voice listens while this is held.</summary>
+    Talk,
+
+    /// <summary>The Talk input was let go. Not bindable: the router sends it on release.</summary>
+    TalkEnd,
 }
 
 public enum ControlKind
@@ -125,6 +131,7 @@ public static class ControlDefaults
         ControlAction.Panic => "Panic",
         ControlAction.RestartSection => "Restart section",
         ControlAction.LoopSection => "Loop section",
+        ControlAction.Talk => "Push to talk",
         _ => action.ToString(),
     };
 }
@@ -179,6 +186,10 @@ public sealed class ControlRouter(IReadOnlyList<ControlBinding> bindings, double
                     actions.Add(binding.Action);
                 else
                     _held.Add(new Held { Binding = binding, Since = now });
+            }
+            else if (binding.Action == ControlAction.Talk)
+            {
+                actions.Add(ControlAction.TalkEnd);
             }
             else if (_held.FirstOrDefault(h => h.Binding == binding) is { } held)
             {

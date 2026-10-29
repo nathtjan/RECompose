@@ -88,4 +88,13 @@ public class ControlMapTests
         for (var t = 0.5; t < 3; t += 0.03)
             Assert.Empty(router.Key("F6", true, t).Where(a => a == ControlAction.Go)); // never the short action while held
     }
+
+    [Fact]
+    public void VC1_the_talk_control_says_when_it_goes_down_and_when_it_is_let_go()
+    {
+        var router = new ControlRouter([new ControlBinding(ControlAction.Talk, ControlInput.FromKey("T"))]);
+        Assert.Equal([ControlAction.Talk], router.Key("T", true, 0));
+        Assert.Empty(router.Key("T", true, 0.1)); // auto-repeat while held
+        Assert.Equal([ControlAction.TalkEnd], router.Key("T", false, 2));
+    }
 }

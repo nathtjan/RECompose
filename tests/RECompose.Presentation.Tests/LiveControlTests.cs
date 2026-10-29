@@ -43,7 +43,7 @@ public sealed class LiveControlTests : IDisposable
             w.Write((short)(Level(i / (double)rate) * 32767));
     }
 
-    private async Task<(MainViewModel Vm, Song Song)> StartAsync(string? arrangementOrder = null)
+    private async Task<(MainViewModel Vm, Song Song)> StartAsync(string? arrangementOrder = null, Func<Song, Song>? change = null)
     {
         Environment.SetEnvironmentVariable("RECOMPOSE_NO_DEVICE", "1"); // time passes only when the test renders
         var executable = Path.Combine(AppContext.BaseDirectory, EnginePaths.ExecutableFileName);
@@ -82,6 +82,7 @@ public sealed class LiveControlTests : IDisposable
             song = song with { Arrangements = [new Arrangement { Id = "arr", Name = "Arr", Entries = [.. parsed.Entries] }] };
         }
 
+        song = change?.Invoke(song) ?? song;
         var store = new DataStore(Path.Combine(_root, "data"));
         store.SaveSong(song);
         store.SaveLibrary(new LibraryIndex { Songs = [SongSummary.From(song)] });
@@ -535,6 +536,104 @@ public sealed class LiveControlTests : IDisposable
             vm.ResumeAfterPanicCommand.Execute(null);
             await Eventually(() => vm.State == RECompose.Engine.TransportState.Playing);
             Assert.False(vm.HasPanicResume);
+        }
+        finally
+        {
+            await FinishAsync(vm);
+        }
+    }
+
+    // ---- Voice (VC-2, VC-40, VC-45, VC-46, VC-55, VC-70) with transcripts as the recogniser would give them ----------
+
+    private static async Task PlayingAsync(MainViewModel vm)
+    {
+        await vm.EngineForTests!.PlayAsync();
+        await RenderAsync(vm, 1);
+        await Eventually(() => vm.State == RECompose.Engine.TransportState.Playing);
+    }
+
+    [Fact]
+    public async Task VC70_a_voice_jump_shows_on_the_next_card_with_what_was_heard_and_never_mind_vamps_instead()
+    {
+        var (vm, _) = await StartAsync();
+        try
+        {
+            await vm.HearAsync("let's go to verse two", 0.9, 0.2, 0.9); // stopped: ignored (VC-2)
+            Assert.False(vm.IsPending);
+
+            await PlayingAsync(vm);
+            await vm.HearAsync("Let's go to verse two", 0.9, 0.2, 0.9);
+            Assert.True(vm.IsPending);
+            Assert.Equal("NEXT · VOICE · PENDING", vm.Perform!.Next.Tag);
+            Assert.Equal("VERSE 2", vm.Perform.Next.Label);
+            Assert.Contains("heard \"let s go to verse two\"", vm.NextDetail);
+            Assert.Equal("Verse 2 next", vm.VoiceCaption);
+
+            await vm.HearAsync("Never mind, let's stay in this section", 0.9, 0.5, 1.2);
+            Assert.Equal("Vamping Verse 1", vm.VoiceCaption);
+            Assert.True(vm.IsPending);
+            Assert.DoesNotContain(vm.Strip, t => t.Label == "Verse 2" && t.State == TileState.Target);
+
+            await vm.HearAsync("bridge", 0.9, 0.5, 1.2); // no such section
+            Assert.Equal("didn't catch a section", vm.VoiceCaption);
+        }
+        finally
+        {
+            await FinishAsync(vm);
+        }
+    }
+
+    [Fact]
+    public async Task VC40_the_guide_saying_chorus_is_ignored_and_another_section_is_not()
+    {
+        var (vm, _) = await StartAsync(change: s => s with
+        {
+            GuideAnalysis = new GuideAnalysis { TrackId = "music", Words = [new GuideWord("Chorus", 1.0, 1.4, 0.9)] },
+        });
+        try
+        {
+            await PlayingAsync(vm);
+            await vm.HearAsync("chorus", 0.9, 1.2, 1.8);
+            Assert.Equal("ignored — guide talking", vm.VoiceCaption);
+            Assert.False(vm.IsPending);
+
+            await vm.HearAsync("verse two", 0.9, 1.2, 1.8);
+            Assert.True(vm.IsPending);
+            Assert.Equal("VERSE 2", vm.Perform!.Next.Label);
+        }
+        finally
+        {
+            await FinishAsync(vm);
+        }
+    }
+
+    [Fact]
+    public async Task VC46_confirm_mode_proposes_and_yes_or_go_confirms_and_low_confidence_is_ignored()
+    {
+        var (vm, _) = await StartAsync();
+        try
+        {
+            vm.UpdateSettings(s => s with { Audio = s.Audio with { VoiceConfirm = true } });
+            await PlayingAsync(vm);
+
+            await vm.HearAsync("verse two", 0.3, 0.2, 0.8);
+            Assert.Equal("low confidence", vm.VoiceCaption);
+
+            await vm.HearAsync("verse two", 0.9, 0.2, 0.8);
+            Assert.True(vm.IsProposing);
+            Assert.Equal("VOICE? Verse 2 next · say \"yes\" or press GO", vm.ProposalText);
+            Assert.False(vm.IsPending);
+
+            await vm.HearAsync("yes", 0.9, 1.0, 1.3);
+            Assert.False(vm.IsProposing);
+            Assert.True(vm.IsPending);
+
+            await vm.CancelLiveAsync();
+            await vm.HearAsync("skip next", 0.9, 1.5, 2.0); // Chorus is next: Verse 2 after it
+            Assert.True(vm.IsProposing);
+            await vm.RunControlAsync(ControlAction.Go, ActionSource.Pedal);
+            Assert.True(vm.IsPending);
+            Assert.Equal("VERSE 2", vm.Perform!.Next.Label);
         }
         finally
         {
