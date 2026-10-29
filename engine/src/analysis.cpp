@@ -522,8 +522,102 @@ int transcribe (int argc, char* argv[])
     print (answer);
     return 0;
 }
+
+// The voice worker (VC-10): the model stays loaded; each stdin line {id, prompt, samples} (16 kHz 16-bit PCM in base64)
+// gets one stdout line {id, text, confidence}. It exits when stdin closes.
+int listen (int argc, char* argv[])
+{
+    const char* model = argv[2];
+    int threads = std::clamp (static_cast<int> (std::thread::hardware_concurrency()) / 2, 1, 4);
+    for (int i = 3; i + 1 < argc; i += 2)
+        if (std::strcmp (argv[i], "--threads") == 0)
+            threads = std::max (1, std::atoi (argv[i + 1]));
+
+    if (! juce::File (juce::String::fromUTF8 (model)).existsAsFile())
+        return fail ("The speech model is missing", 3);
+    whisper_log_set (quietLog, nullptr);
+    auto contextParams = whisper_context_default_params();
+    contextParams.use_gpu = false;
+    std::unique_ptr<whisper_context, void (*) (whisper_context*)> context (
+        whisper_init_from_file_with_params (model, contextParams), whisper_free);
+    if (context == nullptr)
+        return fail ("The speech model could not be loaded", 3);
+    const whisper_token eot = whisper_token_eot (context.get());
+    {
+        auto* ready = new juce::DynamicObject();
+        juce::var answer (ready);
+        ready->setProperty ("ok", true);
+        print (answer);
+        std::fflush (stdout);
+    }
+
+    std::string line;
+    int c;
+    while (true)
+    {
+        line.clear();
+        while ((c = std::getchar()) != EOF && c != '\n')
+            line.push_back (static_cast<char> (c));
+        if (c == EOF && line.empty())
+            return 0;
+
+        const auto request = juce::JSON::parse (juce::String::fromUTF8 (line.data(), static_cast<int> (line.size())));
+        juce::MemoryOutputStream decoded;
+        juce::Base64::convertFromBase64 (decoded, request.getProperty ("samples", {}).toString());
+        std::vector<float> samples (decoded.getDataSize() / 2);
+        const auto* pcm = static_cast<const char*> (decoded.getData());
+        for (std::size_t i = 0; i < samples.size(); ++i)
+            samples[i] = static_cast<float> (static_cast<juce::int16> (juce::ByteOrder::littleEndianShort (pcm + 2 * i))) / 32768.0f;
+        samples.resize (std::max<std::size_t> (samples.size() + 4800, 17600), 0.0f); // whisper wants over a second
+
+        const auto prompt = request.getProperty ("prompt", {}).toString().toStdString();
+        auto params = whisper_full_default_params (WHISPER_SAMPLING_GREEDY);
+        params.n_threads = threads;
+        params.language = "en";
+        params.no_context = true;
+        params.single_segment = true;
+        params.print_progress = params.print_realtime = params.print_special = params.print_timestamps = false;
+        params.suppress_blank = true;
+        params.suppress_nst = true;
+        params.temperature = 0.0f;
+        params.initial_prompt = prompt.empty() ? nullptr : prompt.c_str();
+
+        std::string text;
+        double p = 0;
+        int tokens = 0;
+        if (whisper_full (context.get(), params, samples.data(), static_cast<int> (samples.size())) == 0)
+        {
+            for (int s = 0; s < whisper_full_n_segments (context.get()); ++s)
+            {
+                text += whisper_full_get_segment_text (context.get(), s);
+                for (int t = 0; t < whisper_full_n_tokens (context.get(), s); ++t)
+                {
+                    const auto data = whisper_full_get_token_data (context.get(), s, t);
+                    if (data.id < eot)
+                    {
+                        p += data.p;
+                        ++tokens;
+                    }
+                }
+            }
+        }
+        const auto heard = trim (text);
+        auto* o = new juce::DynamicObject();
+        juce::var answer (o);
+        o->setProperty ("id", request.getProperty ("id", 0));
+        o->setProperty ("text", heard.empty() || heard[0] == '[' || heard[0] == '(' ? juce::String() : juce::String::fromUTF8 (heard.c_str()));
+        o->setProperty ("confidence", tokens > 0 ? p / tokens : 0.0);
+        print (answer);
+        std::fflush (stdout);
+    }
+}
 #else
 int transcribe (int, char*[])
+{
+    return fail ("This engine was built without speech recognition", 3);
+}
+
+int listen (int, char*[])
 {
     return fail ("This engine was built without speech recognition", 3);
 }

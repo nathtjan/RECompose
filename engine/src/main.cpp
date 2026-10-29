@@ -62,6 +62,7 @@ void printUsage()
                   "       recompose-engine onsets <file>\n"
                   "       recompose-engine render <in> <out> --semitones N --tempo T\n"
                   "       recompose-engine transcribe <file> <model> [--prompt <text>] [--threads N]\n"
+                  "       recompose-engine listen <model> [--threads N]\n"
                   "       recompose-engine --version\n");
 }
 } // namespace
@@ -123,6 +124,9 @@ int main (int argc, char* argv[])
 
     if (argc >= 2 && std::strcmp (argv[1], "transcribe") == 0)
         return rec::analysis::transcribe (argc, argv);
+
+    if (argc >= 3 && std::strcmp (argv[1], "listen") == 0)
+        return rec::analysis::listen (argc, argv);
 
     rec::EngineServer::Options options;
 

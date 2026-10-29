@@ -11,6 +11,7 @@
 #include "audio/silent_clock.h"
 #include "audio/song.h"
 #include "audio/transition.h"
+#include "audio/voice_input.h"
 
 #include <juce_audio_devices/juce_audio_devices.h>
 #include <juce_audio_formats/juce_audio_formats.h>
@@ -137,6 +138,8 @@ private:
     juce::var setFallbackDevice (const juce::var& message);
     juce::var switchToMain();
     juce::var injectDeviceLoss (const juce::var& message);
+    juce::var setVoiceInput (const juce::var& message);
+    juce::var injectVoice (const juce::var& message);
     juce::var loadSong (const juce::var& message, Slot& s);
     juce::var unloadSong (Slot& s);
     juce::var setTransition (const juce::var& message);
@@ -244,6 +247,14 @@ private:
 
     // It renders through the slots, the transitions and the pads above; ~Engine stops it before anything else.
     audio::SilentClock silent_ { [this] (float* const* outputs, int numOutputs, int numSamples) { processBlock (outputs, numOutputs, numSamples, false); } };
+
+    // The talkback mic (protocol 12, VC-10): a channel of the device's input, or −1.
+    int voiceChannel_ = -1;
+    juce::String voiceDevice_;
+    std::atomic<bool> voiceOn_ { false };
+    float voiceLevelDb_ = -100.0f;
+    audio::VoiceInput voice_ { [this] (std::vector<float>&& samples, double durationSec, double trailingSec) { pushUtterance (samples, durationSec, trailingSec); } };
+    void pushUtterance (const std::vector<float>& samples, double durationSec, double trailingSec);
 
     std::mutex outgoingMutex_;
     std::vector<std::string> outgoing_;

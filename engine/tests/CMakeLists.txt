@@ -9,6 +9,7 @@ add_executable(recompose_engine_tests
     test_live.cpp
     test_analysis.cpp
     test_silent_clock.cpp
+    test_voice.cpp
     test_render.cpp)
 
 target_link_libraries(recompose_engine_tests PRIVATE recompose_engine_core)

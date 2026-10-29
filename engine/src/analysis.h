@@ -16,6 +16,10 @@
 //       second of silence between them; times are in source seconds.
 //       Progress goes to stderr as lines "progress 0.42".
 //
+//   recompose-engine listen <model> [--threads N]
+//       The voice worker: prints {"ok":true} when the model is loaded, then answers each stdin line
+//       {"id":n,"prompt":"..","samples":"<16 kHz 16-bit PCM, base64>"} with {"id":n,"text":"..","confidence":p}.
+//
 // On failure both print {"ok":false,"problem":"..."} and exit with a non-zero code.
 #pragma once
 
@@ -44,4 +48,5 @@ std::vector<Span> findSpeech (const float* samples16k, int count, double joinGap
 
 int onsets (const char* file);
 int transcribe (int argc, char* argv[]);
+int listen (int argc, char* argv[]);
 } // namespace rec::analysis

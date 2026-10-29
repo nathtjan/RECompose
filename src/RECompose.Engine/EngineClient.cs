@@ -14,7 +14,8 @@ public sealed record DeviceInfo(
     IReadOnlyList<string> OutputChannels,
     IReadOnlyList<double> SampleRates,
     IReadOnlyList<int> BufferSizes,
-    int OutputLatency)
+    int OutputLatency,
+    IReadOnlyList<string>? InputChannels = null)
 {
     /// <summary>"Focusrite USB ASIO · 4 out · 48 kHz" (PLAT-10).</summary>
     public string StatusLabel
@@ -38,7 +39,8 @@ public sealed record DeviceInfo(
             Strings(o["outputChannels"]),
             (o["sampleRates"] as JsonArray)?.Select(n => (double?)n ?? 0).ToList() ?? [],
             (o["bufferSizes"] as JsonArray)?.Select(n => (int?)n ?? 0).ToList() ?? [],
-            (int?)o["outputLatency"] ?? 0)
+            (int?)o["outputLatency"] ?? 0,
+            Strings(o["inputChannels"]))
         : null;
 
     internal static List<string> Strings(JsonNode? node) =>
@@ -46,7 +48,7 @@ public sealed record DeviceInfo(
 }
 
 /// <summary>A driver type and its output devices.</summary>
-public sealed record DeviceTypeInfo(string Name, IReadOnlyList<string> Devices);
+public sealed record DeviceTypeInfo(string Name, IReadOnlyList<string> Devices, IReadOnlyList<string>? Inputs = null);
 
 /// <summary>A track to load: file, device channels and mixer state.</summary>
 public sealed record EngineTrack(string Id, string File, int Channel, int Width, double GainDb, bool Mute, bool Solo, bool SoloSafe)
@@ -148,7 +150,8 @@ public sealed record EngineSnapshot(
     double HoldSec = 0,
     string Route = "none",
     double LostSec = 0,
-    bool MainBack = false)
+    bool MainBack = false,
+    VoiceState? Voice = null)
 {
     /// <summary>The frame being heard: the render position minus the output latency while playing (PB-4).</summary>
     public long HeardFrame => State == TransportState.Playing ? Math.Max(0, Frame - Latency) : Frame;
@@ -187,7 +190,8 @@ public sealed record EngineSnapshot(
             (double?)o["holdSec"] ?? 0,
             (string?)o["route"] ?? "none",
             (double?)o["lostSec"] ?? 0,
-            (bool?)o["mainBack"] ?? false);
+            (bool?)o["mainBack"] ?? false,
+            o["voice"] is JsonObject v ? new VoiceState((bool?)v["on"] ?? false, (float?)v["level"] ?? -100, (bool?)v["hearing"] ?? false) : null);
     }
 }
 
@@ -196,6 +200,12 @@ public sealed record EngineSnapshot(
 /// <paramref name="Fallback"/>) or "silent" (the clock keeps time with no sound).
 /// </summary>
 public sealed record DeviceLoss(string Name, string Route, string? Fallback, DeviceInfo? Device);
+
+/// <summary>The talkback mic (protocol 12, VC-5): open, its peak in dBFS, and whether speech is going on.</summary>
+public sealed record VoiceState(bool On, float LevelDb, bool Hearing);
+
+/// <summary>One utterance from the voice input (protocol 12): 16 kHz 16-bit PCM; the last <paramref name="TrailingSec"/> are silence.</summary>
+public sealed record Utterance(byte[] Pcm16, double DurationSec, double TrailingSec);
 
 /// <summary>
 /// Typed access to the engine protocol (docs/engine-protocol.md). Events are raised on a background
@@ -246,11 +256,34 @@ public sealed class EngineClient : IAsyncDisposable
     /// <summary>A MIDI message from a controller or foot pedal (protocol 9, LIVE-52). Raised on a background thread.</summary>
     public event Action<RECompose.Core.Controls.MidiMessage>? MidiReceived;
 
+    /// <summary>The voice input heard an utterance (protocol 12, VC-10).</summary>
+    public event Action<Utterance>? UtteranceReceived;
+
+    /// <summary>The voice input could not be opened; the outputs play on without it.</summary>
+    public event Action<string>? VoiceError;
+
+    /// <summary>
+    /// The talkback mic: <paramref name="channel"/> (0-based) of the playing device's input, or of <paramref name="device"/>
+    /// where the driver allows another input device; −1 switches it off. True when the input is open.
+    /// </summary>
+    public async Task<bool> SetVoiceInputAsync(int channel, string? device = null, CancellationToken ct = default)
+    {
+        var request = new JsonObject { ["channel"] = channel };
+        if (!string.IsNullOrEmpty(device))
+            request["device"] = device;
+        var reply = await Session.Connection.RequestAsync("setVoiceInput", request, ct).ConfigureAwait(false);
+        return (bool?)reply["on"] ?? false;
+    }
+
+    /// <summary>Tests: 16 kHz 16-bit PCM into the voice detector as if the mic had heard it.</summary>
+    public Task InjectVoiceAsync(byte[] pcm16, CancellationToken ct = default) =>
+        Session.Connection.RequestAsync("injectVoice", new JsonObject { ["samples"] = Convert.ToBase64String(pcm16) }, ct);
+
     public async Task<(IReadOnlyList<DeviceTypeInfo> Types, DeviceInfo? Current)> ListDevicesAsync(CancellationToken ct = default)
     {
         var reply = await Session.Connection.RequestAsync("listDevices", cancellationToken: ct).ConfigureAwait(false);
         var types = (reply["types"] as JsonArray ?? []).OfType<JsonObject>()
-            .Select(t => new DeviceTypeInfo((string?)t["name"] ?? string.Empty, DeviceInfo.Strings(t["devices"])))
+            .Select(t => new DeviceTypeInfo((string?)t["name"] ?? string.Empty, DeviceInfo.Strings(t["devices"]), DeviceInfo.Strings(t["inputs"])))
             .ToList();
         return (types, DeviceInfo.From(reply["current"]));
     }
@@ -575,6 +608,13 @@ public sealed class EngineClient : IAsyncDisposable
                 break;
             case "midiInputsChanged":
                 MidiInputsChanged?.Invoke(DeviceInfo.Strings(message["open"]), DeviceInfo.Strings(message["missing"]));
+                break;
+            case "utterance":
+                UtteranceReceived?.Invoke(new Utterance(Convert.FromBase64String((string?)message["samples"] ?? string.Empty),
+                    (double?)message["durationSec"] ?? 0, (double?)message["trailingSec"] ?? 0));
+                break;
+            case "voiceError":
+                VoiceError?.Invoke((string?)message["message"] ?? "The voice input could not be opened.");
                 break;
             case "fileMissing":
                 FileMissing?.Invoke((string?)message["trackId"] ?? string.Empty, (string?)message["problem"] ?? "File missing");

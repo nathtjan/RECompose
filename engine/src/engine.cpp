@@ -102,6 +102,8 @@ juce::var Engine::handle (const juce::String& type, const juce::var& message)
     if (type == "setFallbackDevice") return setFallbackDevice (message);
     if (type == "switchToMain") return switchToMain();
     if (type == "injectDeviceLoss") return injectDeviceLoss (message);
+    if (type == "setVoiceInput") return setVoiceInput (message);
+    if (type == "injectVoice")  return injectVoice (message);
     if (type == "loadSong")     return loadSong (message, slotFor (message));
     if (type == "unloadSong")   return unloadSong (slotFor (message));
     if (type == "setTransition") return setTransition (message);
@@ -271,6 +273,7 @@ juce::var Engine::deviceInfo()
         .set ("sampleRate", device->getCurrentSampleRate())
         .set ("bufferSize", device->getCurrentBufferSizeSamples())
         .set ("outputChannels", toArray (device->getOutputChannelNames()))
+        .set ("inputChannels", toArray (device->getInputChannelNames()))
         .set ("activeOutputs", device->getActiveOutputChannels().countNumberOfSetBits())
         .set ("sampleRates", rates)
         .set ("bufferSizes", sizes)
@@ -283,7 +286,7 @@ juce::var Engine::listDevices()
     for (auto* type : devices_.getAvailableDeviceTypes())
     {
         type->scanForDevices();
-        types.add (Obj().set ("name", type->getTypeName()).set ("devices", toArray (type->getDeviceNames (false))));
+        types.add (Obj().set ("name", type->getTypeName()).set ("devices", toArray (type->getDeviceNames (false))).set ("inputs", toArray (type->getDeviceNames (true))));
     }
 
     juce::Array<juce::var> midi;
@@ -438,7 +441,21 @@ juce::String Engine::openDevice (const DeviceChoice& choice)
     if (choice.bufferSize > 0)
         setup.bufferSize = choice.bufferSize;
 
-    const auto error = devices_.setAudioDeviceSetup (setup, true);
+    if (voiceChannel_ >= 0)
+    {
+        setup.inputDeviceName = voiceDevice_.isNotEmpty() ? voiceDevice_ : setup.outputDeviceName;
+        setup.inputChannels.setBit (voiceChannel_);
+    }
+
+    auto error = devices_.setAudioDeviceSetup (setup, true);
+    if (voiceChannel_ >= 0 && (error.isNotEmpty() || devices_.getCurrentAudioDevice() == nullptr))
+    {
+        // The music matters more than the mic: open the outputs alone and say why voice is off.
+        push (Obj().set ("type", "voiceError").set ("message", error.isNotEmpty() ? error : juce::String ("The voice input could not be opened.")));
+        setup.inputDeviceName = {};
+        setup.inputChannels.clear();
+        error = devices_.setAudioDeviceSetup (setup, true);
+    }
     seenCallbacks_ = callbacks_.load();
     seenCallbacksAtMs_ = juce::Time::getMillisecondCounter();
     if (error.isNotEmpty() || devices_.getCurrentAudioDevice() == nullptr)
@@ -604,6 +621,56 @@ juce::var Engine::switchToMain()
 
 // Tests: the engine sees the main or the fallback device as unplugged (present false) or back (true), the same paths a
 // real device takes. Without any device open (tests that render offline) a loss starts the silent clock.
+// Protocol 12 (VC-1, VC-10): the talkback mic is a channel of the input of the device the engine plays through (`device` names
+// another input device where the driver allows one, as WASAPI does). The device opens again with it.
+juce::var Engine::setVoiceInput (const juce::var& message)
+{
+    const int channel = static_cast<int> (number (message, "channel", -1.0));
+    const auto device = text (message, "device");
+    if (channel != voiceChannel_ || device != voiceDevice_)
+    {
+        voiceChannel_ = std::max (-1, channel);
+        voiceDevice_ = device;
+        voiceOn_.store (false);
+        if (route_ == Route::main || route_ == Route::fallback)
+            if (const auto error = openDevice (route_ == Route::main ? main_ : fallback_); error.isNotEmpty())
+                return makeError ({}, "deviceError", error);
+    }
+    return Obj().set ("type", "voice").set ("channel", voiceChannel_).set ("device", voiceDevice_).set ("on", voiceOn_.load());
+}
+
+namespace
+{
+juce::String toPcm16Base64 (const std::vector<float>& samples)
+{
+    juce::MemoryOutputStream out;
+    for (auto x : samples)
+        out.writeShort (static_cast<short> (juce::jlimit (-32768, 32767, juce::roundToInt (x * 32767.0f))));
+    return juce::Base64::toBase64 (out.getData(), out.getDataSize());
+}
+} // namespace
+
+// Tests only: 16 kHz audio (`samples`, 16-bit PCM in base64) straight into the voice detector.
+juce::var Engine::injectVoice (const juce::var& message)
+{
+    juce::MemoryOutputStream decoded;
+    if (! juce::Base64::convertFromBase64 (decoded, text (message, "samples")))
+        return makeError ({}, "badMessage", "samples is not base64.");
+    std::vector<float> samples (decoded.getDataSize() / 2);
+    const auto* pcm = static_cast<const char*> (decoded.getData());
+    for (std::size_t i = 0; i < samples.size(); ++i)
+        samples[i] = static_cast<float> (static_cast<juce::int16> (juce::ByteOrder::littleEndianShort (pcm + 2 * i))) / 32768.0f;
+    voice_.inject (std::move (samples));
+    return Obj().set ("type", "ok");
+}
+
+// The VAD thread: an utterance for the app's recogniser (protocol 12).
+void Engine::pushUtterance (const std::vector<float>& samples, double durationSec, double trailingSec)
+{
+    push (Obj().set ("type", "utterance").set ("rate", audio::VoiceActivity::kRate).set ("durationSec", durationSec)
+              .set ("trailingSec", trailingSec).set ("samples", toPcm16Base64 (samples)));
+}
+
 juce::var Engine::injectDeviceLoss (const juce::var& message)
 {
     if (const auto limit = number (message, "silentLimitSec", -1.0); limit >= 0.0)
@@ -1289,6 +1356,7 @@ juce::var Engine::snapshot()
         .set ("route", routeName (route_))
         .set ("lostSec", route_ == Route::silent || route_ == Route::fallback ? static_cast<double> (juce::Time::getMillisecondCounter() - lostAtMs_) / 1000.0 : 0.0)
         .set ("mainBack", mainBack_)
+        .set ("voice", voiceChannel_ >= 0 ? Obj().set ("on", voiceOn_.load()).set ("level", voiceLevelDb_).set ("hearing", voice_.hearing()) : juce::var())
         .set ("meters", meters)
         .set ("master", masterArray)
         .set ("pad", Obj().set ("key", pads_.key() >= 0 ? juce::var (pads_.key()) : juce::var()).set ("level", pads_.level()))
@@ -1328,7 +1396,9 @@ void Engine::timerCallback()
         startTimer (100);
 
     // While playing: every tick. Otherwise only when something changed, plus a slow heartbeat.
-    const auto key = stateName (s.player.state()).toString() + ":" + juce::String (s.player.position()) + ":"
+    voiceLevelDb_ = voice_.takeLevelDb();
+    const auto key = (voiceChannel_ >= 0 ? juce::String (juce::roundToInt (voiceLevelDb_ / 6.0f)) + (voice_.hearing() ? "h" : "") : juce::String())
+                   + stateName (s.player.state()).toString() + ":" + juce::String (s.player.position()) + ":"
                    + (s.song != nullptr ? juce::String (s.song->id) + (s.song->isBuffered() ? "b" : "") : juce::String())
                    + (callbackActive_.load() ? "d" : "") + routeName (route_);
     ++idleTicks_;
@@ -1482,9 +1552,13 @@ juce::var Engine::promoteNext()
 }
 
 //==============================================================================
-void Engine::audioDeviceIOCallbackWithContext (const float* const*, int, float* const* outputs, int numOutputs,
+void Engine::audioDeviceIOCallbackWithContext (const float* const* inputs, int numInputs, float* const* outputs, int numOutputs,
                                                int numSamples, const juce::AudioIODeviceCallbackContext&)
 {
+    // Only the voice channel is open, so it is the first (and only) input.
+    if (numInputs > 0 && inputs[0] != nullptr && voiceOn_.load (std::memory_order_relaxed))
+        voice_.write (inputs[0], numSamples);
+
     if (silent_.running())
     {
         // The silent clock still owns the graph (the device started before it was told to stop): one renderer at a time.
@@ -1519,6 +1593,8 @@ void Engine::audioDeviceAboutToStart (juce::AudioIODevice* device)
     transitions_.prepare (rate);
     pads_.prepare (rate);
     deviceRate_.store (rate);
+    voice_.prepare (rate);
+    voiceOn_.store (voiceChannel_ >= 0 && device->getActiveInputChannels().countNumberOfSetBits() > 0);
     outputLatency_.store (device->getOutputLatencyInSamples());
     callbackActive_.store (true);
 

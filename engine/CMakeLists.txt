@@ -157,7 +157,8 @@ add_library(recompose_engine_core STATIC
     src/audio/transition.cpp
     src/audio/disk_streamer.cpp
     src/audio/player.cpp
-    src/audio/silent_clock.cpp)
+    src/audio/silent_clock.cpp
+    src/audio/voice_input.cpp)
 
 target_include_directories(recompose_engine_core PUBLIC src)
 target_compile_definitions(recompose_engine_core PUBLIC RECOMPOSE_ENGINE_VERSION="${PROJECT_VERSION}")

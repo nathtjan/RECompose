@@ -6,7 +6,8 @@ Usage: python3 tools/ci/make-guide-fixture.py <out folder>
 
 The folder gets Click.wav (72 BPM 4/4, first downbeat 0.5 s, beat 1 brighter and louder),
 Guide.wav (section calls spoken by the platform's text-to-speech voice on beat 2 of the bar
-before each section) and expected.json (the labels and chart bars Detect should find).
+before each section), Voice.wav ("Let us go to the bridge", for the voice worker) and
+expected.json (the labels and chart bars Detect should find).
 Text-to-speech: espeak-ng on Linux, `say` on macOS, System.Speech on Windows.
 """
 import json
@@ -122,6 +123,15 @@ def main() -> int:
                     guide[start + i] += 0.5 * v / peak
     write_wav(os.path.join(out, "Guide.wav"), guide)
 
+    # The MD on the talkback mic (VC-70): half a second of silence either side, for the voice worker's round trip.
+    with tempfile.TemporaryDirectory() as temp:
+        path = os.path.join(temp, "voice.wav")
+        speak("Let us go to the bridge", path)  # no apostrophe: the Windows voice is quoted in PowerShell
+        voice = read_wav(path)
+        peak = max(abs(v) for v in voice) or 1.0
+        pad = [0.0] * (RATE // 2)
+        write_wav(os.path.join(out, "Voice.wav"), pad + [0.5 * v / peak for v in voice] + pad)
+
     expected = {
         "bpm": BPM,
         "beatsPerBar": BEATS,
@@ -130,7 +140,7 @@ def main() -> int:
     }
     with open(os.path.join(out, "expected.json"), "w", encoding="utf-8") as f:
         json.dump(expected, f, indent=2)
-    print(f"Wrote {out}: Click.wav, Guide.wav, expected.json")
+    print(f"Wrote {out}: Click.wav, Guide.wav, Voice.wav, expected.json")
     return 0
 
 

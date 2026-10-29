@@ -2,7 +2,7 @@
 
 **Goal:** the MD talks into a talkback mic and RECompose acts on band directions ("let's go to the bridge", "stay here", "never mind, keep going") as it acts on a key or a pedal, without being fooled by the guide track, and confirms in the MD's ear.
 
-**Status:** in progress (29 Oct 2026): WP1 done.
+**Status:** in progress (29 Oct 2026): WP1 and WP2 done.
 
 **Starting point:** milestone 6. Live actions are plan rewrites with a pending action and a NEXT card that names its source (`NEXT · VOICE` exists, nothing sends it). whisper.cpp is linked into the engine for offline guide transcription (`ggml-base.en`, M2). The engine opens output channels only.
 
