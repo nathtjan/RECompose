@@ -88,7 +88,6 @@ internal sealed class CollectingSink : ILogSink
 
 public sealed class WindowSmokeTests : IDisposable
 {
-    private static HeadlessUnitTestSession Session => HeadlessApp.Session;
 
     private readonly string _root = Path.Combine(Path.GetTempPath(), "rec-app-" + Guid.NewGuid().ToString("N"));
     private readonly string _endpoint = Path.Combine(Path.GetTempPath(), $"rec-{Guid.NewGuid():N}"[..14] + ".sock");
@@ -156,7 +155,7 @@ public sealed class WindowSmokeTests : IDisposable
         var executable = Executable();
         var sink = new CollectingSink();
 
-        await Session.Dispatch(async () =>
+        await HeadlessApp.RunAsync(async () =>
         {
             Logger.Sink = sink;
             var store = new DataStore(Path.Combine(_root, "data"));
@@ -233,7 +232,7 @@ public sealed class WindowSmokeTests : IDisposable
         var executable = Executable();
         var sink = new CollectingSink();
 
-        await Session.Dispatch(async () =>
+        await HeadlessApp.RunAsync(async () =>
         {
             Logger.Sink = sink;
             var tools = new EngineTools(executable);

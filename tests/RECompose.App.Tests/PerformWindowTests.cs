@@ -7,6 +7,7 @@ using Avalonia.Headless;
 using Avalonia.Input;
 using Avalonia.Logging;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using RECompose.App.Controls;
 using RECompose.Core.Arrangements;
 using RECompose.Core.Library;
@@ -320,5 +321,44 @@ public sealed class PerformWindowTests : IDisposable
         }
 
         Assert.True(problems.Count == 0, "Avalonia reported:" + Environment.NewLine + string.Join(Environment.NewLine, problems.Take(30)));
+    }
+
+    [Fact]
+    public async Task Space_is_a_shortcut_and_never_also_presses_the_focused_key()
+    {
+        await HeadlessApp.RunAsync(async () =>
+        {
+            var store = SaveLibrary();
+            var missing = Path.Combine(_root, "no-engine", EnginePaths.ExecutableFileName);
+            await using var vm = new MainViewModel(store, new EngineHostOptions(missing, Path.Combine(_root, "e.sock")), new EngineTools(missing),
+                new AvaloniaDispatcher(), new AcceptingDialogs(), new SpeechModel(store.Root, allowDownload: false));
+
+            var window = new MainWindow { DataContext = vm, Width = 1280, Height = 760 };
+            window.Show();
+            await vm.InitializeAsync();
+            await vm.LoadEntryAsync(vm.Setlist.Rows[0].Id);
+            Dispatcher.UIThread.RunJobs();
+
+            // KEY-1: a button keeps focus after its dialog closes; Space on it is play, not a second click (press and release).
+            var settings = window.GetVisualDescendants().OfType<Button>().First(b => ToolTip.GetTip(b) as string == "Settings (Ctrl+,)");
+            Assert.Equal(0, Clicks(settings));
+
+            vm.IsPerform = true;
+            vm.ApplySnapshotForTests(Snapshot(vm, 6));
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal(0, Clicks(window.FindControl<PerformView>("Perform")!.FindControl<ToggleButton>("LoopKey")!));
+            window.Close();
+
+            int Clicks(Button key)
+            {
+                var clicks = 0;
+                key.Click += (_, _) => clicks++;
+                Assert.True(key.Focus());
+                window.KeyPressQwerty(PhysicalKey.Space, RawInputModifiers.None);
+                window.KeyReleaseQwerty(PhysicalKey.Space, RawInputModifiers.None);
+                Dispatcher.UIThread.RunJobs();
+                return clicks;
+            }
+        }, TestContext.Current.CancellationToken);
     }
 }

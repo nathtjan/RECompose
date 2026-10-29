@@ -17,6 +17,7 @@ public partial class MainWindow : Window
     private static readonly DataFormat<string> EntryFormat = DataFormat.CreateInProcessFormat<string>("recompose-entry");
 
     private (PointerPressedEventArgs Args, Avalonia.Point At, DataFormat<string> Format, string Id)? _dragStart;
+    private Key? _shortcutKey;
 
     public MainWindow()
     {
@@ -44,12 +45,24 @@ public partial class MainWindow : Window
 
         // Shortcuts (KEY-1) are handled before controls see the key, so Space never also
         // presses a focused button.
-        AddHandler(KeyDownEvent, OnKeyDownTunnel, RoutingStrategies.Tunnel);
+        AddHandler(KeyDownEvent, (s, e) =>
+        {
+            OnKeyDownTunnel(s, e);
+            if (e.Handled)
+                _shortcutKey = e.Key;
+        }, RoutingStrategies.Tunnel);
         AddHandler(KeyUpEvent, (_, e) =>
         {
             // Releases matter for bindings with a long press (LIVE-54).
             if (ViewModel is { IsPerform: true } vm && ControlKeys.Name(e) is { } name)
                 vm.Controls.Key(name, false);
+
+            // A button clicks on the release of Space even when the press was a shortcut.
+            if (e.Key == _shortcutKey)
+            {
+                _shortcutKey = null;
+                e.Handled = true;
+            }
         }, RoutingStrategies.Tunnel);
 
         // Drag a stems folder onto the window to import it (SL-50).

@@ -50,6 +50,7 @@ public partial class ControlsWindow : Window
         this.FindControl<Button>("CloseButton")!.Click += (_, _) => Close();
 
         // Learn takes the next key pressed here (LIVE-53); pedals arrive through the engine.
+        Avalonia.Input.Key? learned = null;
         AddHandler(KeyDownEvent, (_, e) =>
         {
             if (DataContext is ControlsViewModel controls && controls.IsLearning)
@@ -58,6 +59,16 @@ public partial class ControlsWindow : Window
                     controls.CancelLearn();
                 else if (ControlKeys.Name(e) is { } name)
                     controls.Key(name, true);
+                learned = e.Key;
+                e.Handled = true;
+            }
+        }, Avalonia.Interactivity.RoutingStrategies.Tunnel);
+        // Its release too, or a learned Space clicks the focused Learn button again.
+        AddHandler(KeyUpEvent, (_, e) =>
+        {
+            if (e.Key == learned)
+            {
+                learned = null;
                 e.Handled = true;
             }
         }, Avalonia.Interactivity.RoutingStrategies.Tunnel);
