@@ -275,6 +275,14 @@ public sealed class EngineClient : IAsyncDisposable
         return (bool?)reply["on"] ?? false;
     }
 
+    /// <summary>Plays a spoken clip once on the given channels (VC-50), replacing one that sounds. Returns its length in seconds.</summary>
+    public async Task<double> PlayClipAsync(string file, int channel, int width, double gainDb = -12, CancellationToken ct = default)
+    {
+        var request = new JsonObject { ["file"] = file, ["output"] = new JsonObject { ["channel"] = channel, ["width"] = width }, ["gainDb"] = gainDb };
+        var reply = await Session.Connection.RequestAsync("playClip", request, ct).ConfigureAwait(false);
+        return (double?)reply["durationSec"] ?? 0;
+    }
+
     /// <summary>Tests: 16 kHz 16-bit PCM into the voice detector as if the mic had heard it.</summary>
     public Task InjectVoiceAsync(byte[] pcm16, CancellationToken ct = default) =>
         Session.Connection.RequestAsync("injectVoice", new JsonObject { ["samples"] = Convert.ToBase64String(pcm16) }, ct);

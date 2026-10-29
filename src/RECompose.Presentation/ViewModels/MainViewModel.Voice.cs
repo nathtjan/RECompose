@@ -25,6 +25,10 @@ public sealed partial class MainViewModel
     private int _captionSerial, _proposalSerial;
     private VoiceResolution? _proposal;
     private bool _talkHeld;
+    private SpeechClips? _clips;
+    private readonly List<SpokenWord> _spoken = []; // the MD's confirmations, for the gate (VC-40)
+
+    private SpeechClips Clips => _clips ??= new SpeechClips(Path.Combine(_store.Root, "cache", "tts"));
 
     /// <summary>Settings › Audio while it is open: what is heard is only described there ("would have done…", VC-1).</summary>
     internal AudioSettingsViewModel? VoiceTest { get; set; }
@@ -238,10 +242,10 @@ public sealed partial class MainViewModel
     {
         if (_song is null)
             return false;
-        var spoken = _song.Model.GuideAnalysis?.Words is { Count: > 0 } words
+        var guide = _song.Model.GuideAnalysis?.Words is { Count: > 0 } words
             ? VoiceGate.GuideWords(_song.Plan, words, startSec - 1, endSec + 1)
             : [];
-        return VoiceGate.IsEcho(command.Keywords, startSec, endSec, spoken);
+        return VoiceGate.IsEcho(command.Keywords, startSec, endSec, guide.Concat(_spoken));
     }
 
     private async Task ApplyVoiceAsync(VoiceResolution resolution)
@@ -256,6 +260,8 @@ public sealed partial class MainViewModel
         }
 
         var alreadyNext = result.Outcome == LiveOutcome.AlreadyNext;
+        if (alreadyNext)
+            SayToMd(VoiceLines.Confirmation(resolution, alreadyNext: true));
         AppLog.Line(VoiceLines.Log(resolution, alreadyNext));
         ShowVoiceCaption(VoiceLines.Caption(resolution, alreadyNext));
     }
@@ -307,6 +313,47 @@ public sealed partial class MainViewModel
             VoiceCaption = string.Empty;
             VoiceHeard = string.Empty;
         }), TaskScheduler.Default);
+    }
+
+    /// <summary>VC-50: a short phrase in the MD's ear, when an MD confirm output is set. Also the gate's own speech.</summary>
+    internal void SayToMd(string phrase)
+    {
+        if (_settings.Audio.MdChannel is not { } channel || _engine is not { } engine || phrase.Length == 0)
+            return;
+        _ = SayAsync(engine, phrase, channel, _settings.Audio.MdWidth, _settings.Audio.MdGainDb);
+    }
+
+    private async Task SayAsync(EngineClient engine, string phrase, int channel, int width, double gainDb)
+    {
+        try
+        {
+            if (await Clips.GetAsync(phrase) is not { } file)
+                return;
+            var seconds = await engine.PlayClipAsync(file, channel, width, gainDb);
+            var at = _planPosition;
+            _spoken.RemoveAll(w => w.End < at - 30);
+            _spoken.AddRange(VoiceGate.Clip(phrase, at, at + seconds));
+        }
+        catch (Exception ex) when (ex is EngineErrorException or EngineDisconnectedException or OperationCanceledException)
+        {
+            AppLog.Error("Voice", ex);
+        }
+    }
+
+    /// <summary>Renders the confirmations this song can need, so the first one is not late (PB-71).</summary>
+    private void PrepareClips(SongPlan plan)
+    {
+        if (_settings.Audio.MdChannel is null)
+            return;
+        var phrases = new[] { "Cancelled", "Vamping", "Moving on", "Repeat", "Ending after this" }
+            .Concat(plan.Sections.SelectMany(s => new[] { $"{VoiceText.Spoken(s.Label)} next", $"{VoiceText.Spoken(s.Label)} is already next" }))
+            .ToList();
+        var clips = Clips;
+        _ = Task.Run(async () =>
+        {
+            foreach (var phrase in phrases)
+                await clips.GetAsync(phrase);
+        });
     }
 
     private async Task DisposeVoiceAsync()

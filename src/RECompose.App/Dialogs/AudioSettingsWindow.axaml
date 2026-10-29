@@ -15,7 +15,7 @@
     <TextBlock Classes="title" Text="Audio" />
     <TextBlock Classes="mono" Foreground="{DynamicResource text-secondary}" Text="{Binding CurrentDevice}" TextWrapping="Wrap" />
 
-    <Grid ColumnDefinitions="140,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="10">
+    <Grid ColumnDefinitions="140,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="10">
       <TextBlock Grid.Row="0" Classes="label" Text="DRIVER" VerticalAlignment="Center" />
       <ComboBox Grid.Row="0" Grid.Column="1" ItemsSource="{Binding DeviceTypes}" SelectedItem="{Binding SelectedType}" HorizontalAlignment="Stretch" />
 
@@ -71,6 +71,12 @@
       </Border>
       <TextBlock Grid.Row="15" Grid.Column="1" Classes="meta" TextWrapping="Wrap"
                  Text="The input is a channel of the audio device. Apply, then open this again to test: while it is open nothing you say changes playback." />
+
+      <TextBlock Grid.Row="16" Classes="label" Text="MD CONFIRM" VerticalAlignment="Center" ToolTip.Tip="Spoken confirmations of live actions, for the MD's in-ear" />
+      <ComboBox Grid.Row="16" Grid.Column="1" ItemsSource="{Binding MdOptions}" SelectedItem="{Binding MdOutput}" HorizontalAlignment="Stretch"
+                AutomationProperties.Name="MD confirm output" />
+      <TextBlock Grid.Row="17" Grid.Column="1" Classes="meta" Foreground="{DynamicResource state-warning}" Text="{Binding MdWarning}"
+                 IsVisible="{Binding MdWarning, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
     </Grid>
 
     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8" Margin="0,8,0,0">

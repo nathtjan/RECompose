@@ -47,6 +47,8 @@ public sealed class AudioSettingsViewModel : ObservableObject
         OutputOptions = ChannelOptions(current?.OutputChannels.Count ?? 2);
         _mainOutput = OutputRef.Direct(settings.MainChannel, settings.MainWidth).Label;
         _cueOutput = OutputRef.Direct(settings.CueChannel, settings.CueWidth).Label;
+        MdOptions = [VoiceOff, .. OutputOptions];
+        _mdOutput = settings.MdChannel is { } md ? OutputRef.Direct(md, settings.MdWidth).Label : VoiceOff;
 
         foreach (var type in types)
             foreach (var device in type.Devices)
@@ -157,6 +159,24 @@ public sealed class AudioSettingsViewModel : ObservableObject
 
     public bool CueSharesMain => _cueOutput == _mainOutput;
 
+    private string _mdOutput;
+
+    /// <summary>"Off", then the outputs: where the MD hears spoken confirmations (VC-50).</summary>
+    public IReadOnlyList<string> MdOptions { get; }
+
+    public string MdOutput
+    {
+        get => _mdOutput;
+        set
+        {
+            if (Set(ref _mdOutput, value ?? VoiceOff))
+                OnPropertyChanged(nameof(MdWarning));
+        }
+    }
+
+    /// <summary>VC-50: the MD output shares channels with the Cue output.</summary>
+    public string MdWarning => _mdOutput != VoiceOff && _mdOutput == _cueOutput ? "The whole band will hear confirmations." : string.Empty;
+
     // ---- Library & cache (SET-60, REL-15) -------------------------------------------------------------
 
     public IReadOnlyList<string> CacheBudgets { get; } = ["10 GB", "20 GB", "30 GB", "50 GB", "100 GB"];
@@ -199,6 +219,8 @@ public sealed class AudioSettingsViewModel : ObservableObject
             FallbackDeviceName = _fallbacks.TryGetValue(SelectedFallback, out var g) ? g.Name : null,
             AutoSwitchBack = AutoSwitchBack,
             VoiceChannel = VoiceChannel,
+            MdChannel = MdOutput == VoiceOff ? null : OutputRef.Parse(OutputChoices.ToOutput(MdOutput)).Channel,
+            MdWidth = MdOutput == VoiceOff ? 2 : OutputRef.Parse(OutputChoices.ToOutput(MdOutput)).Width,
             VoicePushToTalk = VoicePushToTalk,
             VoiceConfirm = VoiceConfirm,
             VoiceGate = VoiceGate,

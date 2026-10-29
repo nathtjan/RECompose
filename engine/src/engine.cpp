@@ -104,6 +104,7 @@ juce::var Engine::handle (const juce::String& type, const juce::var& message)
     if (type == "injectDeviceLoss") return injectDeviceLoss (message);
     if (type == "setVoiceInput") return setVoiceInput (message);
     if (type == "injectVoice")  return injectVoice (message);
+    if (type == "playClip")     return playClip (message);
     if (type == "loadSong")     return loadSong (message, slotFor (message));
     if (type == "unloadSong")   return unloadSong (slotFor (message));
     if (type == "setTransition") return setTransition (message);
@@ -662,6 +663,25 @@ juce::var Engine::injectVoice (const juce::var& message)
         samples[i] = static_cast<float> (static_cast<juce::int16> (juce::ByteOrder::littleEndianShort (pcm + 2 * i))) / 32768.0f;
     voice_.inject (std::move (samples));
     return Obj().set ("type", "ok");
+}
+
+// Protocol 12 (VC-50): a spoken clip once on the given channels, replacing one that sounds.
+juce::var Engine::playClip (const juce::var& message)
+{
+    juce::String problem;
+    auto clip = audio::loadClip (juce::File (text (message, "file")), engineRate(), formats_, problem);
+    if (clip == nullptr)
+        return makeError ({}, "badMessage", problem);
+    const auto output = message.getProperty ("output", {});
+    clip->channel = juce::jlimit (0, kMaxOutputChannels - 1, static_cast<int> (number (output, "channel", 0.0)));
+    clip->width = static_cast<int> (number (output, "width", 2.0)) == 1 ? 1 : 2;
+    clip->gain = juce::Decibels::decibelsToGain (static_cast<float> (number (message, "gainDb", -12.0)));
+    const double seconds = static_cast<double> (clip->samples.size()) / engineRate();
+
+    std::erase_if (clips_, [] (const auto& c) { return c->done.load(); });
+    clipPlayer_.start (clip.get());
+    clips_.push_back (std::move (clip));
+    return Obj().set ("type", "clip").set ("durationSec", seconds);
 }
 
 // The VAD thread: an utterance for the app's recogniser (protocol 12).
@@ -1581,6 +1601,7 @@ void Engine::processBlock (float* const* outputs, int numOutputs, int numSamples
     // Both songs play into the same buffers; the transition runner starts the next one on its sample.
     transitions_.process (cur().player, nxt().player, pads_, outputs, numOutputs, numSamples, offline);
     pads_.process (outputs, numOutputs, numSamples, offline);
+    clipPlayer_.process (outputs, numOutputs, numSamples);
 }
 
 void Engine::audioDeviceAboutToStart (juce::AudioIODevice* device)

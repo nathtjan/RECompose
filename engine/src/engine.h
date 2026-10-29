@@ -11,6 +11,7 @@
 #include "audio/silent_clock.h"
 #include "audio/song.h"
 #include "audio/transition.h"
+#include "audio/clip_player.h"
 #include "audio/voice_input.h"
 
 #include <juce_audio_devices/juce_audio_devices.h>
@@ -140,6 +141,7 @@ private:
     juce::var injectDeviceLoss (const juce::var& message);
     juce::var setVoiceInput (const juce::var& message);
     juce::var injectVoice (const juce::var& message);
+    juce::var playClip (const juce::var& message);
     juce::var loadSong (const juce::var& message, Slot& s);
     juce::var unloadSong (Slot& s);
     juce::var setTransition (const juce::var& message);
@@ -255,6 +257,10 @@ private:
     float voiceLevelDb_ = -100.0f;
     audio::VoiceInput voice_ { [this] (std::vector<float>&& samples, double durationSec, double trailingSec) { pushUtterance (samples, durationSec, trailingSec); } };
     void pushUtterance (const std::vector<float>& samples, double durationSec, double trailingSec);
+
+    // Spoken confirmations (protocol 12, VC-50): kept until the audio thread is done with them.
+    audio::ClipPlayer clipPlayer_;
+    std::vector<std::unique_ptr<audio::Clip>> clips_;
 
     std::mutex outgoingMutex_;
     std::vector<std::string> outgoing_;

@@ -50,6 +50,11 @@ public sealed record AudioSettings
 
     public double VoiceMinConfidence { get; init; } = 0.6;
 
+    /// <summary>The MD confirm output (PB-85, VC-50): spoken confirmations for the MD's ear; null = off.</summary>
+    public int? MdChannel { get; init; }
+    public int MdWidth { get; init; } = 2;
+    public double MdGainDb { get; init; } = -12;
+
     /// <summary>The Pad output (PB-85); null plays pads on Main, the default.</summary>
     public int? PadChannel { get; init; }
     public int? PadWidth { get; init; }

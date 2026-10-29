@@ -96,6 +96,33 @@ public class VoiceInputTests
         Assert.Contains("bridge", (await worker.RecogniseAsync(utterance.Pcm16, string.Empty, TestContext.Current.CancellationToken)).Text, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public async Task VC50_a_clip_plays_once_on_the_md_output_only()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "rec-clip-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        var silence = TestWav.Write(Path.Combine(folder, "silence.wav"), 48000, 1, 48000 * 4, (_, _) => 0);
+        var clip = TestWav.Write(Path.Combine(folder, "clip.wav"), 22050, 1, 11025, (i, _) => 0.5 * Math.Sin(2 * Math.PI * 440 * i / 22050.0));
+
+        await using var client = await StartAsync();
+        var ct = TestContext.Current.CancellationToken;
+        await client.LoadSongAsync("clip", [new EngineTrack("music", silence, 0, 2, 0, false, false, false)], 0, ct: ct);
+        var seconds = await client.PlayClipAsync(clip, 3, 1, -6, ct);
+        Assert.Equal(0.5, seconds, 2);
+
+        var (peak, _, _) = await client.RenderOfflineAsync(48000 / 4, 4, ct: ct);
+        Assert.InRange(peak[3], 0.24, 0.26); // 0.5 at −6 dB
+        Assert.Equal(0, peak[0], 3);
+        Assert.Equal(0, peak[2], 3);
+
+        await client.RenderOfflineAsync(48000 / 2, 4, ct: ct); // past its end
+        var (after, _, _) = await client.RenderOfflineAsync(4800, 4, ct: ct);
+        Assert.Equal(0, after[3], 3);
+
+        var missing = await Assert.ThrowsAsync<EngineErrorException>(() => client.PlayClipAsync(Path.Combine(folder, "none.wav"), 3, 1, ct: ct));
+        Assert.Contains("missing", missing.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static (int Rate, double[] Samples) ReadMonoWav(string path)
     {
         var bytes = File.ReadAllBytes(path);

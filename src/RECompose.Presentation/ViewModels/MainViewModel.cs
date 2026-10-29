@@ -736,6 +736,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         if (resumeSec > 0)
             PlanPositionSec = resumeSec; // after an engine restart the plan clock continues where it was
         await SendPlanAsync(resumeSec);
+        PrepareClips(_song!.Plan);
         AppLog.Write("Transport", entry is null ? $"Loaded {model.Title}" : $"Loaded {model.Title} ({EntryArrangement.Resolve(entry, model).Name}, {ServiceText.KeyText(model, entry.KeyOffset)})");
         _settings = _settings with { LastSongId = id, LastEntryId = entry?.Id };
         _store.SaveSettings(_settings);

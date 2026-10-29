@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 using RECompose.Core.Planning;
+using RECompose.Core.Voice;
 using RECompose.Engine;
 using RECompose.Presentation.Mvvm;
 using RECompose.Presentation.Services;
@@ -148,6 +149,7 @@ public sealed partial class MainViewModel
         {
             case LiveOutcome.Queued:
                 AppLog.Write("Live", $"{kind} ({SourceName(source)}) → {result.Pending!.Target} at {result.Pending.ExecuteAt:0.000}");
+                SayToMd(VoiceLines.Confirmation(result.Pending.Action, result.Pending.Target)); // VC-50, for every source (LIVE-54)
                 await SendPlanAsync(null, result.Pending.Plan, result.Pending.ExecuteAt);
                 UpdateReadouts();
                 WriteJournal();
@@ -169,6 +171,7 @@ public sealed partial class MainViewModel
         if (_live is not { Pending: { } pending } live)
             return;
         live.Cancel();
+        SayToMd("Cancelled");
         await SendPlanAsync(null, live.Committed, pending.ExecuteAt);
         UpdateReadouts();
     }
