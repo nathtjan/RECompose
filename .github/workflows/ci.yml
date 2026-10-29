@@ -84,7 +84,7 @@ jobs:
       # The speech model for guide transcription (SEC-12): cached between runs, checked by SHA-1,
       # used by the end-to-end test and shipped next to the app in models/.
       - name: Cache speech model
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: models
           key: speech-model-ggml-base.en-137c40403d78fd54d454da0f9bd998f78703390c

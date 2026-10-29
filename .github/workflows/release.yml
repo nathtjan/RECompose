@@ -56,7 +56,7 @@ jobs:
           cmake --install build/engine --config Release --component engine --prefix artifacts/native
 
       - name: Cache speech model
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: models
           key: speech-model-ggml-base.en-137c40403d78fd54d454da0f9bd998f78703390c
