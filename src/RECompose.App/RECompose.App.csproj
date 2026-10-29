@@ -4,6 +4,7 @@
     <AssemblyName>RECompose</AssemblyName>
     <RootNamespace>RECompose.App</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets/RECompose.ico</ApplicationIcon>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
   </PropertyGroup>
 
@@ -16,6 +17,7 @@
   <ItemGroup>
     <!-- Fonts come from design/fonts (the design system's bundled copies), not a second copy. -->
     <AvaloniaResource Include="$(RepoRoot)design/fonts/*.ttf" Link="Assets/Fonts/%(Filename)%(Extension)" />
+    <AvaloniaResource Include="Assets/RECompose.ico" />
   </ItemGroup>
 
   <ItemGroup>

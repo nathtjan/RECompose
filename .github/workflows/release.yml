@@ -96,7 +96,7 @@ jobs:
             echo "::warning::WINDOWS_CERTIFICATE_PFX is not set: the installer is not signed"
           fi
           vpk pack -u RECompose -v "$VERSION" -r ${{ matrix.rid }} -c ${{ matrix.rid }} -p publish -e RECompose.exe \
-            --packTitle RECompose --packAuthors nathtjan -o releases "${SIGN[@]}"
+            --packTitle RECompose --packAuthors nathtjan --icon src/RECompose.App/Assets/RECompose.ico -o releases "${SIGN[@]}"
 
       - name: Pack (macOS)
         if: runner.os == 'macOS'
@@ -129,7 +129,7 @@ jobs:
           fi
 
           vpk pack -u RECompose -v "$VERSION" -r ${{ matrix.rid }} -c ${{ matrix.rid }} -p publish -e RECompose \
-            --packTitle RECompose --packAuthors nathtjan --bundleId io.github.nathtjan.recompose --plist build/Info.plist \
+            --packTitle RECompose --packAuthors nathtjan --bundleId io.github.nathtjan.recompose --plist build/Info.plist --icon packaging/macos/RECompose.icns \
             --signEntitlements packaging/macos/RECompose.entitlements -o releases "${SIGN[@]}"
 
           # The DMG holds the same (signed, stapled) app as the portable zip, so it updates itself too.

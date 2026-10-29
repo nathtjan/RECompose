@@ -12,5 +12,9 @@
   <Application.Styles>
     <FluentTheme />
     <StyleInclude Source="avares://RECompose/Theme/Styles.axaml" />
+    <!-- Every window, the dialogs made in code included, shows the app icon (Windows title bars and taskbar). -->
+    <Style Selector="Window">
+      <Setter Property="Icon" Value="/Assets/RECompose.ico" />
+    </Style>
   </Application.Styles>
 </Application>

@@ -9,6 +9,8 @@
   <string>RECompose</string>
   <key>CFBundleDisplayName</key>
   <string>RECompose</string>
+  <key>CFBundleIconFile</key>
+  <string>RECompose.icns</string>
   <key>CFBundleExecutable</key>
   <string>RECompose</string>
   <key>CFBundlePackageType</key>

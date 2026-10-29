@@ -10,6 +10,7 @@ Source files of the RECompose design system, copied from the design-system artif
 | `perform-view.md` | Layout rules for the Perform view at 1280 × 760 |
 | `spec-token-map.md` | Spec token names (UI-90) → design-system token names, and the component inventory |
 | `icons/` | The 43 icons, 24 × 24, drawn in `currentColor` so the app can tint them with a text token |
+| `logo/` | The app icon: `RECompose-disc.svg` (source) and PNG exports from 16 to 1024 px. The shipped copies are `src/RECompose.App/Assets/RECompose.ico` (Windows) and `packaging/macos/RECompose.icns` (macOS) |
 | `fonts/` | Hanken Grotesk (variable), Martian Mono (variable, wght + wdth), REC Accidentals |
 | `licenses/` | Font licences |
 | `reference/` | The React reference implementation (`bundle.js`, `bundle.css`, `index.d.ts`): the behavioural reference for every component |

@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024" role="img" aria-label="RECompose app icon: a circle made of three stem lanes, split by a yellow playhead">
+<defs><clipPath id="disc"><circle cx="512" cy="512" r="300"/></clipPath></defs>
+<rect x="100" y="100" width="824" height="824" rx="185" fill="#333333"/>
+<rect x="103" y="103" width="818" height="818" rx="182" fill="none" stroke="#FFFFFF" stroke-opacity="0.16" stroke-width="6"/>
+<g clip-path="url(#disc)">
+<g fill="#7A7A7A">
+<rect x="200" y="212" width="228" height="168"/>
+<rect x="200" y="428" width="228" height="168"/>
+<rect x="200" y="644" width="228" height="168"/>
+</g>
+<g fill="#E6E6E6">
+<rect x="476" y="212" width="348" height="168"/>
+<rect x="476" y="428" width="348" height="168"/>
+<rect x="476" y="644" width="348" height="168"/>
+</g>
+</g>
+<line x1="452" y1="196" x2="452" y2="828" stroke="#FCD937" stroke-width="24" stroke-linecap="round"/>
+</svg>

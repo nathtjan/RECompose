@@ -43,6 +43,5 @@
 ## Known gaps
 
 - No release has been built by the workflow yet, and the macOS packaging, signing and notarisation are untested until the first tag runs with the secrets.
-- No app icon yet (the default icon is used on both platforms).
 - Windows on arm64 (PLAT-2: later).
 - The menus show no shortcuts, and there is no About window (Help links to the repository).
