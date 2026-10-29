@@ -2,7 +2,7 @@
 
 **Goal:** the MD talks into a talkback mic and RECompose acts on band directions ("let's go to the bridge", "stay here", "never mind, keep going") as it acts on a key or a pedal, without being fooled by the guide track, and confirms in the MD's ear.
 
-**Status:** in progress (29 Oct 2026): WP1 to WP4 done.
+**Status:** done (29 Oct 2026). How to try it: [M7 test guide](../testing/M7-test-guide.md).
 
 **Starting point:** milestone 6. Live actions are plan rewrites with a pending action and a NEXT card that names its source (`NEXT · VOICE` exists, nothing sends it). whisper.cpp is linked into the engine for offline guide transcription (`ggml-base.en`, M2). The engine opens output channels only.
 
@@ -30,6 +30,22 @@
 | WP3 | App: voice service, settings and test panel, VOICE indicator, captions, confirm mode, push-to-talk, log | Presentation tests with injected transcripts |
 | WP4 | TTS clips, `playClip`, MD confirm output, gate windows from guide words and clips | Tests where the platform allows |
 | WP5 | Docs, test guide | |
+
+## As built
+
+- Voice settings are in **Settings › Audio** (the mic is a channel of the audio device): VOICE input, push to talk, ask before acting, the guide gate, bare section names, the test panel and the MD CONFIRM output. Voice stays off until an input is chosen; the spec's default is on, but opening a mic nobody chose is worse.
+- The engine stamps nothing: the app places an utterance in plan time from the playhead when it arrives, which is tens of milliseconds late; the gate allows 300 ms.
+- Confirm mode shows `VOICE? … · say "yes" or press GO` under the NEXT card rather than as the card's tag.
+- STOP uses the transport's stop fade (50 ms), not the 1 s fade of VC-20.
+- MD confirmations are spoken for every live action (keys and pedals too, LIVE-54) and for cancel; the optional "Didn't catch that" is not.
+- The resampler to 16 kHz is linear interpolation without an anti-alias filter.
+
+## Known gaps
+
+- No microphone permission prompt (VC-3): Windows asks on first use of the input; on macOS the engine needs the entitlement that packaging (M10) adds.
+- The VAD is energy-based; a loud stage through the talkback mic needs push to talk or a gated mic.
+- Echo cancellation (VC-14) and the latency measurement of VC-13 are not done.
+- `LiveControlTests.AT23` sometimes fails when the whole solution's tests run at once and passes alone; it predates this milestone.
 
 ## Out
 

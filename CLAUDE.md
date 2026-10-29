@@ -16,13 +16,14 @@ Read `README.md` for the layout and build commands, `docs/adr/` for decisions, a
 
 ## Where things stand
 
-Milestones 0–6 are on `main`; the next one is M7 (voice). Start from `docs/milestones/M6-reliability.md` (status, known gaps) and the handoff doc in the Claude project.
+Milestones 0–7 are on `main`; the next one is M8 (automation and log). Start from `docs/milestones/M7-voice-control.md` (status, known gaps) and the handoff doc in the Claude project.
 
 - Two clocks: *plan time* is the engine position and the as-heard timeline; *source time* is stems, sections, M and review. Convert only through `SongPlan` (`SourceAt`, `PlanAt`, `Remap`).
 - `MainViewModel` owns the playhead (`PlanPositionSec`, `PositionSec`, `TimelinePosition`); never mix them.
-- The engine plays a plan sent with `setPlan` (protocol 11 now, see `docs/engine-protocol.md`); plan building lives in `RECompose.Core.Planning`.
+- The engine plays a plan sent with `setPlan` (protocol 12 now, see `docs/engine-protocol.md`); plan building lives in `RECompose.Core.Planning`.
 - Services (M4): a service entry picks a variant, a custom arrangement or as written, plus key, tempo, count-in, mix preset and the transition after it. `EntryPlan`/`PlanOptions.For(entry, song)` build its plan; the engine plays key and tempo live (protocol 5), click and count-ins (4), pads (6), and a second song slot with segue, crossfade and pad transitions (7). Rendered keys (M6): the engine's `render` tool fills `cache/render` (`RenderIndex`, `RenderPlanner` in Core) and `loadSong` passes each stem's renders; the engine plays the matching one per segment and processes live otherwise. Spoken counts come in M7.
 - Live control (M5): a live change is a plan rewrite. `LivePlan` (Core) holds the committed plan and one pending action; the app sends the pending plan with `setPlan` + `swapAt` and the engine swaps gap-free at that frame (protocol 8). Holds are `setPlan.holds` waiting for `go`; open repeats and vamps are built as up to 16 passes that count once (`ExpectedDurationSec`, `DisplayItems`). `PerformReadouts.Build` gives the NEXT card and the strip; `ControlRouter` (Core) routes keys and MIDI (protocol 9, `midiIn`) with debounce and long press. Window tests must use `HeadlessApp.RunAsync` or they can pass vacuously.
+- Voice (M7): the engine captures the voice input channel, finds utterances on its own thread and sends `utterance` events (protocol 12); recognition runs in a `recompose-engine listen <model>` worker (`VoiceWorker`), never in the engine. Understanding is Core (`RECompose.Core.Voice`: `VoiceGrammar`, `VoiceResolver`, `VoiceGate`, `VoiceSafeguards`, `VoiceLines`); `MainViewModel.Voice.cs` turns a transcript into the same `LiveAsync` actions with `ActionSource.Voice` (tests call `HearAsync` with a transcript). MD confirmations are TTS clips (`SpeechClips`, `cache/tts`) played with `playClip`.
 
 ## Commands
 
