@@ -16,7 +16,7 @@ Read `README.md` for the layout and build commands, `docs/adr/` for decisions, a
 
 ## Where things stand
 
-Milestones 0–5 are on `main`; the next one is M6 (reliability: render cache, service check, journal and resume). Start from `docs/milestones/M5-perform-and-live-control.md` (status, known gaps) and the handoff doc in the Claude project.
+Milestones 0–6 are on `main`; the next one is M7 (voice). Start from `docs/milestones/M6-reliability.md` (status, known gaps) and the handoff doc in the Claude project.
 
 - Two clocks: *plan time* is the engine position and the as-heard timeline; *source time* is stems, sections, M and review. Convert only through `SongPlan` (`SourceAt`, `PlanAt`, `Remap`).
 - `MainViewModel` owns the playhead (`PlanPositionSec`, `PositionSec`, `TimelinePosition`); never mix them.

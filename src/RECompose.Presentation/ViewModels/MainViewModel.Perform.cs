@@ -88,6 +88,7 @@ public sealed partial class MainViewModel
                 OnPropertyChanged(nameof(IsPrepare));
                 if (!value)
                     ClearArmedTile();
+                OnPerformPower(value);
             }
         }
     }

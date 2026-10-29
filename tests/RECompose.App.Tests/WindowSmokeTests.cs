@@ -253,6 +253,8 @@ public sealed class WindowSmokeTests : IDisposable
 internal sealed class AcceptingDialogs : IDialogs
 {
     public Task<string?> PickFolderAsync() => Task.FromResult<string?>(null);
+    public Task<string?> PickSaveFileAsync(string title, string suggestedName, string extension) => Task.FromResult<string?>(null);
+    public Task<string?> PickOpenFileAsync(string title, string extension) => Task.FromResult<string?>(null);
     public Task<bool> ReviewImportAsync(ImportReviewViewModel review) => Task.FromResult(true);
     public Task<DuplicateChoice> AskDuplicateAsync(string existingTitle) => Task.FromResult(DuplicateChoice.Cancel);
     public Task<bool> EditAudioSettingsAsync(AudioSettingsViewModel settings) => Task.FromResult(false);

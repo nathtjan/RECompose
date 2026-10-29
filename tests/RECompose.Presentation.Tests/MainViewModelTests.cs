@@ -274,6 +274,8 @@ internal sealed class ScriptedDialogs : IDialogs
     public string? DuplicateAskedFor { get; private set; }
 
     public Task<string?> PickFolderAsync() => Task.FromResult(Folder);
+    public Task<string?> PickSaveFileAsync(string title, string suggestedName, string extension) => Task.FromResult<string?>(null);
+    public Task<string?> PickOpenFileAsync(string title, string extension) => Task.FromResult<string?>(null);
 
     public Task<bool> ReviewImportAsync(ImportReviewViewModel review)
     {

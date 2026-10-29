@@ -1236,9 +1236,24 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
 
         var (types, current) = await _engine.ListDevicesAsync();
-        var vm = new AudioSettingsViewModel(types, current, _settings.Audio);
+        AudioSettingsViewModel? vm = null;
+        vm = new AudioSettingsViewModel(types, current, _settings.Audio)
+        {
+            SelectedCacheBudget = $"{_settings.RenderBudgetGb} GB",
+            CacheText = RenderCacheText,
+            CleanCacheCommand = new RelayCommand(() =>
+            {
+                CleanRenderCache();
+                vm!.CacheText = RenderCacheText;
+            }),
+        };
         if (!await _dialogs.EditAudioSettingsAsync(vm))
             return;
+        if (vm.CacheBudgetGb != _settings.RenderBudgetGb)
+        {
+            _settings = _settings with { RenderBudgetGb = vm.CacheBudgetGb };
+            SaveRenders(EvictToBudget(Renders));
+        }
 
         var previousOutputs = (_settings.Audio.MainChannel, _settings.Audio.MainWidth, _settings.Audio.CueChannel, _settings.Audio.CueWidth);
         _settings = _settings with { Audio = vm.ToSettings(_settings.Audio) };
@@ -1302,6 +1317,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     {
         _shuttingDown = true;
         StopRenders();
+        SystemPower.AllowSleep();
         try
         {
             await FlushJournalAsync();

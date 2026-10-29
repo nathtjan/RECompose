@@ -96,6 +96,9 @@ public sealed class SetlistViewModel : ObservableObject
         DuplicateServiceCommand = new RelayCommand(_main.DuplicateServiceAsync, () => HasService);
         RenameServiceCommand = new RelayCommand(_main.RenameServiceAsync, () => HasService);
         DeleteServiceCommand = new RelayCommand(_main.DeleteServiceAsync, () => HasService);
+        RestoreVersionCommand = new RelayCommand(_main.RestoreServiceVersionAsync, () => HasService);
+        ExportServiceCommand = new RelayCommand(_main.ExportServiceAsync, () => HasService);
+        ImportServiceCommand = new RelayCommand(_main.ImportServiceAsync);
         LoadSelectedCommand = new RelayCommand(() => _selected is { } row ? _main.LoadEntryAsync(row.Id) : Task.CompletedTask, () => HasSelection);
         RemoveSelectedCommand = new RelayCommand(() => { if (_selected is { } row) _main.RemoveEntry(row.Id); }, () => HasSelection);
         MoveUpCommand = new RelayCommand(() => { if (_selected is { } row) _main.MoveServiceEntry(row.Id, row.Index - 2); }, () => _selected is { Index: > 1 });
@@ -142,6 +145,11 @@ public sealed class SetlistViewModel : ObservableObject
 
     public RelayCommand NewServiceCommand { get; }
     public RelayCommand DuplicateServiceCommand { get; }
+
+    /// <summary>REL-45: Restore earlier version…, Export service…, Import service….</summary>
+    public RelayCommand RestoreVersionCommand { get; }
+    public RelayCommand ExportServiceCommand { get; }
+    public RelayCommand ImportServiceCommand { get; }
     public RelayCommand RenameServiceCommand { get; }
     public RelayCommand AutoAdvanceCommand { get; }
 
@@ -294,7 +302,7 @@ public sealed class SetlistViewModel : ObservableObject
             OnPropertyChanged(name);
         foreach (var c in new[]
                  {
-                     DuplicateServiceCommand, RenameServiceCommand, DeleteServiceCommand, LoadSelectedCommand, RemoveSelectedCommand, MoveUpCommand,
+                     DuplicateServiceCommand, RenameServiceCommand, DeleteServiceCommand, RestoreVersionCommand, ExportServiceCommand, LoadSelectedCommand, RemoveSelectedCommand, MoveUpCommand,
                      MoveDownCommand, MakeCustomCommand, RevertCommand, SaveAsVariantCommand, KeyDownCommand, KeyUpCommand, TempoDownCommand, TempoUpCommand,
                  })
             c.Refresh();

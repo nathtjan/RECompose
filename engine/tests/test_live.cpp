@@ -310,3 +310,40 @@ TEST ("panic: during a hold it stops at once, while playing it fades out in 100 
     CHECK (std::abs (rig.left[at + 2400]) > 0.001f);
     CHECK (std::abs (rig.left[at + 6000]) < 1.0e-6f);
 }
+
+TEST ("soak: 200 random jumps each land on their source frame with no starved block (AT-47, reduced)")
+{
+    std::vector<PlanSegment> segments { seg (0, 60000, 0) };
+    auto build = [&segments]
+    {
+        auto p = std::make_unique<Plan>();
+        p->segments = segments;
+        p->lengthFrames = segments.back().end;
+        return p;
+    };
+
+    Rig rig (build());
+    rig.render (2000);
+    juce::Random random (4711);
+    int landed = 0;
+    for (int i = 0; i < 200; ++i)
+    {
+        const auto now = static_cast<std::int64_t> (rig.left.size());
+        const auto at = now + 1000 + random.nextInt (3000);
+        const auto target = static_cast<std::int64_t> (random.nextInt (330000));
+
+        // The new plan is the old one up to the swap frame, then a jump (a live action, PB-47).
+        while (! segments.empty() && segments.back().start >= at)
+            segments.pop_back();
+        segments.back().end = at;
+        segments.push_back (seg (at, at + 60000, target));
+        rig.swap (build(), at);
+
+        rig.render (static_cast<int> (at - now) + 2500);
+        if (follows (rig.left, at + 600, at + 2500, target + 600))
+            ++landed;
+    }
+
+    CHECK (landed == 200);
+    CHECK (rig.player.starvedBlocks() == 0);
+}

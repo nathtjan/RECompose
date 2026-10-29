@@ -56,7 +56,11 @@ public sealed class DataStore(string root)
 
     public Song? LoadSong(string id) => Read(SongPath(id), RecomposeJsonContext.Default.Song)?.Normalized();
 
-    public void SaveSong(Song song) => Write(SongPath(song.Id), song, RecomposeJsonContext.Default.Song);
+    public void SaveSong(Song song)
+    {
+        KeepVersion(SongPath(song.Id), song.Id);
+        Write(SongPath(song.Id), song, RecomposeJsonContext.Default.Song);
+    }
 
     public void DeleteSong(string id)
     {
@@ -78,7 +82,69 @@ public sealed class DataStore(string root)
 
     public Service? LoadService(string id) => Read(ServicePath(id), RecomposeJsonContext.Default.Service)?.Normalized();
 
-    public void SaveService(Service service) => Write(ServicePath(service.Id), service, RecomposeJsonContext.Default.Service);
+    public void SaveService(Service service)
+    {
+        KeepVersion(ServicePath(service.Id), service.Id);
+        Write(ServicePath(service.Id), service, RecomposeJsonContext.Default.Service);
+    }
+
+    // ---- Version history (DM-90, REL-45) ---------------------------------------------------------------
+
+    /// <summary>At most one version per document in this time.</summary>
+    public static readonly TimeSpan VersionInterval = TimeSpan.FromMinutes(5);
+
+    public const int VersionsKept = 20;
+
+    /// <summary>The clock for versions; tests set it.</summary>
+    public Func<DateTimeOffset> Now { get; set; } = () => DateTimeOffset.UtcNow;
+
+    public string VersionsFolder => Path.Combine(Root, "versions");
+
+    /// <summary>
+    /// Before a document is replaced, the file as it was goes to versions/&lt;id&gt;/&lt;timestamp&gt;.json, unless the newest
+    /// version is less than five minutes old; the 20 newest are kept. A failure here never stops the save.
+    /// </summary>
+    private void KeepVersion(string path, string id)
+    {
+        try
+        {
+            if (!File.Exists(path))
+                return;
+            var folder = Path.Combine(VersionsFolder, id);
+            var versions = ListVersions(id);
+            var now = Now();
+            if (versions.Count > 0 && now - versions[0].At < VersionInterval)
+                return;
+            Directory.CreateDirectory(folder);
+            File.Copy(path, Path.Combine(folder, now.UtcDateTime.ToString("yyyyMMdd'T'HHmmss'Z'", System.Globalization.CultureInfo.InvariantCulture) + ".json"), overwrite: true);
+            foreach (var old in ListVersions(id).Skip(VersionsKept))
+                File.Delete(old.Path);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+        }
+    }
+
+    /// <summary>The kept versions of a song or a service, newest first.</summary>
+    public List<DocumentVersion> ListVersions(string id)
+    {
+        var folder = Path.Combine(VersionsFolder, id);
+        if (!Directory.Exists(folder))
+            return [];
+        var list = new List<DocumentVersion>();
+        foreach (var file in Directory.EnumerateFiles(folder, "*.json"))
+        {
+            if (DateTimeOffset.TryParseExact(Path.GetFileNameWithoutExtension(file), "yyyyMMdd'T'HHmmss'Z'", System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.AssumeUniversal, out var at))
+                list.Add(new DocumentVersion(at, file));
+        }
+
+        return [.. list.OrderByDescending(v => v.At)];
+    }
+
+    public Service? LoadServiceVersion(DocumentVersion version) => Read(version.Path, RecomposeJsonContext.Default.Service)?.Normalized();
+
+    public Song? LoadSongVersion(DocumentVersion version) => Read(version.Path, RecomposeJsonContext.Default.Song)?.Normalized();
 
     public void DeleteService(string id)
     {
@@ -205,3 +271,6 @@ public sealed class DataStore(string root)
         return Convert.ToHexString(sha.GetHashAndReset()).ToLowerInvariant();
     }
 }
+
+/// <summary>A kept version of a document (DM-90): when it was replaced, and its file.</summary>
+public sealed record DocumentVersion(DateTimeOffset At, string Path);

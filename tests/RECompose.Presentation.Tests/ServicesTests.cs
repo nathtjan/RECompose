@@ -350,6 +350,43 @@ public sealed class ServicesTests : IDisposable
     }
 
     [Fact]
+    public async Task REL45_restore_earlier_version_brings_the_entries_back()
+    {
+        var vm = await SundayAsync();
+        var before = vm.Setlist.Rows.Select(r => r.Title).ToList();
+        Directory.Delete(Path.Combine(_root, "data", "versions"), true); // the setup's own edits were versions too (one per five minutes)
+        vm.RemoveEntry(vm.Setlist.Rows[0].Id); // the first change of the session keeps the service as it was
+        Assert.Single(vm.Setlist.Rows);
+
+        _dialogs.Choice = 0;
+        await vm.RestoreServiceVersionAsync();
+        Assert.Equal(before, vm.Setlist.Rows.Select(r => r.Title));
+        Assert.Contains("version", _dialogs.ChooseMessage);
+
+        vm.UndoCommand.Execute(null); // one undo step
+        Assert.Single(vm.Setlist.Rows);
+    }
+
+    [Fact]
+    public async Task REL45_export_and_import_bring_the_service_back_as_a_new_one()
+    {
+        var vm = await SundayAsync();
+        vm.SetKeyOffset(vm.Setlist.Rows[0].Id, 2);
+        var file = Path.Combine(_root, "sunday" + ServiceExchange.Extension);
+        _dialogs.SavePath = file;
+        await vm.ExportServiceAsync();
+        Assert.True(File.Exists(file));
+
+        var originalId = Assert.Single(vm.AllServices).Id;
+        _dialogs.OpenPath = file;
+        await vm.ImportServiceAsync();
+        Assert.Equal(2, vm.AllServices.Count);
+        var imported = vm.AllServices.Single(s => s.Id != originalId);
+        Assert.Equal(2, imported.Entries[0].KeyOffset);
+        Assert.Equal(["champion", "goodness"], imported.Entries.Select(e => e.SongId));
+    }
+
+    [Fact]
     public async Task SL4_reorder_keeps_transitions_and_SL6_the_playing_entry_stays()
     {
         var vm = await SundayAsync();
@@ -462,7 +499,12 @@ internal sealed class ServiceDialogs : IDialogs
     public string? ChooseMessage { get; private set; }
     public Func<TransitionViewModel, bool>? EditTransition { get; set; }
 
+    public string? SavePath { get; set; }
+    public string? OpenPath { get; set; }
+
     public Task<string?> PickFolderAsync() => Task.FromResult<string?>(null);
+    public Task<string?> PickSaveFileAsync(string title, string suggestedName, string extension) => Task.FromResult(SavePath);
+    public Task<string?> PickOpenFileAsync(string title, string extension) => Task.FromResult(OpenPath);
     public Task<bool> ReviewImportAsync(ImportReviewViewModel review) => Task.FromResult(false);
     public Task<DuplicateChoice> AskDuplicateAsync(string existingTitle) => Task.FromResult(DuplicateChoice.Cancel);
     public Task<bool> ConfirmAsync(string title, string message, string confirmLabel) => Task.FromResult(true);

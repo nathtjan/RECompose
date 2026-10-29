@@ -195,6 +195,10 @@
                     <MenuItem Header="Rename…" Command="{Binding RenameServiceCommand}" />
                     <MenuItem Header="{Binding AutoAdvanceLabel}" Command="{Binding AutoAdvanceCommand}" />
                     <Separator />
+                    <MenuItem Header="Restore earlier version…" Command="{Binding RestoreVersionCommand}" />
+                    <MenuItem Header="Export service…" Command="{Binding ExportServiceCommand}" />
+                    <MenuItem Header="Import service…" Command="{Binding ImportServiceCommand}" />
+                    <Separator />
                     <MenuItem Header="Delete" Command="{Binding DeleteServiceCommand}" />
                   </MenuFlyout>
                 </Button.Flyout>

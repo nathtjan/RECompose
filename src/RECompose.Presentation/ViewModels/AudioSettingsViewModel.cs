@@ -104,6 +104,22 @@ public sealed class AudioSettingsViewModel : ObservableObject
 
     public bool CueSharesMain => _cueOutput == _mainOutput;
 
+    // ---- Library & cache (SET-60, REL-15) -------------------------------------------------------------
+
+    public IReadOnlyList<string> CacheBudgets { get; } = ["10 GB", "20 GB", "30 GB", "50 GB", "100 GB"];
+
+    public string SelectedCacheBudget { get; set; } = "30 GB";
+
+    public int CacheBudgetGb => int.TryParse(SelectedCacheBudget.Split(' ')[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out var gb) ? gb : 30;
+
+    /// <summary>"12 renders · 3.4 GB of 30 GB".</summary>
+    public string CacheText { get => _cacheText; set => Set(ref _cacheText, value); }
+
+    private string _cacheText = string.Empty;
+
+    /// <summary>Frees the renders the next seven days do not need.</summary>
+    public RelayCommand? CleanCacheCommand { get; init; }
+
     /// <summary>"None", then every device as "Name (Driver)".</summary>
     public IReadOnlyList<string> FallbackOptions { get; }
 

@@ -15,7 +15,7 @@
     <TextBlock Classes="title" Text="Audio" />
     <TextBlock Classes="mono" Foreground="{DynamicResource text-secondary}" Text="{Binding CurrentDevice}" TextWrapping="Wrap" />
 
-    <Grid ColumnDefinitions="140,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="10">
+    <Grid ColumnDefinitions="140,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="10">
       <TextBlock Grid.Row="0" Classes="label" Text="DRIVER" VerticalAlignment="Center" />
       <ComboBox Grid.Row="0" Grid.Column="1" ItemsSource="{Binding DeviceTypes}" SelectedItem="{Binding SelectedType}" HorizontalAlignment="Stretch" />
 
@@ -44,6 +44,14 @@
       <CheckBox Grid.Row="8" Grid.Column="1" IsChecked="{Binding AutoSwitchBack}" Content="Switch back to the main device by itself" />
       <TextBlock Grid.Row="9" Grid.Column="1" Classes="meta" TextWrapping="Wrap"
                  Text="If the main device is lost, playback moves to the fallback at the same position. Without one, the song keeps time silently for a minute. When the main device returns, RECompose switches back at the next section boundary." />
+
+      <TextBlock Grid.Row="10" Classes="label" Text="RENDER CACHE" VerticalAlignment="Center" ToolTip.Tip="Stems rendered in other keys and tempos" />
+      <ComboBox Grid.Row="10" Grid.Column="1" ItemsSource="{Binding CacheBudgets}" SelectedItem="{Binding SelectedCacheBudget}" HorizontalAlignment="Stretch"
+                AutomationProperties.Name="Render cache size" />
+      <DockPanel Grid.Row="11" Grid.Column="1">
+        <Button DockPanel.Dock="Right" Content="Clean cache" Command="{Binding CleanCacheCommand}" />
+        <TextBlock Classes="meta" Text="{Binding CacheText}" VerticalAlignment="Center" TextWrapping="Wrap" />
+      </DockPanel>
     </Grid>
 
     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8" Margin="0,8,0,0">

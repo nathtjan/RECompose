@@ -55,6 +55,31 @@ public sealed partial class MainViewModel
     public bool HasMidiStatus => _midiInputs.Count > 0 || _midiMissing.Count > 0;
     public bool MidiOk => _midiMissing.Count == 0;
 
+    private string? _batteryWarnedFor;
+
+    /// <summary>
+    /// In Perform the computer and the display stay awake (PLAT-60), and running on battery below 20 % warns once per
+    /// service (REL-25).
+    /// </summary>
+    private void OnPerformPower(bool perform)
+    {
+        if (!perform)
+        {
+            SystemPower.AllowSleep();
+            return;
+        }
+
+        if (!SystemPower.PreventSleep())
+            AppLog.Write("Power", "Sleep could not be held off on this system");
+        var key = _service?.Id ?? string.Empty;
+        if (SystemPower.OnBattery == true && SystemPower.BatteryPercent is { } percent && percent < 20 && _batteryWarnedFor != key)
+        {
+            _batteryWarnedFor = key;
+            Banner = $"On battery at {percent} %. Plug in the charger before the service.";
+            AppLog.Write("Power", $"Battery warning at {percent} %");
+        }
+    }
+
     private void HookDeviceEvents(EngineClient engine)
     {
         engine.DeviceLost += loss => _ui.Post(() => OnDeviceLost(loss));

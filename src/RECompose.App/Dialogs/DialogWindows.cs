@@ -78,6 +78,29 @@ public sealed class AvaloniaDialogs(Window owner) : IDialogs
         return folders.Count > 0 ? folders[0].TryGetLocalPath() : null;
     }
 
+    public async Task<string?> PickSaveFileAsync(string title, string suggestedName, string extension)
+    {
+        var file = await owner.StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = title,
+            SuggestedFileName = suggestedName,
+            DefaultExtension = extension.TrimStart('.'),
+            FileTypeChoices = [new FilePickerFileType("RECompose service") { Patterns = ["*" + extension] }],
+        });
+        return file?.TryGetLocalPath();
+    }
+
+    public async Task<string?> PickOpenFileAsync(string title, string extension)
+    {
+        var files = await owner.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = title,
+            AllowMultiple = false,
+            FileTypeFilter = [new FilePickerFileType("RECompose service") { Patterns = ["*" + extension] }],
+        });
+        return files.Count > 0 ? files[0].TryGetLocalPath() : null;
+    }
+
     public async Task<bool> ReviewImportAsync(ImportReviewViewModel review)
     {
         var window = new ImportReviewWindow { DataContext = review };
