@@ -229,4 +229,13 @@
   <Style Selector="ListBoxItem">
     <Setter Property="Padding" Value="12,8" />
   </Style>
+
+  <!-- The loaded song's bar down its row's left edge (library, service, Perform rail); green stays for Playing -->
+  <Style Selector="Border.loaded">
+    <Setter Property="BorderBrush" Value="{DynamicResource accent}" />
+  </Style>
+  <!-- The Perform rail has no selection, so its loaded row is raised the way a selected list row is -->
+  <Style Selector="ItemsControl#Rail Border.loaded">
+    <Setter Property="Background" Value="{DynamicResource bg-raised}" />
+  </Style>
 </Styles>

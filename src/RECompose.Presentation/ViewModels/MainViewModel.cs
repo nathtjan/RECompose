@@ -148,7 +148,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                 Setlist.Refresh();
                 OnPropertyChanged(nameof(HasSections));
                 foreach (var item in _allSongs)
-                    item.IsLoaded = value is not null && item.Id == value.Id;
+                    item.IsLoaded = value is { Entry: null } && item.Id == value.Id; // a service entry is marked in the service, not the library
             }
         }
     }

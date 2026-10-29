@@ -254,6 +254,9 @@
                    DragDrop.AllowDrop="True" AutomationProperties.Name="Service entries">
             <ListBox.ItemTemplate>
               <DataTemplate x:DataType="vm:SetlistRowViewModel">
+                <!-- The loaded entry has an accent bar down its left edge, so it never sits as a second green dot beside Playing
+                     (the margin undoes the item padding so it runs the full height) -->
+                <Border Classes.loaded="{Binding IsLoaded}" BorderThickness="3,0,0,0" Margin="-12,-6,0,-6" Padding="9,6,0,6">
                 <StackPanel Spacing="6" AutomationProperties.Name="{Binding AccessibleName}">
                   <Grid ColumnDefinitions="22,*,Auto">
                     <TextBlock Grid.Column="0" Classes="mono" Text="{Binding Index}" Foreground="{DynamicResource text-secondary}" VerticalAlignment="Top" Margin="0,2,0,0" />
@@ -271,7 +274,6 @@
                     <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Top" Margin="8,2,0,0">
                       <c:Icon Glyph="warning" IconSize="14" IsVisible="{Binding HasProblem}" TextElement.Foreground="{DynamicResource state-warning}" ToolTip.Tip="{Binding Problem}" />
                       <c:Icon Glyph="play" IconSize="12" IsVisible="{Binding IsPlaying}" TextElement.Foreground="{DynamicResource state-playing}" ToolTip.Tip="Playing" />
-                      <Ellipse Classes="led ok" IsVisible="{Binding IsLoaded}" VerticalAlignment="Center" ToolTip.Tip="Loaded" />
                       <TextBlock Classes="mono" Text="{Binding KeyText}" />
                     </StackPanel>
                   </Grid>
@@ -284,6 +286,7 @@
                     </StackPanel>
                   </Button>
                 </StackPanel>
+                </Border>
               </DataTemplate>
             </ListBox.ItemTemplate>
           </ListBox>
@@ -332,16 +335,15 @@
                    ToolTip.Tip="Double-click to load; drag onto the service to add it">
             <ListBox.ItemTemplate>
               <DataTemplate x:DataType="vm:SongItemViewModel">
-                <DockPanel>
-                  <Ellipse DockPanel.Dock="Right" Classes="led ok" IsVisible="{Binding IsLoaded}" VerticalAlignment="Center"
-                           ToolTip.Tip="Loaded" />
+                <!-- The loaded song has the accent bar, as in the service (the margin undoes the item padding so it runs the full height) -->
+                <Border Classes.loaded="{Binding IsLoaded}" BorderThickness="3,0,0,0" Margin="-16,-8,0,-8" Padding="13,8,0,8">
                   <StackPanel Spacing="2">
                     <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
                     <TextBlock Classes="meta" Text="{Binding MetaLine}" TextTrimming="CharacterEllipsis" />
                     <TextBlock Classes="meta" Text="{Binding Activity}" IsVisible="{Binding HasActivity}" Foreground="{DynamicResource state-pending}"
                                TextTrimming="CharacterEllipsis" />
                   </StackPanel>
-                </DockPanel>
+                </Border>
               </DataTemplate>
             </ListBox.ItemTemplate>
           </ListBox>

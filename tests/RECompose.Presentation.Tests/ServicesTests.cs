@@ -163,6 +163,7 @@ public sealed class ServicesTests : IDisposable
         Assert.Equal(first.Id, vm.LoadedEntry!.Id);
         Assert.True(vm.Setlist.IsSelectionLoaded);
         Assert.True(vm.Setlist.Rows[0].IsLoaded);
+        Assert.DoesNotContain(vm.Songs, s => s.IsLoaded); // the library marks only a song loaded from the library
         Assert.Equal("B♭ · 72 BPM · 3/4 · Demo", vm.Song!.HeaderLine);
         Assert.Equal("Editing: Champion · service entry 1", vm.Entry.EditingText);
 

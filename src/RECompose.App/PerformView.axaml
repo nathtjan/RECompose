@@ -204,8 +204,10 @@
             <ItemsControl.ItemTemplate>
               <DataTemplate x:DataType="vm:SetlistRowViewModel">
                 <c:HoldButton Classes="ghost" Click="OnRailRowClick" Tag="{Binding Id}" HoldRequired="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).IsServiceLock}"
-                              HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Padding="16,8" Height="NaN" MinHeight="56"
+                              HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" Padding="16,8" Height="NaN" MinHeight="56"
                               AutomationProperties.Name="{Binding AccessibleName}">
+                  <!-- The loaded entry's bar, as in the service (the margin undoes the padding so it runs the full height) -->
+                  <Border Classes.loaded="{Binding IsLoaded}" BorderThickness="3,0,0,0" Margin="-16,-8,-16,-8" Padding="13,8,16,8">
                   <Grid ColumnDefinitions="24,*,Auto">
                     <TextBlock Grid.Column="0" Classes="mono" Text="{Binding Index}" Foreground="{DynamicResource text-secondary}" VerticalAlignment="Center" />
                     <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
@@ -213,10 +215,11 @@
                       <TextBlock Classes="meta" Text="{Binding VariantText}" TextTrimming="CharacterEllipsis" />
                     </StackPanel>
                     <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                      <c:Icon Glyph="play" IconSize="12" IsVisible="{Binding IsLoaded}" TextElement.Foreground="{DynamicResource state-playing}" />
+                      <c:Icon Glyph="play" IconSize="12" IsVisible="{Binding IsPlaying}" TextElement.Foreground="{DynamicResource state-playing}" />
                       <TextBlock Classes="mono" Text="{Binding KeyText}" />
                     </StackPanel>
                   </Grid>
+                  </Border>
                 </c:HoldButton>
               </DataTemplate>
             </ItemsControl.ItemTemplate>
