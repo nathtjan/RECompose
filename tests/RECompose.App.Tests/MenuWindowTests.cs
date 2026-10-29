@@ -25,11 +25,24 @@ public sealed class MenuWindowTests
             window.Show();
             Dispatcher.UIThread.RunJobs();
 
-            var button = window.FindControl<Button>("AppMenuButton")!;
-            Assert.True(button.IsVisible);
-            var groups = ((MenuFlyout)button.Flyout!).ItemsSource!.Cast<MenuItem>().ToList();
-            Assert.Equal(["File", "Edit", "Song", "Service", "Transport", "View", "Window", "Help"], groups.Select(g => (string)g.Header!));
-            Assert.All(groups.SelectMany(g => g.ItemsSource!.OfType<MenuItem>()), item => Assert.NotNull(item.Command));
+            // macOS: the native menu bar; elsewhere the Menu button's flyout.
+            List<(string Header, List<System.Windows.Input.ICommand?> Commands)> groups;
+            if (OperatingSystem.IsMacOS())
+            {
+                Assert.False(window.FindControl<Button>("AppMenuButton")!.IsVisible);
+                groups = NativeMenu.GetMenu(window)!.Items.OfType<NativeMenuItem>()
+                    .Select(g => (g.Header!, g.Menu!.Items.OfType<NativeMenuItem>().Select(i => i.Command).ToList())).ToList();
+            }
+            else
+            {
+                var button = window.FindControl<Button>("AppMenuButton")!;
+                Assert.True(button.IsVisible);
+                groups = ((MenuFlyout)button.Flyout!).ItemsSource!.Cast<MenuItem>()
+                    .Select(g => ((string)g.Header!, g.ItemsSource!.OfType<MenuItem>().Select(i => i.Command).ToList())).ToList();
+            }
+
+            Assert.Equal(["File", "Edit", "Song", "Service", "Transport", "View", "Window", "Help"], groups.Select(g => g.Header));
+            Assert.All(groups.SelectMany(g => g.Commands), Assert.NotNull);
             window.Close();
         }, TestContext.Current.CancellationToken);
     }

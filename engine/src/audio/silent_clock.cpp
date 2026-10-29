@@ -33,7 +33,7 @@ void SilentClock::start (double sampleRate, int numOutputs, std::int64_t backdat
 
     const auto now = steadyNowNs();
     // Backdating by more than a second would race through audio the disk thread has not read; nobody hears it anyway.
-    startNs_ = backdateNs > 0 ? std::max (backdateNs, now - 1'000'000'000LL) : now;
+    startNs_ = backdateNs > 0 ? std::max<std::int64_t> (backdateNs, now - 1'000'000'000LL) : now;
     rendered_.store (0, std::memory_order_relaxed);
     running_.store (true, std::memory_order_release);
     startThread (juce::Thread::Priority::highest);

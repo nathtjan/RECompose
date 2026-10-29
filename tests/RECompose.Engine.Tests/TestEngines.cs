@@ -15,7 +15,8 @@ internal sealed class TestEngines : IAsyncDisposable
     {
         // A short, unique endpoint per engine (socket paths are limited to about 100 bytes).
         var endpoint = Path.Combine(Path.GetTempPath(), $"rec-{Guid.NewGuid():N}"[..14] + ".sock");
-        var options = new EngineHostOptions(executable, endpoint) { IdleExitSeconds = 3 };
+        // Shut down below, so no short idle exit: on a loaded CI runner 3 s ran out before the test had connected.
+        var options = new EngineHostOptions(executable, endpoint) { IdleExitSeconds = 30 };
         var session = await EngineHost.ConnectOrStartAsync(options, TestContext.Current.CancellationToken);
         _started.Add((options, session.ProcessId));
         return new EngineClient(session);

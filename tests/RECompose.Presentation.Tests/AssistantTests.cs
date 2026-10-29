@@ -18,7 +18,7 @@ namespace RECompose.Presentation.Tests;
 public sealed class AssistantTests : IDisposable
 {
     private static readonly TempoGrid A = new(72, 3, 0.02);
-    private readonly string _root = Path.Combine(Path.GetTempPath(), "rec-assistant-" + Guid.NewGuid().ToString("N"));
+    private readonly string _root = Path.Combine(Path.GetTempPath(), "rec-ai-" + Guid.NewGuid().ToString("N"));
     private readonly ServiceDialogs _dialogs = new();
     private readonly FakeApi _api = new();
 

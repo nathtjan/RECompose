@@ -65,8 +65,10 @@ TEST ("silent clock counts from the last block a device played")
 
     // A backdate beyond a second is cut to one.
     frames.store (0);
+    const auto restarted = std::chrono::steady_clock::now();
     clock.start (kRate, 2, SilentClock::steadyNowNs() - 10'000'000'000LL);
     std::this_thread::sleep_for (std::chrono::milliseconds (100));
+    const auto slept = std::chrono::duration<double> (std::chrono::steady_clock::now() - restarted).count();
     clock.stop();
-    CHECK (frames.load() <= framesIn (1.2));
+    CHECK (frames.load() <= framesIn (1.0 + slept + 0.04) + 2 * SilentClock::kBlock);
 }

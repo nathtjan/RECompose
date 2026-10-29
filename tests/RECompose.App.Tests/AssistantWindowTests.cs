@@ -19,7 +19,7 @@ namespace RECompose.App.Tests;
 // The assistant drawer (UI-17, AS-2): Ctrl+J, the setup card without a key, a ✓ row and a Perform card, with a fake API.
 public sealed class AssistantWindowTests : IDisposable
 {
-    private readonly string _root = Path.Combine(Path.GetTempPath(), "rec-app-assistant-" + Guid.NewGuid().ToString("N"));
+    private readonly string _root = Path.Combine(Path.GetTempPath(), "rec-app-ai-" + Guid.NewGuid().ToString("N"));
 
     public void Dispose()
     {
