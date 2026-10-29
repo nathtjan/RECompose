@@ -91,8 +91,10 @@
   <Grid RowDefinitions="60,Auto,*,108">
 
     <!-- Status row (60 px) -->
-    <Border Grid.Row="0" Classes="topbar" Padding="12,0">
+    <Border Grid.Row="0" Classes="topbar" Padding="12,0,0,0">
       <DockPanel>
+        <c:CaptionButtons DockPanel.Dock="Right" Margin="12,0,0,0" />
+        <Panel DockPanel.Dock="Left" Classes="traffic-lights" />
         <c:HoldButton x:Name="LeavePerform" DockPanel.Dock="Left" Command="{Binding TogglePerformCommand}" HoldRequired="{Binding IsServiceLock}"
                       Height="44" MinHeight="44" Padding="16,0" VerticalAlignment="Center" AutomationProperties.Name="Prepare"
                       ToolTip.Tip="Back to Prepare (Ctrl+P). In Service lock, hold to leave.">

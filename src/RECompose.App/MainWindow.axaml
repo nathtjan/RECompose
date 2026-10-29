@@ -13,7 +13,8 @@
         Title="RECompose"
         Width="1440" Height="900"
         MinWidth="1280" MinHeight="760"
-        WindowStartupLocation="CenterScreen">
+        WindowStartupLocation="CenterScreen"
+        ExtendClientAreaToDecorationsHint="True" WindowDecorations="BorderOnly" ExtendClientAreaTitleBarHeightHint="48">
 
   <Window.Styles>
     <Style Selector="Ellipse.led">
@@ -98,13 +99,22 @@
       <Setter Property="MinHeight" Value="28" />
       <Setter Property="Padding" Value="8,0" />
     </Style>
+    <!-- The drawer leaves the top bar, and the window keys in it, uncovered (Prepare 48, Perform 60) -->
+    <Style Selector="Border.drawer">
+      <Setter Property="Margin" Value="0,48,0,0" />
+    </Style>
+    <Style Selector="Border.drawer.perform">
+      <Setter Property="Margin" Value="0,60,0,0" />
+    </Style>
   </Window.Styles>
 
   <Grid RowDefinitions="48,Auto,*">
 
     <!-- Top bar (UI-11) -->
-    <Border Grid.Row="0" Classes="topbar" Padding="16,0" IsVisible="{Binding IsPrepare}">
+    <Border Grid.Row="0" Classes="topbar" Padding="16,0,0,0" IsVisible="{Binding IsPrepare}">
       <DockPanel>
+        <c:CaptionButtons DockPanel.Dock="Right" Margin="12,0,0,0" />
+        <Panel DockPanel.Dock="Left" Classes="traffic-lights" />
         <Button x:Name="AppMenuButton" DockPanel.Dock="Left" Classes="ghost" Content="Menu" IsVisible="False" VerticalAlignment="Center" Margin="0,0,12,0"
                 AutomationProperties.Name="Menu" />
         <TextBlock DockPanel.Dock="Left" VerticalAlignment="Center" FontSize="18" Margin="0,0,24,0">
@@ -1120,8 +1130,9 @@
     <!-- Perform replaces the whole window below the title (UI-40); playback never stops when it opens -->
     <local:PerformView x:Name="Perform" Grid.Row="0" Grid.RowSpan="3" IsVisible="{Binding IsPerform}" />
 
-    <!-- Assistant (UI-17, AS-2): a drawer over the right edge in Prepare and Perform; Ctrl+J -->
-    <Border Grid.Row="0" Grid.RowSpan="3" Width="400" HorizontalAlignment="Right" Classes="panel" BorderBrush="{DynamicResource border}" BorderThickness="1,0,0,0"
+    <!-- Assistant (UI-17, AS-2): a drawer over the right edge in Prepare and Perform, below the top bar; Ctrl+J -->
+    <Border Grid.Row="0" Grid.RowSpan="3" Width="400" HorizontalAlignment="Right" Classes="panel drawer" BorderBrush="{DynamicResource border}" BorderThickness="1,0,0,0"
+            Classes.perform="{Binding $parent[Window].((vm:MainViewModel)DataContext).IsPerform}"
             Background="{DynamicResource bg-surface}" IsVisible="{Binding IsOpen}" DataContext="{Binding $parent[Window].((vm:MainViewModel)DataContext).Assistant}" x:DataType="vm:AssistantViewModel">
       <DockPanel Margin="12">
         <!-- Header: title, Undo, New conversation, settings, close -->

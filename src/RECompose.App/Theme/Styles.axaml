@@ -49,10 +49,15 @@
     <Setter Property="Background" Value="{DynamicResource bg-surface}" />
     <Setter Property="BorderBrush" Value="{DynamicResource border}" />
   </Style>
+  <!-- The top bars are the window's title bar: their free space moves the window, their controls stay controls. -->
   <Style Selector="Border.topbar">
     <Setter Property="Background" Value="{DynamicResource bg-surface}" />
     <Setter Property="BorderBrush" Value="{DynamicResource border}" />
     <Setter Property="BorderThickness" Value="0,0,0,1" />
+    <Setter Property="WindowDecorationProperties.ElementRole" Value="TitleBar" />
+  </Style>
+  <Style Selector="Border.topbar :is(TemplatedControl)">
+    <Setter Property="WindowDecorationProperties.ElementRole" Value="User" />
   </Style>
   <Style Selector="Border.banner">
     <Setter Property="Background" Value="{DynamicResource state-warning-subtle}" />
@@ -138,6 +143,45 @@
   <Style Selector="Button.ghost /template/ ContentPresenter#PART_ContentPresenter">
     <Setter Property="Background" Value="Transparent" />
     <Setter Property="BorderBrush" Value="Transparent" />
+  </Style>
+
+  <!-- Room for the macOS traffic lights at the left of the top bars (MainWindow sets the mac class). -->
+  <Style Selector="Panel.traffic-lights">
+    <Setter Property="Width" Value="0" />
+  </Style>
+  <Style Selector="Window.mac Panel.traffic-lights">
+    <Setter Property="Width" Value="72" />
+  </Style>
+
+  <!-- Window keys at the top right of the top bars (the window draws its own title bar). -->
+  <Style Selector="Button.caption">
+    <Setter Property="Width" Value="46" />
+    <Setter Property="MinHeight" Value="0" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="VerticalAlignment" Value="Stretch" />
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+    <Setter Property="CornerRadius" Value="0" />
+    <Setter Property="Foreground" Value="{DynamicResource text-secondary}" />
+  </Style>
+  <Style Selector="Button.caption /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="CornerRadius" Value="0" />
+  </Style>
+  <Style Selector="Button.caption:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource bg-raised}" />
+    <Setter Property="Foreground" Value="{DynamicResource text-primary}" />
+  </Style>
+  <Style Selector="Button.caption:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource bg-inset}" />
+  </Style>
+  <Style Selector="Button.caption.close:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource state-error}" />
+    <Setter Property="Foreground" Value="{DynamicResource text-on-section}" />
+  </Style>
+  <Style Selector="Button.caption.close:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource state-error-subtle}" />
   </Style>
 
   <!-- Mute and solo: the letter always shows; when on, the face takes the state colour. -->

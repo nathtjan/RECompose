@@ -21,6 +21,14 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+
+        // The top bars are the title bar; macOS keeps its traffic lights over their left end.
+        if (OperatingSystem.IsMacOS())
+        {
+            WindowDecorations = WindowDecorations.Full;
+            Classes.Add("mac");
+        }
+
         DataContextChanged += (_, _) =>
         {
             if (ViewModel is { } vm)
