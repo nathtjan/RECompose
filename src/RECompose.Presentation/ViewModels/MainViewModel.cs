@@ -2,6 +2,7 @@
 using System.Collections.ObjectModel;
 using System.Globalization;
 using RECompose.Core.Audio;
+using RECompose.Core.Automation;
 using RECompose.Core.Import;
 using RECompose.Core.Arrangements;
 using RECompose.Core.Commands;
@@ -449,6 +450,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         var engine = new EngineClient(session);
         engine.SnapshotReceived += s => _ui.Post(() => ApplySnapshot(s));
         _ = OpenMidiAsync(engine);
+        engine.MidiSent += OnMidiSent;
+        _ = OpenMidiOutAsync(engine);
         engine.DeviceChanged += d => _ui.Post(() => ShowDevice(d));
         engine.DeviceError += m => _ui.Post(() => Banner = $"The audio device reported a problem: {m}");
         HookDeviceEvents(engine);
@@ -777,6 +780,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             _ = ComputePeaksAsync(model);
         Sections.ResultText = string.Empty;
         Sections.Refresh();
+        _automation = AutomationEvents.None;
+        RefreshCues();
+        AddCueCommand.Refresh();
     }
 
     private void MarkMissing(string trackId, string problem)
@@ -808,7 +814,10 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         else if (IsPlaying)
             await _engine.PauseAsync();
         else
+        {
             await _engine.PlayAsync();
+            ResendSectionNote(); // AUTO-21
+        }
     }
 
     private async Task StopAsync()
@@ -909,7 +918,13 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             }
 
             plan ??= song.Plan;
-            await engine.SetPlanAsync(plan.Segments(), positionSec, plan.Grid, plan.TempoFactor, holds: plan.Holds(), swapAtSec: swapAtSec);
+            var previous = _automation;
+            var (segments, midi, calls, events) = Automate(plan, song.Model, _planPosition, 0); // AUTO-*: the automation goes with the plan
+            _automation = events;
+            _sent = (plan, swapAtSec);
+            if (swapAtSec is not null)
+                LogReplacements(previous, events);
+            await engine.SetPlanAsync(segments, positionSec, plan.Grid, plan.TempoFactor, holds: plan.Holds(), swapAtSec: swapAtSec, midi: midi, calls: calls);
             await SendTransitionAsync(plan); // the transition point is a time of this plan
         }
         catch (Exception ex) when (ex is EngineErrorException or EngineDisconnectedException or OperationCanceledException)
@@ -1290,6 +1305,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                 track.OutputLabel = Outputs.Label(track.Track.Output);
             }
             await engine.SetTrackAsync(EngineTrack.ClickTrackId, output: a.Resolve("cue"));
+            await engine.SetTrackAsync(EngineTrack.SpeechTrackId, output: a.Resolve("cue"));
             await engine.SetPadAsync(output: a.ResolvePad());
             ShowToast($"Main on {OutputRef.Direct(a.MainChannel, a.MainWidth).Label}, Cue on {OutputRef.Direct(a.CueChannel, a.CueWidth).Label}");
         }

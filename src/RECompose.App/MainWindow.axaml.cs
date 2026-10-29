@@ -508,6 +508,9 @@ public partial class MainWindow : Window
             case Key.M:
                 vm.MarkCommand.Execute(null);
                 break;
+            case Key.C when e.KeyModifiers == KeyModifiers.None:
+                vm.AddCueCommand.Execute(null); // AUTO-1
+                break;
             case Key.S:
                 vm.Sections.SplitAtPlayhead();
                 break;

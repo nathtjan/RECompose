@@ -68,6 +68,14 @@ public sealed record Cue
 
     public static string NewId() => Guid.NewGuid().ToString("N")[..12];
 
+    /// <summary>"Cue 1" for the log (AUTO-5), whether the cue is called "Cue 1" or "1".</summary>
+    public string LogName => Name.StartsWith("Cue", StringComparison.OrdinalIgnoreCase) ? Name : $"Cue {Name}";
+
+    /// <summary>AUTO-1: "Cue {n}", one more than the highest number among the song's "Cue n" names.</summary>
+    public static string NextName(IEnumerable<Cue> cues) =>
+        "Cue " + (cues.Select(c => c.Name.StartsWith("Cue ", StringComparison.Ordinal) && int.TryParse(c.Name[4..], NumberStyles.None, CultureInfo.InvariantCulture, out var n) ? n : 0)
+            .DefaultIfEmpty(0).Max() + 1).ToString(CultureInfo.InvariantCulture);
+
     /// <summary>The source time it fires at, after the snap (AUTO-3).</summary>
     public double FireSec(TempoGrid grid) => Snap switch
     {
@@ -98,6 +106,29 @@ public static class MidiNotes
         note = Math.Clamp(note, 0, 127);
         var octave = note / 12 - (middleC == "C4" ? 1 : 2);
         return Names[note % 12] + octave.ToString(CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>"C4", "F#3", "F♯3", "Bb2" or a number 0–127 → the MIDI note; null when it is neither.</summary>
+    public static int? Parse(string? text, string middleC = "C3")
+    {
+        text = text?.Trim().Replace('♯', '#').Replace('♭', 'b');
+        if (string.IsNullOrEmpty(text))
+            return null;
+        if (int.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out var number))
+            return number is >= 0 and <= 127 ? number : null;
+
+        var pitch = "C D EF G A B".IndexOf(char.ToUpperInvariant(text[0]), StringComparison.Ordinal);
+        if (pitch < 0)
+            return null;
+        var rest = text[1..];
+        if (rest.StartsWith('#'))
+            (pitch, rest) = (pitch + 1, rest[1..]);
+        else if (rest.StartsWith('b'))
+            (pitch, rest) = (pitch - 1, rest[1..]);
+        if (!int.TryParse(rest, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var octave))
+            return null;
+        var note = (octave + (middleC == "C4" ? 1 : 2)) * 12 + pitch;
+        return note is >= 0 and <= 127 ? note : null;
     }
 
     /// <summary>The default map (AUTO-21): Intro C3 (60) up to Ending B3, similar types sharing a note.</summary>

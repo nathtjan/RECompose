@@ -72,6 +72,7 @@ public sealed partial class MainViewModel
         }).ToList();
         var (cueChannel, cueWidth) = _settings.Audio.Resolve("cue");
         tracks.Add(EngineTrack.Click(cueChannel, cueWidth));
+        tracks.Add(EngineTrack.Speech(cueChannel, cueWidth)); // spoken guide, replaced calls and counts (AUTO-30, AUTO-31, PB-71)
         return tracks;
     }
 
@@ -106,7 +107,8 @@ public sealed partial class MainViewModel
                 if (version != _nextVersion)
                     return; // a newer refresh took over while this one was loading
                 var plan = EntryPlan.Build(next, song);
-                await engine.SetPlanAsync(plan.Segments(), 0, plan.Grid, plan.TempoFactor, next: true);
+                var (segments, midi, calls, _) = Automate(plan, song, 0, NextSlotIds);
+                await engine.SetPlanAsync(segments, 0, plan.Grid, plan.TempoFactor, next: true, midi: midi, calls: calls);
                 _nextEntry = next;
                 _nextSong = song;
                 _nextLoaded = loaded;

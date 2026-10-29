@@ -108,6 +108,82 @@ public sealed class ControlsViewModel : ObservableObject
         }
     }
 
+    /// <summary>Settings › Playback "Replace guide calls" (AUTO-30).</summary>
+    public bool ReplaceGuideCalls
+    {
+        get => _main.CurrentSettings.ReplaceGuideCalls;
+        set
+        {
+            if (_main.CurrentSettings.ReplaceGuideCalls != value)
+            {
+                _main.UpdateSettings(s => s with { ReplaceGuideCalls = value });
+                OnPropertyChanged();
+            }
+        }
+    }
+
+    // ---- MIDI out (SET-30) --------------------------------------------------------------------
+
+    private IReadOnlyList<string> _midiPorts = ["None"];
+
+    /// <summary>"None", then the outputs the engine can open; filled when the dialog opens.</summary>
+    public IReadOnlyList<string> MidiPorts { get => _midiPorts; private set => Set(ref _midiPorts, value); }
+
+    public static IReadOnlyList<string> Channels { get; } = Enumerable.Range(1, 16).Select(i => i.ToString(System.Globalization.CultureInfo.InvariantCulture)).ToList();
+    public static IReadOnlyList<string> MiddleCChoices { get; } = ["C3", "C4"];
+
+    internal async Task LoadMidiPortsAsync()
+    {
+        var ports = await _main.MidiOutputsAsync();
+        if (_main.MidiOut.Port is { } port && !ports.Contains(port))
+            ports = [.. ports, port]; // chosen before, not connected now
+        MidiPorts = ports;
+        OnPropertyChanged(nameof(MidiPort));
+    }
+
+    public string MidiPort
+    {
+        get => _main.MidiOut.Port ?? "None";
+        set
+        {
+            var port = value is null or "None" ? null : value;
+            if (port != _main.MidiOut.Port)
+            {
+                _main.UpdateSettings(s => s with { MidiOut = _main.MidiOut with { Port = port } });
+                _main.ReopenMidiOut();
+                OnPropertyChanged();
+            }
+        }
+    }
+
+    public string MidiChannel
+    {
+        get => _main.MidiOut.Channel.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        set
+        {
+            if (int.TryParse(value, out var channel) && channel != _main.MidiOut.Channel)
+            {
+                _main.UpdateSettings(s => s with { MidiOut = _main.MidiOut with { Channel = channel } });
+                OnPropertyChanged();
+            }
+        }
+    }
+
+    public string MiddleC
+    {
+        get => _main.MidiOut.MiddleC;
+        set
+        {
+            if (value is "C3" or "C4" && value != _main.MidiOut.MiddleC)
+            {
+                _main.UpdateSettings(s => s with { MidiOut = _main.MidiOut with { MiddleC = value } });
+                OnPropertyChanged();
+            }
+        }
+    }
+
+    public RelayCommand TestNoteCommand => _main.TestNoteCommand;
+
     // ---- Routing ----------------------------------------------------------------------------
 
     /// <summary>A computer key went down or up. True when a binding took it.</summary>

@@ -541,7 +541,31 @@ public sealed class TimelineView : Control
                 DrawItems(context, song, width);
             else
                 DrawSections(context, song, width);
+            DrawCues(context, song, width);
             DrawLanes(context, song, width);
+        }
+
+        /// <summary>AUTO-4: ◆ and the name at every place the plan plays a cue's source time (as heard), or at that time (as written).</summary>
+        private void DrawCues(DrawingContext context, SongViewModel song, double width)
+        {
+            var brush = owner.Brush("text-primary");
+            foreach (var cue in song.Model.Cues.Where(c => c.Enabled))
+            {
+                var src = cue.FireSec(song.Grid);
+                var times = owner.Heard
+                    ? song.Plan.DisplayItems.Where(i => i.HasSource && i.Length > 0 && i.Kind != PlanItemKind.Tail && src >= i.SrcStart && src < i.SrcEnd)
+                        .Select(i => i.PlanStart + (src - i.SrcStart))
+                    : [src];
+                foreach (var t in times)
+                {
+                    var x = owner.XAt(t);
+                    if (x < -60 || x > width)
+                        continue;
+                    var text = new FormattedText($"◆ {cue.Name}", CultureInfo.CurrentCulture, FlowDirection.LeftToRight, owner.SansFace, 10, brush);
+                    context.DrawLine(new Pen(brush), new Point(Math.Round(x) + 0.5, RulerHeight), new Point(Math.Round(x) + 0.5, RulerHeight + 4));
+                    context.DrawText(text, new Point(x - 4, RulerHeight - text.Height));
+                }
+            }
         }
 
         private void DrawRuler(DrawingContext context, SongViewModel song, double width)

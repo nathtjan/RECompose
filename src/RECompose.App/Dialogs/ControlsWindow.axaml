@@ -6,7 +6,7 @@
         x:Class="RECompose.App.Dialogs.ControlsWindow"
         x:DataType="vm:ControlsViewModel"
         Title="Controls and playback"
-        Width="640" Height="640" MinHeight="420"
+        Width="640" Height="780" MinHeight="420"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False">
   <DockPanel Margin="20">
@@ -17,12 +17,29 @@
 
     <StackPanel DockPanel.Dock="Top" Spacing="10">
       <TextBlock Classes="title" Text="Playback" />
-      <Grid ColumnDefinitions="180,*" RowDefinitions="Auto,Auto" RowSpacing="10">
+      <Grid ColumnDefinitions="180,*" RowDefinitions="Auto,Auto,Auto" RowSpacing="10">
         <TextBlock Grid.Row="0" Classes="label" Text="JUMP TAKES EFFECT" VerticalAlignment="Center" />
         <ComboBox x:Name="TimingSelect" Grid.Row="0" Grid.Column="1" ItemsSource="{Binding TimingChoices}" SelectedItem="{Binding SelectedTiming}" HorizontalAlignment="Stretch" />
         <TextBlock Grid.Row="1" Classes="label" Text="AFTER A JUMP" VerticalAlignment="Center" />
         <CheckBox x:Name="ContinueBox" Grid.Row="1" Grid.Column="1" IsChecked="{Binding ContinueAsWritten}"
                   Content="Carry on as written instead of returning to the arrangement" />
+        <TextBlock Grid.Row="2" Classes="label" Text="GUIDE CALLS" VerticalAlignment="Center" />
+        <CheckBox Grid.Row="2" Grid.Column="1" IsChecked="{Binding ReplaceGuideCalls}"
+                  Content="Replace guide calls that announce the wrong section"
+                  ToolTip.Tip="After a change, the guide's call for the section as written is silenced and the right one plays" />
+      </Grid>
+      <TextBlock Classes="title" Text="MIDI out" Margin="0,12,0,0" />
+      <Grid ColumnDefinitions="180,*,Auto" RowDefinitions="Auto,Auto" RowSpacing="10" ColumnSpacing="8">
+        <TextBlock Grid.Row="0" Classes="label" Text="PORT" VerticalAlignment="Center" />
+        <ComboBox Grid.Row="0" Grid.Column="1" ItemsSource="{Binding MidiPorts}" SelectedItem="{Binding MidiPort}" HorizontalAlignment="Stretch"
+                  AutomationProperties.Name="MIDI out port" ToolTip.Tip="Lighting software listens here; on Windows use a loopMIDI port or a MIDI interface" />
+        <Button Grid.Row="0" Grid.Column="2" Content="Send test note" Command="{Binding TestNoteCommand}" />
+        <TextBlock Grid.Row="1" Classes="label" Text="CHANNEL · MIDDLE C" VerticalAlignment="Center" />
+        <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Spacing="8">
+          <ComboBox ItemsSource="{Binding Channels}" SelectedItem="{Binding MidiChannel}" MinWidth="80" AutomationProperties.Name="MIDI channel" />
+          <ComboBox ItemsSource="{Binding MiddleCChoices}" SelectedItem="{Binding MiddleC}" MinWidth="80" AutomationProperties.Name="Middle C is"
+                    ToolTip.Tip="What MIDI note 60 is called" />
+        </StackPanel>
       </Grid>
       <TextBlock Classes="title" Text="Controls" Margin="0,12,0,0" />
       <TextBlock Classes="meta" TextWrapping="Wrap"

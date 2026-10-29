@@ -84,6 +84,15 @@ public class AutomationTests
         Assert.Null(MidiNotes.Clash(first, null));
         Assert.Equal(SectionType.Chorus, MidiNotes.Clash(first with { Action = new CueAction { Note = 64 } }, null));
         Assert.Equal("CC 64 = 127", new CueAction { Kind = CueActionKind.ControlChange, Controller = 64 }.Summary());
+
+        Assert.Equal(72, MidiNotes.Parse("C4"));
+        Assert.Equal(66, MidiNotes.Parse("F♯3"));
+        Assert.Equal(66, MidiNotes.Parse("f#3"));
+        Assert.Equal(70, MidiNotes.Parse("Bb3"));
+        Assert.Equal(60, MidiNotes.Parse("C4", "C4"));
+        Assert.Equal(100, MidiNotes.Parse("100"));
+        Assert.Null(MidiNotes.Parse("H2"));
+        Assert.Equal("Cue 3", Cue.NextName([first with { Name = "Cue 2" }, first with { Name = "Lights" }]));
     }
 
     [Fact]

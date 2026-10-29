@@ -340,6 +340,7 @@ public sealed partial class MainViewModel
             if (gridChanged)
                 _song.ResetFields();
             Sections.Refresh();
+            RefreshCues();
             OnPropertyChanged(nameof(HasSections));
             UpdateReadouts();
         }

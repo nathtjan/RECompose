@@ -793,6 +793,16 @@
             </ScrollViewer>
           </TabItem>
           <TabItem Header="SECTIONS">
+            <DockPanel>
+            <!-- Automatic section cues (AUTO-20) -->
+            <Border DockPanel.Dock="Bottom" Classes="inset" Padding="12,8" Margin="16,8,16,12" IsVisible="{Binding Song, Converter={x:Static ObjectConverters.IsNotNull}}">
+              <StackPanel Spacing="4">
+                <TextBlock Classes="heading" Text="Automatic section cues" />
+                <TextBlock Classes="meta" Text="Section jumps, vamps and auto-cues all follow the live arrangement." />
+                <CheckBox IsChecked="{Binding SectionNotes}" Content="Send a MIDI note per section type (for lighting looks)" />
+                <CheckBox IsChecked="{Binding SpokenGuide}" Content="Spoken guide (&quot;Chorus&quot; one bar ahead)" />
+              </StackPanel>
+            </Border>
             <DockPanel DataContext="{Binding Sections}" x:DataType="vm:SectionsViewModel" Margin="16,12,16,0">
               <!-- Toolbar: Detect, Review, + At playhead, Split (SEC-10, SEC-30, SEC-50, SEC-53) -->
               <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
@@ -888,6 +898,69 @@
                   </DataTemplate>
                 </ListBox.ItemTemplate>
               </ListBox>
+            </DockPanel>
+            </DockPanel>
+          </TabItem>
+
+          <!-- Cues (AUTO-6) -->
+          <TabItem Header="CUES">
+            <DockPanel Margin="16,12,16,0">
+              <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
+                <Button Command="{Binding AddCueCommand}" ToolTip.Tip="Add a cue at the playhead (C)">
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <c:Icon Glyph="plus" IconSize="14" VerticalAlignment="Center" />
+                    <TextBlock Text="At playhead" VerticalAlignment="Center" />
+                  </StackPanel>
+                </Button>
+                <TextBlock Classes="meta" Text="C adds a cue at the playhead" VerticalAlignment="Center" />
+              </StackPanel>
+              <Grid DockPanel.Dock="Top" ColumnDefinitions="140,170,110,110,50,130,80,40,84,40" Margin="8,0,8,4">
+                <TextBlock Grid.Column="0" Classes="label" Text="CUE" />
+                <TextBlock Grid.Column="1" Classes="label" Text="POSITION" />
+                <TextBlock Grid.Column="2" Classes="label" Text="ACTION" />
+                <TextBlock Grid.Column="3" Classes="label" Text="VALUE" />
+                <TextBlock Grid.Column="4" Classes="label" Text="CH" />
+                <TextBlock Grid.Column="5" Classes="label" Text="PASSES" />
+                <TextBlock Grid.Column="6" Classes="label" Text="SNAP" />
+                <TextBlock Grid.Column="7" Classes="label" Text="ON" />
+              </Grid>
+              <TextBlock DockPanel.Dock="Top" Classes="meta" Margin="8" IsVisible="{Binding !HasCues}" TextWrapping="Wrap"
+                         Text="No cues yet. Play the song and press C where lights or slides should change." />
+              <ScrollViewer>
+                <ItemsControl ItemsSource="{Binding Cues}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:CueRowViewModel">
+                      <StackPanel Margin="8,2">
+                        <Grid ColumnDefinitions="140,170,110,110,50,130,80,40,84,40">
+                          <DockPanel Grid.Column="0" Margin="0,0,8,0">
+                            <TextBlock DockPanel.Dock="Left" Text="◆" VerticalAlignment="Center" Margin="0,0,6,0" />
+                            <TextBox Classes="cell" Text="{Binding Name}" AutomationProperties.Name="Cue name" />
+                          </DockPanel>
+                          <TextBlock Grid.Column="1" Classes="mono" Text="{Binding PositionText}" VerticalAlignment="Center" />
+                          <ComboBox Grid.Column="2" Classes="cell" ItemsSource="{x:Static vm:CueRowViewModel.Kinds}" SelectedItem="{Binding Kind}" Margin="0,0,8,0"
+                                    HorizontalAlignment="Stretch" AutomationProperties.Name="Cue action" />
+                          <TextBox Grid.Column="3" Classes="cell mono" Text="{Binding Value}" Margin="0,0,8,0" FontFamily="{DynamicResource FontMono}"
+                                   ToolTip.Tip="{Binding Summary}" AutomationProperties.Name="Cue value" />
+                          <TextBox Grid.Column="4" Classes="cell mono" Text="{Binding Channel}" Margin="0,0,8,0" AutomationProperties.Name="MIDI channel" />
+                          <ComboBox Grid.Column="5" Classes="cell" ItemsSource="{x:Static vm:CueRowViewModel.PassChoices}" SelectedItem="{Binding Passes}" Margin="0,0,8,0"
+                                    HorizontalAlignment="Stretch" AutomationProperties.Name="Passes" />
+                          <ComboBox Grid.Column="6" Classes="cell" ItemsSource="{x:Static vm:CueRowViewModel.SnapChoices}" SelectedItem="{Binding Snap}" Margin="0,0,8,0"
+                                    HorizontalAlignment="Stretch" AutomationProperties.Name="Snap" />
+                          <CheckBox Grid.Column="7" IsChecked="{Binding Enabled}" AutomationProperties.Name="Enabled" />
+                          <Button Grid.Column="8" Classes="cell" Content="Playhead" Command="{Binding PlayheadCommand}" ToolTip.Tip="Move the cue to the playhead" />
+                          <Button Grid.Column="9" Classes="ghost cell" Command="{Binding DeleteCommand}" ToolTip.Tip="Delete this cue" AutomationProperties.Name="Delete cue">
+                            <c:Icon Glyph="close" IconSize="14" />
+                          </Button>
+                        </Grid>
+                        <StackPanel Orientation="Horizontal" Spacing="6" Margin="20,2,0,0" IsVisible="{Binding HasWarning}">
+                          <c:Icon Glyph="warning" IconSize="14" TextElement.Foreground="{DynamicResource state-warning}" VerticalAlignment="Center" />
+                          <TextBlock Classes="meta" Text="{Binding Warning}" />
+                        </StackPanel>
+                      </StackPanel>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </ScrollViewer>
             </DockPanel>
           </TabItem>
 

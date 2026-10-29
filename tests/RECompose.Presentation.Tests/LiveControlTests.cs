@@ -640,4 +640,47 @@ public sealed class LiveControlTests : IDisposable
             await FinishAsync(vm);
         }
     }
+
+    [Fact]
+    public async Task AUTO1_AUTO21_section_notes_and_a_cue_fire_on_the_audio_clock_and_are_logged()
+    {
+        var (vm, _) = await StartAsync();
+        var lines = new List<string>();
+        void OnAdded(RECompose.Core.Logging.LogEntry e)
+        {
+            lock (lines)
+                lines.Add(e.Text);
+        }
+
+        AppLog.Added += OnAdded;
+        try
+        {
+            vm.SectionNotes = true;
+            await vm.SeekPlanAsync(4);
+            await Eventually(() => Math.Abs(vm.PlanPositionSec - 4) < 0.01);
+            vm.AddCueCommand.Execute(null); // C at 4 s, in Verse 1
+            var cue = Assert.Single(vm.Cues);
+            Assert.Equal("Cue 1", cue.Name);
+            Assert.Equal("MIDI note C4", cue.Summary);
+            await Task.Delay(200); // the plan with the cue reaches the engine
+
+            await vm.SeekPlanAsync(0);
+            await vm.EngineForTests!.PlayAsync();
+            await RenderAsync(vm, 9);
+            bool Has(string line)
+            {
+                lock (lines)
+                    return lines.Contains(line);
+            }
+
+            await Eventually(() => Has("Section Verse 1: MIDI note D3") && Has("Cue 1: MIDI note C4") && Has("Section Chorus: MIDI note E3"));
+            lock (lines)
+                Assert.DoesNotContain("Section Verse 2: MIDI note D3", lines); // not reached yet
+        }
+        finally
+        {
+            AppLog.Added -= OnAdded;
+            await FinishAsync(vm);
+        }
+    }
 }

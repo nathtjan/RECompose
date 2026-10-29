@@ -129,7 +129,7 @@ public static class AutomationPlan
 
                 var at = item.PlanStart + (src - item.SrcStart);
                 var a = cue.Action;
-                var line = $"Cue {cue.Name}: {a.Summary(m.MiddleC)}";
+                var line = $"{cue.LogName}: {a.Summary(m.MiddleC)}";
                 var ch = (byte)(Math.Clamp(a.Channel, 1, 16) - 1);
                 switch (a.Kind)
                 {
