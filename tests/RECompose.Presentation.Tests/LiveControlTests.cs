@@ -138,8 +138,9 @@ public sealed class LiveControlTests : IDisposable
         if (vm.EngineForTests is not { } engine)
         {
             await vm.DisposeAsync();
-            lock (_ui)
-                Assert.Fail("The engine connection was lost." + string.Concat(_ui.Errors.Select(e => Environment.NewLine + e)));
+            List<Exception> errors = [];
+            _ui.Post(() => errors = [.. _ui.Errors]); // under the dispatcher's own lock, where errors are added
+            Assert.Fail("The engine connection was lost." + string.Concat(errors.Select(e => Environment.NewLine + e)));
             return;
         }
 
