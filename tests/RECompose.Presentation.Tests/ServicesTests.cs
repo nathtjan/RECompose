@@ -333,15 +333,16 @@ public sealed class ServicesTests : IDisposable
         vm.SetKeyOffset(entryId, -1);
         vm.SetTransition(entryId, new Transition { Type = TransitionType.Pad, PadKey = "Db", ClickBpm = 72 });
 
-        _dialogs.Details = new ServiceDetails("Sunday 2 Nov", new DateTime(2026, 11, 2, 9, 0, 0));
+        // Both dates are past, so the order (SL-1: past services, most recent first) does not change with the day the test runs.
+        _dialogs.Details = new ServiceDetails("Sunday 19 Oct", new DateTime(2026, 10, 19, 9, 0, 0));
         await vm.DuplicateServiceAsync();
 
         Assert.Equal(2, vm.AllServices.Count);
-        Assert.Equal("Sunday 2 Nov · 9:00", vm.Setlist.Title);
+        Assert.Equal("Sunday 19 Oct · 9:00", vm.Setlist.Title);
         Assert.Equal(["A", "D♭"], vm.Setlist.Rows.Select(r => r.KeyText));
         Assert.Equal("Pad in D♭ · click 72", vm.Setlist.Rows[0].ChipText);
         Assert.NotEqual(entryId, vm.Setlist.Rows[0].Id);
-        Assert.Equal(["Sunday 26 Oct · 9:00", "Sunday 2 Nov · 9:00"], vm.Setlist.Services.Select(s => s.Title)); // by date
+        Assert.Equal(["Sunday 26 Oct · 9:00", "Sunday 19 Oct · 9:00"], vm.Setlist.Services.Select(s => s.Title));
 
         vm.UndoCommand.Execute(null);
         Assert.Single(vm.AllServices);

@@ -2,8 +2,7 @@
 
 **Goal:** nothing optional may stop the music (REL principle). Before Sunday the MD runs a **service check** and **renders** the keys and tempos so the live path has no real-time pitch shifting. During the service a lost audio device, a crash, a UI freeze or a lost controller costs as little as possible: the engine keeps its clock, a fallback device takes over, the app resumes at the right bar, and PANIC stops everything without unloading the song.
 
-**Status:** in progress (25 Oct 2026). Done: WP1–WP2 (journal, resume, panic resume) and the Core of WP3 (service check) with its dialog. Not started: render cache (WP5–6), device failover (WP7), versions and export (WP8), sleep and MIDI loss (WP9), soak (WP10). One Presentation test (AT25 pedal) failed once under full-suite load and passes alone; check it first.
-
+**Status:** in progress (25 Oct 2026). Done: WP1–WP2 (journal, resume, panic resume) and the Core of WP3 (service check) with its dialog. Not started: render cache (WP5–6), device failover (WP7), versions and export (WP8), sleep and MIDI loss (WP9), soak (WP10).
 **Starting point:** milestone 5. Key and tempo are processed live on the disk thread; there is no service check, no render cache, no journal; a lost device stops the clock; PANIC fades the transport and the pads but sends no MIDI; autosave is atomic but keeps no history.
 
 ## Decisions for this milestone

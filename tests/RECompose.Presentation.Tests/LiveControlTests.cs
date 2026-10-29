@@ -268,8 +268,7 @@ public sealed class LiveControlTests : IDisposable
             vm.Controls.BeginLearn(ControlAction.Go);
             Assert.True(row.Learning);
             await vm.EngineForTests.InjectMidiAsync("cc", 1, 64, 127);
-            await Eventually(() => !row.Learning);
-            Assert.Contains("CC 64 ch 1 ≥ 64", row.Inputs);
+            await Eventually(() => !row.Learning && row.Inputs.Contains("CC 64 ch 1 ≥ 64", StringComparison.Ordinal));
             Assert.Contains(vm.Controls.Bindings, b => b.Action == ControlAction.Go && b.Input.Kind == ControlKind.ControlChange);
 
             // The pedal acts and says so.

@@ -175,8 +175,8 @@ public sealed class ControlsViewModel : ObservableObject
         // An input does one thing: binding it here frees it from where it was.
         _bindings.RemoveAll(b => b.Input == input);
         _bindings.Add(new ControlBinding(action, input));
-        CancelLearn();
         Commit();
+        CancelLearn(); // last, so a row that stops learning already shows its new input
     }
 
     public void Clear(ControlAction action)
