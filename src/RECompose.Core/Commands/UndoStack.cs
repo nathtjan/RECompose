@@ -43,6 +43,31 @@ public sealed class UndoStack
         _lastPush = time;
     }
 
+    /// <summary>The number of changes that can be undone; a mark for <see cref="Group"/>.</summary>
+    public int Count => _undo.Count;
+
+    /// <summary>The latest change, or null.</summary>
+    public UndoableChange? Top => _undo.Count > 0 ? _undo[^1] : null;
+
+    /// <summary>
+    /// Folds the changes pushed since <paramref name="mark"/> into one step (AS-40: one undo group per assistant message).
+    /// Returns the group, or null when nothing was pushed.
+    /// </summary>
+    public UndoableChange? Group(int mark, string description)
+    {
+        mark = Math.Clamp(mark, 0, _undo.Count);
+        var changes = _undo.Skip(mark).ToList();
+        if (changes.Count == 0)
+            return null;
+        _undo.RemoveRange(mark, changes.Count);
+        var group = new UndoableChange(description,
+            () => { for (var i = changes.Count - 1; i >= 0; i--) changes[i].Undo(); },
+            () => { foreach (var change in changes) change.Redo(); });
+        _undo.Add(group);
+        _lastPush = DateTime.MinValue;
+        return group;
+    }
+
     /// <summary>Undoes the latest change and returns it, or null.</summary>
     public UndoableChange? Undo()
     {

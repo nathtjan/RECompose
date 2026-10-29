@@ -156,4 +156,19 @@ public sealed record AppSettings
 
     /// <summary>Settings › Playback "Replace guide calls" (AUTO-30).</summary>
     public bool ReplaceGuideCalls { get; init; } = true;
+
+    /// <summary>Settings › Assistant (AS-1); null in files written before milestone 9. The API key is in the OS credential store.</summary>
+    public AssistantSettings? Assistant { get; init; }
+}
+
+/// <summary>Settings › Assistant (AS-1).</summary>
+public sealed record AssistantSettings
+{
+    /// <summary>Sent as <c>anthropic-workspace-id</c> when set.</summary>
+    public string? WorkspaceId { get; init; }
+
+    public string Model { get; init; } = RECompose.Core.Assistant.AssistantPrompt.DefaultModel;
+
+    /// <summary>Changes during Perform: true = ask me to confirm (the default), false = not allowed (AS-45).</summary>
+    public bool ConfirmInPerform { get; init; } = true;
 }

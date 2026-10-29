@@ -148,6 +148,26 @@ public static partial class QuickOrder
         return new QuickOrderResult(tokens, entries);
     }
 
+    /// <summary>
+    /// One section named as the shorthand names it ("Chorus", "V2", "Verse 2"), picked after <paramref name="previous"/> by the
+    /// same rule (the assistant's arrangements, AS-30). Null with a reason when the song has no such section.
+    /// </summary>
+    public static SectionInfo? Section(string text, IReadOnlyList<SectionInfo> sections, SectionInfo? previous, out string? problem)
+    {
+        var word = string.Concat(Words(text).Select(w => w.Text));
+        var match = TokenRegex().Match(word);
+        if (!match.Success || !Names.TryGetValue(match.Groups["name"].Value.Replace("-", string.Empty), out var known))
+        {
+            problem = $"\"{text}\" is not a section of this song";
+            return null;
+        }
+
+        int? number = match.Groups["num"].Success ? int.Parse(match.Groups["num"].Value, CultureInfo.InvariantCulture) : null;
+        var chosen = Resolve(sections.OrderBy(s => s.StartSec).ToList(), known.Type, number, previous);
+        problem = chosen is null ? $"No {SectionTypes.DisplayName(known.Type)}{(number is { } n ? $" {n.ToString(CultureInfo.InvariantCulture)}" : string.Empty)} in this song" : null;
+        return chosen;
+    }
+
     /// <summary>The words of the text: split on spaces and commas, with "Verse 2" and "Pre Chorus" kept as one token.</summary>
     private static List<RawToken> Words(string text)
     {
