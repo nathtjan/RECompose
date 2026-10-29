@@ -99,8 +99,9 @@ public partial class MainWindow : Window
         };
         ServiceRows.ContextRequested += OpenServiceRowMenu;
         WatchDragStart(ServiceRows, EntryFormat, item => (item as SetlistRowViewModel)?.Id);
-        ServiceRows.AddHandler(DragDrop.DragOverEvent, OnServiceDragOver);
-        ServiceRows.AddHandler(DragDrop.DropEvent, OnServiceDrop);
+        // The whole service block takes drops (the list, the empty hint and the gaps around them); off a row it appends.
+        ServiceBlock.AddHandler(DragDrop.DragOverEvent, OnServiceDragOver);
+        ServiceBlock.AddHandler(DragDrop.DropEvent, OnServiceDrop);
         Library.KeyDown += (_, e) =>
         {
             if (e.Key == Key.Enter)

@@ -212,7 +212,8 @@
       <!-- Sidebar (UI-12): the service (SL-1…7) over the library (SL-56) -->
       <Border Grid.Column="0" Classes="panel" BorderThickness="0,0,1,0">
         <Grid RowDefinitions="3*,4,2*,Auto">
-        <DockPanel Grid.Row="0" x:Name="ServiceBlock" DataContext="{Binding Setlist}" x:DataType="vm:SetlistViewModel">
+        <DockPanel Grid.Row="0" x:Name="ServiceBlock" DataContext="{Binding Setlist}" x:DataType="vm:SetlistViewModel"
+                   Background="Transparent" DragDrop.AllowDrop="True">
           <StackPanel DockPanel.Dock="Top" Margin="16,16,16,8" Spacing="4">
             <DockPanel>
               <Button x:Name="ServiceMenuButton" DockPanel.Dock="Right" Classes="ghost cell" ToolTip.Tip="New, duplicate, rename or delete the service"
