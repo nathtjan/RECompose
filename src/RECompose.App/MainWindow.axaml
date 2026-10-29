@@ -819,12 +819,16 @@
           <TabItem Header="SECTIONS">
             <DockPanel>
             <!-- Automatic section cues (AUTO-20) -->
-            <Border DockPanel.Dock="Bottom" Classes="inset" Padding="12,8" Margin="16,8,16,12" IsVisible="{Binding Song, Converter={x:Static ObjectConverters.IsNotNull}}">
-              <StackPanel Spacing="4">
-                <TextBlock Classes="heading" Text="Automatic section cues" />
-                <TextBlock Classes="meta" Text="Section jumps, vamps and auto-cues all follow the live arrangement." />
-                <CheckBox IsChecked="{Binding SectionNotes}" Content="Send a MIDI note per section type (for lighting looks)" />
-                <CheckBox IsChecked="{Binding SpokenGuide}" Content="Spoken guide (&quot;Chorus&quot; one bar ahead)" />
+            <Border DockPanel.Dock="Bottom" Classes="inset" Padding="12,4" Margin="16,4,16,8" IsVisible="{Binding Song, Converter={x:Static ObjectConverters.IsNotNull}}">
+              <StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="12">
+                  <TextBlock Classes="heading" Text="Automatic section cues" VerticalAlignment="Center" />
+                  <TextBlock Classes="meta" Text="Section jumps, vamps and auto-cues all follow the live arrangement." VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+                <WrapPanel ItemSpacing="24">
+                  <CheckBox IsChecked="{Binding SectionNotes}" Content="Send a MIDI note per section type (for lighting looks)" />
+                  <CheckBox IsChecked="{Binding SpokenGuide}" Content="Spoken guide (&quot;Chorus&quot; one bar ahead)" />
+                </WrapPanel>
               </StackPanel>
             </Border>
             <DockPanel DataContext="{Binding Sections}" x:DataType="vm:SectionsViewModel" Margin="16,12,16,0">
