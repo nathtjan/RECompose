@@ -1041,7 +1041,7 @@
                   </ItemsControl.ItemsPanel>
                   <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="vm:TrackViewModel">
-                      <Border Classes="strip" Width="92">
+                      <Border Classes="strip" Width="112">
                         <DockPanel>
                           <TextBlock DockPanel.Dock="Top" Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Name}" />
                           <TextBlock DockPanel.Dock="Top" Classes="meta" Text="{Binding RoleLabel}" TextTrimming="CharacterEllipsis" />
@@ -1069,7 +1069,7 @@
                 <ContentControl Content="{Binding Song.Master}">
                   <ContentControl.ContentTemplate>
                     <DataTemplate x:DataType="vm:TrackViewModel">
-                      <Border Classes="strip" Width="92">
+                      <Border Classes="strip" Width="112">
                         <DockPanel>
                           <TextBlock DockPanel.Dock="Top" Text="MASTER" FontWeight="Bold" />
                           <TextBlock DockPanel.Dock="Top" Classes="meta" Text="All outputs" />
