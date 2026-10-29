@@ -398,9 +398,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     /// PB-5, PB-61: the badge shown while the entry plays in another key or tempo through live processing. The
     /// render cache (M6) adds "rendering 43 %" and then removes the badge when rendered stems play.
     /// </summary>
-    public string? LiveKeyBadge => _song is { Entry: { } e } song && (e.KeyOffset != 0 || e.TempoPercent != 100 || song.Plan.Items.Any(i => i.Transpose != 0))
-        ? "Live key"
-        : null;
+    public string? LiveKeyBadge => RenderBadge();
 
     public bool HasLiveKeyBadge => LiveKeyBadge is not null;
 
@@ -425,6 +423,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         LoadPads();
         await ConnectEngineAsync(afterCrash: false);
         await OfferResumeAsync();
+        After(TimeSpan.FromSeconds(2), () => QueueRenders(_service)); // after start-up, not during it
     }
 
     private async Task ConnectEngineAsync(bool afterCrash)
@@ -724,6 +723,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         {
             var mix = model.MixPresets.FirstOrDefault(p => p.Id == entry?.MixPresetId) ?? model.DefaultMix;
             loaded = await engine.LoadSongAsync(model.Id, BuildEngineTracks(model, mix), mix.MasterGainDb, startFrame);
+            NoteRendersLoaded(model);
         }
 
         _awaitingNext = false;
@@ -1301,6 +1301,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public async Task ShutdownEngineAsync()
     {
         _shuttingDown = true;
+        StopRenders();
         try
         {
             await FlushJournalAsync();

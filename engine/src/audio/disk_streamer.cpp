@@ -76,11 +76,12 @@ void DiskStreamer::run()
 void readStream (Track& track, SourceStream& stream, float* const* out, int frames, double engineRate)
 {
     const int channels = track.channels;
+    auto* reader = stream.render >= 0 ? track.renders[static_cast<std::size_t> (stream.render)].reader.get() : track.reader.get();
 
     if (! track.resampling)
     {
         float* dest[kMaxTrackChannels] { out[0], channels > 1 ? out[1] : nullptr };
-        track.reader->read (dest, channels, stream.pos, frames);
+        reader->read (dest, channels, stream.pos, frames);
         stream.pos += frames;
         stream.nextEngine += frames;
         return;
@@ -90,7 +91,7 @@ void readStream (Track& track, SourceStream& stream, float* const* out, int fram
     while (static_cast<int> (stream.pending[0].size()) < frames)
     {
         float* dest[kMaxTrackChannels] { track.readBuffer[0].data(), channels > 1 ? track.readBuffer[1].data() : nullptr };
-        track.reader->read (dest, channels, stream.pos, kBlockFrames);
+        reader->read (dest, channels, stream.pos, kBlockFrames);
         stream.pos += kBlockFrames;
         for (int c = 0; c < channels; ++c)
         {
@@ -134,18 +135,42 @@ namespace
             in[1] = nullptr;
     }
 
-    // Starts a stream at engine-rate source frame `want`. A stretched one is primed so its first
-    // output frame is `want` exactly (PB-58: shifted and unshifted tracks stay on one grid).
-    void openStream (Track& track, SourceStream& stream, double want, double ratio, double rate,
-                     bool stretched, int semitones, double tempo)
+    // How a track plays a segment: straight from the stem, from a render made for this key and tempo
+    // (protocol 11, PB-5), or through the live stretcher when there is none (REL-14).
+    struct Source
     {
-        startStream (track, stream, static_cast<std::int64_t> (std::floor (want)), ratio);
+        int render = -1;
+        bool stretched = false;
+        int semitones = 0;
+    };
+
+    Source chooseSource (const Track& track, int key, double tempo, bool transposes)
+    {
+        Source source;
+        source.semitones = transposes ? key : 0;
+        if (std::abs (tempo - 1.0) <= 1.0e-9 && source.semitones == 0)
+            return source;
+        source.render = track.findRender (source.semitones, tempo);
+        source.stretched = source.render < 0;
+        return source;
+    }
+
+    // Starts a stream at engine-rate source frame `want`. A stretched one is primed so its first
+    // output frame is `want` exactly (PB-58: shifted and unshifted tracks stay on one grid); a render
+    // starts at the file frame that holds it (want / tempo).
+    void openStream (Track& track, SourceStream& stream, double want, double ratio, double rate,
+                     Source source, double tempo)
+    {
+        stream.render = source.render;
+        startStream (track, stream, static_cast<std::int64_t> (std::floor (source.render >= 0 ? want / tempo : want)), ratio);
+        stream.render = source.render;
         stream.nextSource = want;
-        stream.stretched = stretched;
-        stream.semitones = semitones;
+        stream.stretched = source.stretched;
+        stream.semitones = source.semitones;
         stream.inputOwed = 0.0;
-        if (! stretched)
+        if (! source.stretched)
             return;
+        const int semitones = source.semitones;
 
         if (stream.stretcher == nullptr)
             stream.stretcher = std::make_unique<Stretcher> (track.channels, rate);
@@ -163,7 +188,7 @@ namespace
         if (! stream.stretched)
         {
             readStream (track, stream, out, frames, rate);
-            stream.nextSource += frames;
+            stream.nextSource += frames * tempo; // a render holds `tempo` source frames per frame; the stem itself plays at 1
             return;
         }
 
@@ -204,9 +229,7 @@ namespace
 
         const double tempo = old.tempo > 0.0 ? old.tempo : 1.0;
         const double want = static_cast<double> (it->src) + static_cast<double> (frame - it->start) * tempo;
-        const int semitones = transposes ? it->key : 0;
-        const bool stretched = std::abs (tempo - 1.0) > 1.0e-9 || semitones != 0;
-        openStream (track, stream, want, ratio, rate, stretched, semitones, tempo);
+        openStream (track, stream, want, ratio, rate, chooseSource (track, it->key, tempo, transposes), tempo);
     }
 } // namespace
 
@@ -330,13 +353,13 @@ int DiskStreamer::fillTrack (Song& song, Track& track, int maxBlocks)
         if (segment != nullptr && segment->src >= 0)
         {
             const double want = static_cast<double> (segment->src) + static_cast<double> (position - segment->start) * tempo;
-            const int semitones = transposes ? segment->key : 0;
-            const bool stretched = std::abs (tempo - 1.0) > 1.0e-9 || semitones != 0;
+            const auto source = chooseSource (track, segment->key, tempo, transposes);
+            const bool stretched = source.stretched;
             // Segment starts are rounded once in output frames, so under a tempo a contiguous source may
             // land a frame further off than it does at 100 %.
             const bool contiguous = current.valid && std::abs (current.nextSource - want) <= (tempo == 1.0 ? 1.0 : 2.0);
 
-            if (contiguous && current.stretched == stretched && current.semitones == semitones)
+            if (contiguous && current.stretched == stretched && current.semitones == source.semitones && current.render == source.render)
             {
                 if (! stretched)
                     current.nextSource = want; // contiguous: no seam, no resampler reset
@@ -348,7 +371,7 @@ int DiskStreamer::fillTrack (Song& song, Track& track, int maxBlocks)
                 track.mainStream ^= 1;
                 track.tailRemaining = track.tailLength = keyChange;
                 track.fadeInRemaining = track.fadeInLength = keyChange;
-                openStream (track, track.streams[track.mainStream], want, ratio, song.sampleRate, stretched, semitones, tempo);
+                openStream (track, track.streams[track.mainStream], want, ratio, song.sampleRate, source, tempo);
             }
             else
             {
@@ -363,7 +386,7 @@ int DiskStreamer::fillTrack (Song& song, Track& track, int maxBlocks)
                 }
                 if (atBoundary)
                     track.fadeInRemaining = track.fadeInLength = spliceIn;
-                openStream (track, track.streams[track.mainStream], want, ratio, song.sampleRate, stretched, semitones, tempo);
+                openStream (track, track.streams[track.mainStream], want, ratio, song.sampleRate, source, tempo);
             }
 
             auto& stream = track.streams[track.mainStream];

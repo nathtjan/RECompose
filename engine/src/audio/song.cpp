@@ -32,6 +32,7 @@ void SourceStream::clear()
     for (auto& p : pending)
         p.clear();
     valid = false;
+    render = -1;
     stretched = false;
     semitones = 0;
     inputOwed = 0.0;
@@ -129,6 +130,18 @@ std::int64_t openTrackFile (Track& track, double engineRate, juce::AudioFormatMa
                 stream.resamplers[c] = std::make_unique<r8b::CDSPResampler24> (reader->sampleRate, engineRate, kBlockFrames);
     }
     track.resampleInput.resize (kBlockFrames);
+
+    for (const auto& r : track.spec.renders)
+    {
+        const juce::File renderFile (juce::String::fromUTF8 (r.file.c_str()));
+        std::unique_ptr<juce::AudioFormatReader> rendered (renderFile.existsAsFile() ? formats.createReaderFor (renderFile) : nullptr);
+        // The streams' resamplers are made for the stem's rate and channels, so a render has to match them.
+        if (rendered == nullptr || std::abs (rendered->sampleRate - reader->sampleRate) > 0.5
+            || juce::jlimit (1, kMaxTrackChannels, static_cast<int> (rendered->numChannels)) != track.channels || r.tempo <= 0.0)
+            continue;
+        track.renders.push_back ({ std::move (rendered), r.semitones, r.tempo });
+    }
+
     return static_cast<std::int64_t> (std::ceil (static_cast<double> (reader->lengthInSamples) * engineRate / reader->sampleRate));
 }
 

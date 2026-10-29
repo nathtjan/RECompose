@@ -60,6 +60,7 @@ void printUsage()
                   "       recompose-engine probe <file>\n"
                   "       recompose-engine peaks <file> <out> [framesPerBucket]\n"
                   "       recompose-engine onsets <file>\n"
+                  "       recompose-engine render <in> <out> --semitones N --tempo T\n"
                   "       recompose-engine transcribe <file> <model> [--prompt <text>] [--threads N]\n"
                   "       recompose-engine --version\n");
 }
@@ -99,6 +100,25 @@ int main (int argc, char* argv[])
             return 64;
         }
         return rec::analysis::onsets (argv[2]);
+    }
+
+    if (argc >= 2 && std::strcmp (argv[1], "render") == 0)
+    {
+        if (argc < 4)
+        {
+            printUsage();
+            return 64;
+        }
+        int semitones = 0;
+        double tempo = 1.0;
+        for (int i = 4; i + 1 < argc; i += 2)
+        {
+            if (std::strcmp (argv[i], "--semitones") == 0)
+                semitones = std::atoi (argv[i + 1]);
+            else if (std::strcmp (argv[i], "--tempo") == 0)
+                tempo = std::atof (argv[i + 1]);
+        }
+        return rec::tools::render (argv[2], argv[3], semitones, tempo);
     }
 
     if (argc >= 2 && std::strcmp (argv[1], "transcribe") == 0)

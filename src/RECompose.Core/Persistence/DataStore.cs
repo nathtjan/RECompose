@@ -21,6 +21,7 @@ namespace RECompose.Core.Persistence;
 [JsonSerializable(typeof(AppSettings))]
 [JsonSerializable(typeof(Recovery.Journal))]
 [JsonSerializable(typeof(Recovery.AppState))]
+[JsonSerializable(typeof(Rendering.RenderIndex))]
 public sealed partial class RecomposeJsonContext : JsonSerializerContext;
 
 /// <summary>
@@ -33,6 +34,9 @@ public sealed class DataStore(string root)
     public string SongsFolder => Path.Combine(Root, "songs");
     public string ServicesFolder => Path.Combine(Root, "services");
     public string PeaksFolder => Path.Combine(Root, "cache", "peaks");
+
+    /// <summary>Rendered keys and tempos (REL-10) and their index.</summary>
+    public string RenderFolder => Path.Combine(Root, "cache", "render");
 
     /// <summary>%APPDATA%\RECompose on Windows, ~/Library/Application Support/RECompose on macOS.</summary>
     public static DataStore Default()
@@ -112,6 +116,12 @@ public sealed class DataStore(string root)
     public Recovery.AppState LoadState() => Read(Path.Combine(Root, "state.json"), RecomposeJsonContext.Default.AppState) ?? new Recovery.AppState();
 
     public void SaveState(Recovery.AppState state) => Write(Path.Combine(Root, "state.json"), state, RecomposeJsonContext.Default.AppState);
+
+    public Rendering.RenderIndex LoadRenderIndex() =>
+        Read(Path.Combine(RenderFolder, "index.json"), RecomposeJsonContext.Default.RenderIndex) ?? new Rendering.RenderIndex();
+
+    public void SaveRenderIndex(Rendering.RenderIndex index) =>
+        Write(Path.Combine(RenderFolder, "index.json"), index, RecomposeJsonContext.Default.RenderIndex);
 
     public string PeaksPath(string songId, string trackId) => Path.Combine(PeaksFolder, songId, trackId + ".peaks");
 

@@ -12,6 +12,7 @@
 #include <juce_audio_formats/juce_audio_formats.h>
 
 #include <atomic>
+#include <cmath>
 #include <memory>
 #include <string>
 #include <vector>
@@ -42,6 +43,16 @@ struct StreamRequest
     }
 };
 
+// A stem rendered at a key and a tempo (protocol 11, PB-5, REL-10): the source shifted by `semitones` and
+// stretched to play at `tempo`, so frame f of the file is source frame f × tempo. Rendered offline by the
+// `render` tool; the engine plays it straight instead of processing the stem live.
+struct RenderSpec
+{
+    std::string file;
+    int semitones = 0;
+    double tempo = 1.0;
+};
+
 struct TrackSpec
 {
     std::string id;
@@ -54,6 +65,7 @@ struct TrackSpec
     bool soloSafe = false; // click, guide, spoken guide keep playing when others solo (PB-82)
     std::string generated; // "click": no file, the engine synthesizes it (PB-70)
     bool transposes = false; // follows the segment's key (DM-12: music yes, click and guide no)
+    std::vector<RenderSpec> renders; // protocol 11: played instead of live key and tempo where they match
 };
 
 // The arrangement as the engine executes it (PB-40): contiguous segments in plan frames, each
@@ -117,6 +129,7 @@ struct SourceStream
     std::vector<double> pending[kMaxTrackChannels]; // resampled frames not yet used
 
     double nextSource = 0.0;      // engine-rate source frame of the next output frame
+    int render = -1;              // which of the track's renders it reads, -1 the stem itself
     bool stretched = false;
     int semitones = 0;
     double inputOwed = 0.0;       // fractional input frames carried between blocks (tempo)
@@ -157,6 +170,25 @@ struct Track
 
     // Set by the disk thread once it has queued a block for this request generation.
     std::atomic<std::uint32_t> bufferedGeneration { 0xffffffffu };
+
+    // Renders that opened (fixed after load); a render that is missing or at another rate is left out
+    // and the stem is processed live instead (REL-14).
+    struct Render
+    {
+        std::unique_ptr<juce::AudioFormatReader> reader;
+        int semitones = 0;
+        double tempo = 1.0;
+    };
+    std::vector<Render> renders;
+
+    // The render for this key and tempo, or -1.
+    int findRender (int semitones, double tempo) const noexcept
+    {
+        for (std::size_t i = 0; i < renders.size(); ++i)
+            if (renders[i].semitones == semitones && std::abs (renders[i].tempo - tempo) < 1.0e-6)
+                return static_cast<int> (i);
+        return -1;
+    }
 
     // Disk thread only.
     std::unique_ptr<juce::AudioFormatReader> reader;

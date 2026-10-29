@@ -719,6 +719,7 @@ juce::var Engine::songInfo (const Slot& s)
                         .set ("sourceFrames", static_cast<juce::int64> (track.sourceFrames))
                         .set ("missing", track.missing)
                         .set ("problem", track.problem)
+                        .set ("renders", static_cast<int> (track.renders.size()))
                         .set ("gainDb", spec.gainDb)
                         .set ("mute", spec.mute)
                         .set ("solo", spec.solo)
@@ -792,6 +793,10 @@ juce::var Engine::loadSong (const juce::var& message, Slot& s)
         spec.soloSafe = flag (t, "soloSafe", false);
         spec.generated = text (t, "generated").toStdString();
         spec.transposes = flag (t, "transposes", false);
+        if (const auto* renders = t.getProperty ("renders", {}).getArray())
+            for (const auto& r : *renders)
+                if (const auto file = text (r, "file"); file.isNotEmpty())
+                    spec.renders.push_back ({ file.toStdString(), static_cast<int> (number (r, "semitones", 0.0)), number (r, "tempo", 1.0) });
         specs.push_back (spec);
     }
 

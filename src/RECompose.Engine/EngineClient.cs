@@ -57,6 +57,9 @@ public sealed record EngineTrack(string Id, string File, int Channel, int Width,
     /// <summary>The track follows each segment's key (protocol 5, DM-12): music yes, click and guide no.</summary>
     public bool Transposes { get; init; }
 
+    /// <summary>Renders of this stem at other keys and tempos (protocol 11, REL-10); the engine plays the matching one.</summary>
+    public IReadOnlyList<EngineRender> Renders { get; init; } = [];
+
     /// <summary>The engine's own click, on the given device channels (the Cue output, PB-85).</summary>
     public static EngineTrack Click(int channel, int width) =>
         new(ClickTrackId, string.Empty, channel, width, 0, false, false, SoloSafe: true) { Generated = "click" };
@@ -65,7 +68,7 @@ public sealed record EngineTrack(string Id, string File, int Channel, int Width,
 }
 
 /// <summary>A track as the engine opened it.</summary>
-public sealed record LoadedTrack(string Id, int Channels, double SourceRate, long SourceFrames, bool Missing, string Problem, double GainDb, bool Mute, bool Solo, int Channel, int Width);
+public sealed record LoadedTrack(string Id, int Channels, double SourceRate, long SourceFrames, bool Missing, string Problem, double GainDb, bool Mute, bool Solo, int Channel, int Width, int Renders = 0);
 
 /// <summary>The song the engine has loaded. Frames are at <see cref="SampleRate"/>, the engine rate.</summary>
 public sealed record LoadedSong(string SongId, double SampleRate, long LengthFrames, double MasterGainDb, IReadOnlyList<LoadedTrack> Tracks)
@@ -87,7 +90,8 @@ public sealed record LoadedSong(string SongId, double SampleRate, long LengthFra
             (bool?)t["mute"] ?? false,
             (bool?)t["solo"] ?? false,
             (int?)t["output"]?["channel"] ?? 0,
-            (int?)t["output"]?["width"] ?? 2)).ToList();
+            (int?)t["output"]?["width"] ?? 2,
+            (int?)t["renders"] ?? 0)).ToList();
         return new LoadedSong(id, (double?)o["sampleRate"] ?? 48000, (long?)o["lengthFrames"] ?? 0, (double?)o["masterGainDb"] ?? 0, tracks);
     }
 }
@@ -341,6 +345,11 @@ public sealed class EngineClient : IAsyncDisposable
                 track["generated"] = generated;
             if (t.Transposes)
                 track["transposes"] = true;
+            if (t.Renders.Count > 0)
+            {
+                track["renders"] = new JsonArray(t.Renders
+                    .Select(r => (JsonNode?)new JsonObject { ["file"] = r.File, ["semitones"] = r.Semitones, ["tempo"] = r.Tempo }).ToArray());
+            }
             list.Add(track);
         }
 

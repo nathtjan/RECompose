@@ -10,6 +10,12 @@ namespace RECompose.Engine;
 /// <summary>What <c>recompose-engine probe</c> reports about an audio file.</summary>
 public sealed record AudioFileInfo(bool Ok, string? Problem, int Channels, double SampleRate, long Frames, double DurationSec, int BitsPerSample, string Format);
 
+/// <summary>A stem rendered at a key and a tempo (protocol 11): frame f of <paramref name="File"/> is source frame f × <paramref name="Tempo"/>.</summary>
+public sealed record EngineRender(string File, int Semitones, double Tempo);
+
+/// <summary>What <c>recompose-engine render</c> reports.</summary>
+public sealed record RenderResult(bool Ok, string? Problem, long Frames);
+
 /// <summary>What <c>recompose-engine onsets</c> found in a click track (SEC-1).</summary>
 public sealed record OnsetsResult(bool Ok, string? Problem, double DurationSec, IReadOnlyList<ClickOnset> Onsets);
 
@@ -64,6 +70,26 @@ public sealed class EngineTools(string executablePath) : IAnalysisTools
     {
         var (exitCode, _) = await RunAsync(["peaks", file, output, framesPerBucket.ToString(System.Globalization.CultureInfo.InvariantCulture)], captureOutput: false, ct).ConfigureAwait(false);
         return exitCode == 0;
+    }
+
+    /// <summary>
+    /// Renders a stem at a key and a tempo (REL-10) into <paramref name="output"/> (24-bit FLAC), in a low-priority process
+    /// of its own (PB-92). <paramref name="progress"/> gets 0…1.
+    /// </summary>
+    public async Task<RenderResult> RenderAsync(string input, string output, int semitones, double tempo, IProgress<double>? progress = null, CancellationToken ct = default)
+    {
+        var (exitCode, text) = await RunAsync(
+            ["render", input, output, "--semitones", semitones.ToString(CultureInfo.InvariantCulture), "--tempo", tempo.ToString("0.######", CultureInfo.InvariantCulture)],
+            captureOutput: true, ct, line =>
+            {
+                if (line.StartsWith("progress ", StringComparison.Ordinal)
+                    && double.TryParse(line.AsSpan(9), NumberStyles.Float, CultureInfo.InvariantCulture, out var p))
+                    progress?.Report(p);
+            }).ConfigureAwait(false);
+        var o = ParseObject(text);
+        return o is not null && ((bool?)o["ok"] ?? false)
+            ? new RenderResult(true, null, (long?)o["frames"] ?? 0)
+            : new RenderResult(false, Problem(o, exitCode), 0);
     }
 
     /// <summary>Onsets of a click track with level and brightness (SEC-1 step 1).</summary>

@@ -493,6 +493,7 @@ public sealed partial class MainViewModel
         _store.SaveService(service);
         if (_service?.Id == service.Id)
             _service = service;
+        ScheduleRenders(service); // a new key or tempo starts its renders (REL-11)
 
         if (_song is { Entry: { } loaded } song && _loadedServiceId == service.Id)
         {
