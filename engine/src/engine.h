@@ -12,6 +12,7 @@
 #include "audio/song.h"
 #include "audio/transition.h"
 #include "audio/clip_player.h"
+#include "audio/midi_out.h"
 #include "audio/voice_input.h"
 
 #include <juce_audio_devices/juce_audio_devices.h>
@@ -24,6 +25,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace rec
@@ -68,6 +70,22 @@ private:
         std::vector<std::string> mute;
     };
 
+    // The plan's MIDI messages and spoken calls as the app sent them, in plan seconds (protocol 13).
+    struct MidiSpec
+    {
+        double at = 0;
+        std::uint8_t bytes[3] {};
+        std::uint8_t size = 0;
+        int id = 0;
+    };
+
+    struct CallSpec
+    {
+        double at = 0, from = -1, length = 0, gainDb = 0;
+        std::string file;
+        bool normalize = false;
+    };
+
     // Where the plan clock waits for GO, in plan seconds (protocol 8, PB-52).
     struct HoldSpec
     {
@@ -94,6 +112,8 @@ private:
         std::vector<audio::TrackSpec> specs; // current mixer state of the loaded song, for getState/reload
         std::vector<PlanSegmentSpec> planSpec;
         std::vector<HoldSpec> holdSpec;
+        std::vector<MidiSpec> midiSpec;
+        std::vector<CallSpec> callSpec;
         std::int64_t pendingSwapFrame = -1; // a swap the playhead has not reached yet, in output frames
         GridSpec grid;
         double tempo = 1.0; // the entry tempo (protocol 5): plan seconds per output second
@@ -157,6 +177,10 @@ private:
     juce::var setMidiInputs (const juce::var& message);
     juce::var injectMidi (const juce::var& message);
     void pushMidi (const juce::String& kind, int channel, int number, int value);
+    juce::var setMidiOutput (const juce::var& message);
+    juce::var sendMidi (const juce::var& message);
+    void sendMidiNow (const std::vector<audio::PlanMidi>& messages); // any thread: sends and reports `midiOut`
+    void runMidiOut();
     juce::var setTrack (const juce::var& message);
     juce::var setMaster (const juce::var& message);
     juce::var setPlan (const juce::var& message, Slot& s);
@@ -190,7 +214,7 @@ private:
     double engineRate();
     void push (const juce::var& message);
     void reloadAtRate (double rate);
-    std::unique_ptr<audio::Plan> buildPlan (double rate, const Slot& s) const;
+    std::unique_ptr<audio::Plan> buildPlan (double rate, const Slot& s);
     void reloadSlotAtRate (Slot& s, double rate);
 
     // juce::AudioIODeviceCallback (audio thread except where noted)
@@ -261,6 +285,14 @@ private:
     // Spoken confirmations (protocol 12, VC-50): kept until the audio thread is done with them.
     audio::ClipPlayer clipPlayer_;
     std::vector<std::unique_ptr<audio::Clip>> clips_;
+
+    // MIDI out (protocol 13, SET-30): one port; the players queue the plan's messages, a thread of its own sends them.
+    audio::MidiOutQueue midiQueue_;
+    std::mutex midiOutMutex_;
+    std::unique_ptr<juce::MidiOutput> midiOut_;
+    std::atomic<std::uint32_t> midiChannels_ { 0 }; // bit per channel used, for panic (REL-40)
+    std::atomic<bool> midiStop_ { false };
+    std::thread midiThread_;
 
     std::mutex outgoingMutex_;
     std::vector<std::string> outgoing_;

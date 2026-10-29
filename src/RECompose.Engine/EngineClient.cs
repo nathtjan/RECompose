@@ -67,7 +67,23 @@ public sealed record EngineTrack(string Id, string File, int Channel, int Width,
         new(ClickTrackId, string.Empty, channel, width, 0, false, false, SoloSafe: true) { Generated = "click" };
 
     public const string ClickTrackId = "generated-click";
+
+    /// <summary>The engine's speech track (protocol 13): the plan's spoken calls, on the Cue output.</summary>
+    public static EngineTrack Speech(int channel, int width) =>
+        new(SpeechTrackId, string.Empty, channel, width, 0, false, false, SoloSafe: true) { Generated = "speech" };
+
+    public const string SpeechTrackId = "generated-speech";
 }
+
+/// <summary>
+/// A spoken call for the engine (protocol 13): a clip file played on the speech track from a plan second; with
+/// <paramref name="FromSec"/> only from there in the file (the guide's own call), cut at <paramref name="LengthSec"/> when above 0,
+/// and peak-normalised to −6 dBFS with <paramref name="Normalize"/>.
+/// </summary>
+public sealed record EngineCall(double AtSec, string File, double? FromSec = null, double LengthSec = 0, double GainDb = 0, bool Normalize = false);
+
+/// <summary>A MIDI message the engine sent (protocol 13 <c>midiOut</c>): the plan's id (0 for none) and its bytes.</summary>
+public sealed record MidiSent(int Id, IReadOnlyList<int> Bytes);
 
 /// <summary>A track as the engine opened it.</summary>
 public sealed record LoadedTrack(string Id, int Channels, double SourceRate, long SourceFrames, bool Missing, string Problem, double GainDb, bool Mute, bool Solo, int Channel, int Width, int Renders = 0);
@@ -261,6 +277,38 @@ public sealed class EngineClient : IAsyncDisposable
 
     /// <summary>The voice input could not be opened; the outputs play on without it.</summary>
     public event Action<string>? VoiceError;
+
+    /// <summary>MIDI messages the engine just sent (protocol 13): the plan's as the playhead passed them, test notes, panic. Background thread.</summary>
+    public event Action<IReadOnlyList<MidiSent>>? MidiSent;
+
+    /// <summary>The MIDI outputs the engine can open (SET-30).</summary>
+    public async Task<IReadOnlyList<string>> ListMidiOutputsAsync(CancellationToken ct = default)
+    {
+        var reply = await Session.Connection.RequestAsync("listDevices", cancellationToken: ct).ConfigureAwait(false);
+        return DeviceInfo.Strings(reply["midiOutputs"]);
+    }
+
+    /// <summary>MIDI out to the named port, or a virtual source of that name (macOS); null closes it. True when it opened.</summary>
+    public async Task<bool> SetMidiOutputAsync(string? name, bool isVirtual = false, CancellationToken ct = default)
+    {
+        var request = new JsonObject();
+        if (!string.IsNullOrEmpty(name))
+            request["name"] = name;
+        if (isVirtual)
+            request["virtual"] = true;
+        var reply = await Session.Connection.RequestAsync("setMidiOutput", request, ct).ConfigureAwait(false);
+        return (bool?)reply["open"] ?? false;
+    }
+
+    /// <summary>Sends MIDI messages now (a test note, a section note on Play).</summary>
+    public Task SendMidiAsync(IEnumerable<byte[]> messages, CancellationToken ct = default) =>
+        Session.Connection.RequestAsync("sendMidi", new JsonObject
+        {
+            ["messages"] = new JsonArray(messages.Select(m => (JsonNode)new JsonObject
+            {
+                ["bytes"] = new JsonArray(m.Select(b => (JsonNode?)JsonValue.Create((int)b)).ToArray()),
+            }).ToArray()),
+        }, ct);
 
     /// <summary>
     /// The talkback mic: <paramref name="channel"/> (0-based) of the playing device's input, or of <paramref name="device"/>
@@ -477,7 +525,8 @@ public sealed class EngineClient : IAsyncDisposable
     /// Returns the plan length in plan frames.
     /// </summary>
     public async Task<long> SetPlanAsync(IEnumerable<PlanSegment> segments, double? positionSec = null, PlanGrid? grid = null, double tempo = 1,
-        bool next = false, CancellationToken ct = default, IEnumerable<PlanHold>? holds = null, double? swapAtSec = null)
+        bool next = false, CancellationToken ct = default, IEnumerable<PlanHold>? holds = null, double? swapAtSec = null,
+        IEnumerable<RECompose.Core.Automation.TimedMidi>? midi = null, IEnumerable<EngineCall>? calls = null)
     {
         var list = new JsonArray();
         foreach (var s in segments)
@@ -527,6 +576,23 @@ public sealed class EngineClient : IAsyncDisposable
 
             request["holds"] = marks;
         }
+
+        // Protocol 13: MIDI messages and spoken calls on the plan's clock (AUTO-5, AUTO-21, AUTO-30, AUTO-31, PB-71).
+        if (midi is not null)
+            request["midi"] = new JsonArray(midi.Select(m => (JsonNode)new JsonObject
+            {
+                ["at"] = m.AtSec,
+                ["bytes"] = new JsonArray(m.Bytes.Select(b => (JsonNode?)JsonValue.Create((int)b)).ToArray()),
+                ["id"] = m.Id,
+            }).ToArray());
+        if (calls is not null)
+            request["calls"] = new JsonArray(calls.Select(c =>
+            {
+                var call = new JsonObject { ["at"] = c.AtSec, ["file"] = c.File, ["length"] = c.LengthSec, ["gainDb"] = c.GainDb, ["normalize"] = c.Normalize };
+                if (c.FromSec is { } from)
+                    call["from"] = from;
+                return (JsonNode)call;
+            }).ToArray());
 
         // Protocol 8: while playing, the plan takes effect at this plan second with no seek (ARR-90).
         if (swapAtSec is { } swapAt)
@@ -636,6 +702,11 @@ public sealed class EngineClient : IAsyncDisposable
                 break;
             case "songEnded":
                 SongEnded?.Invoke((string?)message["songId"] ?? string.Empty);
+                break;
+            case "midiOut":
+                MidiSent?.Invoke((message["messages"] as JsonArray ?? []).OfType<JsonObject>()
+                    .Select(m => new MidiSent((int?)m["id"] ?? 0, (m["bytes"] as JsonArray ?? []).Select(b => (int?)b ?? 0).ToList()))
+                    .ToList());
                 break;
             case "midiIn":
             {

@@ -20,6 +20,9 @@ inline constexpr double kAccentHz = 1600.0;
 // Adds `frames` mono frames of click, starting at plan frame `position`, to `out`.
 void renderClick (const Plan& plan, std::int64_t position, int frames, double sampleRate, float* out) noexcept;
 
+// Adds `frames` mono frames of the plan's spoken calls (protocol 13), starting at plan frame `position`, to `out`.
+void renderCalls (const Plan& plan, std::int64_t position, int frames, float* out) noexcept;
+
 // The frame a beat starts on: beat k of the plan's grid, rounded once.
 std::int64_t beatFrame (const Plan& plan, std::int64_t k) noexcept;
 } // namespace rec::audio

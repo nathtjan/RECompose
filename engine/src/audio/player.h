@@ -15,6 +15,7 @@
 namespace rec::audio
 {
 class PadPlayer;
+class MidiOutQueue;
 }
 
 #include <array>
@@ -98,6 +99,9 @@ public:
     // (Follow song, pad bars). They are mixed by their own player.
     void setPads (PadPlayer* pads) noexcept { pads_ = pads; }
 
+    // Message thread, before the device starts: where the plan's MIDI messages go as the playhead passes them (protocol 13).
+    void setMidiOut (MidiOutQueue* midi) noexcept { midi_ = midi; }
+
     // Snapshot values, readable from any thread.
     TransportState state() const noexcept { return static_cast<TransportState> (state_.load()); }
     std::int64_t position() const noexcept { return position_.load(); }
@@ -165,6 +169,7 @@ private:
     std::int64_t seekFrame_ = 0;
     double sampleRate_ = 48000.0;
     PadPlayer* pads_ = nullptr;
+    MidiOutQueue* midi_ = nullptr;
     const PlanSegment* lastSegment_ = nullptr; // the segment the pads were last told about
     const Plan* plan_ = nullptr;        // the plan in play
     const Plan* pendingPlan_ = nullptr; // takes effect when the pending seek lands

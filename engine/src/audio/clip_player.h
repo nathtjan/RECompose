@@ -20,8 +20,10 @@ struct Clip
     std::atomic<bool> done { false }; // the audio thread has let go of it
 };
 
-// Reads a file into a clip at `rate`; null with `problem` set when it cannot be read.
-std::unique_ptr<Clip> loadClip (const juce::File& file, double rate, juce::AudioFormatManager& formats, juce::String& problem);
+// Reads a file into a clip at `rate`; null with `problem` set when it cannot be read. With `fromSec` ≥ 0 it reads only
+// from there (a guide's own call inside the stem, AUTO-30), and `lengthSec` > 0 cuts it (AUTO-31).
+std::unique_ptr<Clip> loadClip (const juce::File& file, double rate, juce::AudioFormatManager& formats, juce::String& problem,
+                                double fromSec = -1.0, double lengthSec = 0.0);
 
 class ClipPlayer
 {

@@ -2,6 +2,7 @@
 #include "audio/player.h"
 
 #include "audio/click.h"
+#include "audio/midi_out.h"
 #include "audio/pads.h"
 
 #include <algorithm>
@@ -787,6 +788,15 @@ void Player::renderChunk (float* const* outputs, int numOutputs, int offset, int
     }
     storeMax (song_->masterPeak[0], masterPeak[0]);
     storeMax (song_->masterPeak[1], masterPeak[1]);
+
+    // Protocol 13: the plan's MIDI messages in the frames just played; a seek jumps over the ones between (AUTO-5).
+    if (midi_ != nullptr && plan_ != nullptr && ! plan_->midi.empty())
+    {
+        const auto& midi = plan_->midi;
+        auto it = std::lower_bound (midi.begin(), midi.end(), position_frames_, [] (const PlanMidi& m, std::int64_t f) { return m.frame < f; });
+        for (; it != midi.end() && it->frame < position_frames_ + frames; ++it)
+            midi_->push (*it);
+    }
 
     position_frames_ += frames;
 

@@ -266,7 +266,10 @@ int DiskStreamer::fillClick (Song& song, Track& track, int maxBlocks)
         const auto position = track.diskNextFrame;
         auto& buffer = track.mainBuffer[0];
         std::fill (buffer.begin(), buffer.end(), 0.0f);
-        renderClick (*plan, position, kBlockFrames, song.sampleRate, buffer.data());
+        if (track.generatedSpeech)
+            renderCalls (*plan, position, kBlockFrames, buffer.data());
+        else
+            renderClick (*plan, position, kBlockFrames, song.sampleRate, buffer.data());
         std::copy_n (buffer.begin(), kBlockFrames, block->data);
         block->generation = track.diskGeneration;
         block->version = plan->version;
@@ -286,7 +289,7 @@ int DiskStreamer::fillClick (Song& song, Track& track, int maxBlocks)
 
 int DiskStreamer::fillTrack (Song& song, Track& track, int maxBlocks)
 {
-    if (track.generatedClick)
+    if (track.generatedClick || track.generatedSpeech)
         return fillClick (song, track, maxBlocks);
     if (track.missing || track.reader == nullptr)
         return 0;

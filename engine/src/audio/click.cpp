@@ -62,4 +62,21 @@ void renderClick (const Plan& plan, std::int64_t position, int frames, double sa
         }
     }
 }
+
+void renderCalls (const Plan& plan, std::int64_t position, int frames, float* out) noexcept
+{
+    const auto end = position + frames;
+    for (const auto& call : plan.calls)
+    {
+        if (call.frame >= end)
+            break;
+        const auto length = static_cast<std::int64_t> (call.clip->samples.size());
+        if (call.frame + length <= position)
+            continue;
+        const auto from = std::max (call.frame, position);
+        const auto to = std::min (call.frame + length, end);
+        for (auto n = from; n < to; ++n)
+            out[n - position] += call.gain * call.clip->samples[static_cast<std::size_t> (n - call.frame)];
+    }
+}
 } // namespace rec::audio

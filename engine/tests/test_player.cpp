@@ -7,6 +7,7 @@
 
 #include "audio/click.h"
 #include "audio/disk_streamer.h"
+#include "audio/midi_out.h"
 #include "audio/player.h"
 #include "audio/song.h"
 
@@ -586,6 +587,60 @@ TEST ("click: a count-in clicks on the grid to the sample, accented on beat 1 (P
 
     // Beat 1 of the count-in bar is the accent.
     CHECK (signChanges (x, 24000, clickLength) > signChanges (x, 48000, clickLength));
+}
+
+TEST ("automation: plan MIDI goes out as the playhead passes it, and a seek jumps over it (protocol 13, AUTO-5)")
+{
+    const auto file = writeWav ("midi-song.wav", kRate, 1, 120000, [] (int, int) { return 0.0f; });
+    Rig rig ({ spec (file, "music", 0, 1) }, 1);
+    MidiOutQueue queue;
+    rig.player.setMidiOut (&queue);
+
+    auto plan = makePlan ({ seg (0, 100000, 0) });
+    for (const auto& [frame, id] : { std::pair { 1000, 1 }, std::pair { 50000, 2 }, std::pair { 90000, 3 } })
+        plan->midi.push_back ({ frame, { 0x90, 60, 127 }, 3, id });
+    rig.setPlan (std::move (plan));
+
+    const auto taken = [&queue]
+    {
+        std::vector<int> ids;
+        PlanMidi m;
+        while (queue.pop (m))
+            ids.push_back (m.id);
+        return ids;
+    };
+
+    rig.send (Command::Type::play);
+    rig.render (20000);
+    CHECK (taken() == std::vector<int> { 1 });
+    rig.send (Command::Type::seek, 80000);
+    rig.render (20000);
+    CHECK (taken() == std::vector<int> { 3 }); // 50000 was never played
+    rig.player.setMidiOut (nullptr);
+}
+
+TEST ("automation: spoken calls are rendered into the speech track on their frame (protocol 13, AUTO-31)")
+{
+    const auto file = writeWav ("speech-song.wav", kRate, 1, 60000, [] (int, int) { return 0.0f; });
+    TrackSpec speech;
+    speech.id = "generated-speech";
+    speech.generated = "speech";
+    speech.outputChannel = 0;
+    speech.outputWidth = 1;
+    Rig rig ({ spec (file, "music", 0, 1), speech }, 1);
+
+    Clip clip;
+    clip.samples.assign (100, 0.5f);
+    auto plan = makePlan ({ seg (0, 48000, 0) });
+    plan->calls.push_back ({ 24000, &clip, 0.5f });
+    rig.setPlan (std::move (plan));
+
+    rig.send (Command::Type::play);
+    const auto out = rig.render (48000);
+    CHECK (near (out[0][24000], 0.25f));
+    CHECK (near (out[0][24099], 0.25f));
+    CHECK (silentBetween (out[0], 1000, 24000));
+    CHECK (silentBetween (out[0], 24100, 48000));
 }
 
 TEST ("click: rendering in pieces gives the same samples as in one go (PB-70)")

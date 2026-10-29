@@ -7,12 +7,14 @@
 #pragma once
 
 #include "audio/block_queue.h"
+#include "audio/clip_player.h"
 #include "audio/stretcher.h"
 
 #include <juce_audio_formats/juce_audio_formats.h>
 
 #include <atomic>
 #include <cmath>
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -63,7 +65,7 @@ struct TrackSpec
     bool mute = false;
     bool solo = false;
     bool soloSafe = false; // click, guide, spoken guide keep playing when others solo (PB-82)
-    std::string generated; // "click": no file, the engine synthesizes it (PB-70)
+    std::string generated; // "click" (PB-70) or "speech" (the plan's calls, protocol 13): no file, the engine renders it
     bool transposes = false; // follows the segment's key (DM-12: music yes, click and guide no)
     std::vector<RenderSpec> renders; // protocol 11: played instead of live key and tempo where they match
 };
@@ -95,10 +97,30 @@ struct PlanHold
     bool click = false; // a free-running click at the song tempo
 };
 
+// A MIDI message the plan sends when the playhead passes `frame` while playing (protocol 13, AUTO-5, AUTO-21).
+// A message of size 0 sends nothing and is only reported back (a log line). `id` is the app's, 0 for none.
+struct PlanMidi
+{
+    std::int64_t frame = 0;
+    std::uint8_t bytes[3] {};
+    std::uint8_t size = 0;
+    std::int32_t id = 0;
+};
+
+// A spoken call (protocol 13, AUTO-30, AUTO-31, PB-71): a clip the song owns, rendered into the speech track from `frame`.
+struct PlanCall
+{
+    std::int64_t frame = 0;
+    const Clip* clip = nullptr;
+    float gain = 1.0f;
+};
+
 struct Plan
 {
     std::vector<PlanSegment> segments;
     std::vector<PlanHold> holds; // ascending frames
+    std::vector<PlanMidi> midi;  // ascending frames
+    std::vector<PlanCall> calls; // ascending frames
 
     // Every published plan has a version. A plan published as a swap (protocol 8) replaces `previous`
     // from `swapFrame` on: the frames before it are identical, so playback does not stop.
@@ -153,6 +175,7 @@ struct Track
     std::int64_t sourceFrames = 0;
     bool missing = false;       // the file could not be opened (REL-50): the track is silent
     bool generatedClick = false; // synthesized from the plan's grid instead of read from a file
+    bool generatedSpeech = false; // the plan's spoken calls (protocol 13)
     juce::String problem;
 
     BlockQueue queue;
@@ -228,6 +251,9 @@ struct Song
     std::atomic<const Plan*> plan { nullptr };
     std::vector<std::unique_ptr<Plan>> plans; // message thread only
     std::uint32_t lastVersion = 0;            // message thread only
+
+    // The clips the plans' calls play, by file, range and rate (message thread). Kept with the plans for the song's life.
+    std::map<std::string, std::unique_ptr<Clip>> clips;
 
     std::atomic<std::uint64_t> request { StreamRequest::pack ({ 1, 0 }) };
     std::atomic<float> masterGain { 1.0f };

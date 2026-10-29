@@ -164,9 +164,10 @@ std::unique_ptr<Song> loadSong (std::string id, std::vector<TrackSpec> specs, do
         track->outputChannel.store (spec.outputChannel);
         track->outputWidth.store (spec.outputWidth == 1 ? 1 : 2);
 
-        if (spec.generated == "click")
+        if (spec.generated == "click" || spec.generated == "speech")
         {
-            track->generatedClick = true;
+            track->generatedClick = spec.generated == "click";
+            track->generatedSpeech = spec.generated == "speech";
             track->channels = 1;
             track->sourceRate = engineRate;
             track->mainBuffer[0].resize (kBlockFrames);

@@ -4,8 +4,10 @@
 #include "message_handler.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstring>
+#include <thread>
 
 namespace rec
 {
@@ -72,13 +74,19 @@ Engine::Engine()
     formats_.registerBasicFormats();
     disk_ = std::make_unique<audio::DiskStreamer>();
     for (auto& slot : slots_)
+    {
         slot.player.setPads (&pads_);
+        slot.player.setMidiOut (&midiQueue_);
+    }
+    midiThread_ = std::thread ([this] { runMidiOut(); });
     devices_.addChangeListener (this);
     startTimerHz (10);
 }
 
 Engine::~Engine()
 {
+    midiStop_.store (true);
+    midiThread_.join();
     stopTimer();
     silent_.stop();
     midiInputs_.clear(); // the MIDI thread stops before anything it pushes to goes away
@@ -114,6 +122,8 @@ juce::var Engine::handle (const juce::String& type, const juce::var& message)
         return transport (type, message);
     if (type == "setMidiInputs") return setMidiInputs (message);
     if (type == "injectMidi")   return injectMidi (message);
+    if (type == "setMidiOutput") return setMidiOutput (message);
+    if (type == "sendMidi")     return sendMidi (message);
     if (type == "go")           return go();
     if (type == "panic")        return panic();
     if (type == "setTrack")     return setTrack (message);
@@ -294,7 +304,98 @@ juce::var Engine::listDevices()
     for (const auto& device : juce::MidiInput::getAvailableDevices())
         midi.add (device.name);
 
-    return Obj().set ("type", "devices").set ("types", types).set ("current", deviceInfo()).set ("midiInputs", midi);
+    juce::Array<juce::var> midiOut;
+    for (const auto& device : juce::MidiOutput::getAvailableDevices())
+        midiOut.add (device.name);
+
+    return Obj().set ("type", "devices").set ("types", types).set ("current", deviceInfo()).set ("midiInputs", midi).set ("midiOutputs", midiOut);
+}
+
+// Protocol 13 (SET-30): the MIDI output the plan's messages go to, by name; `virtual` makes a source of that name
+// (macOS and Linux). Without a name MIDI out is closed; the messages are still reported in `midiOut`.
+juce::var Engine::setMidiOutput (const juce::var& message)
+{
+    const auto name = text (message, "name");
+    std::unique_ptr<juce::MidiOutput> port;
+    if (flag (message, "virtual", false) && name.isNotEmpty())
+    {
+#if JUCE_MAC || JUCE_LINUX
+        port = juce::MidiOutput::createNewDevice (name);
+#endif
+    }
+    else if (name.isNotEmpty())
+    {
+        for (const auto& device : juce::MidiOutput::getAvailableDevices())
+            if (device.name == name)
+                port = juce::MidiOutput::openDevice (device.identifier);
+    }
+
+    const bool open = port != nullptr;
+    {
+        const std::lock_guard lock (midiOutMutex_);
+        midiOut_ = std::move (port);
+    }
+    return Obj().set ("type", "midiOutput").set ("name", open ? name : juce::String()).set ("open", open);
+}
+
+// Protocol 13: messages sent now (a test note, AUTO-21 resend on play), each `[status, data…]`.
+juce::var Engine::sendMidi (const juce::var& message)
+{
+    std::vector<audio::PlanMidi> messages;
+    if (const auto* list = message.getProperty ("messages", {}).getArray())
+    {
+        for (const auto& m : *list)
+        {
+            audio::PlanMidi out;
+            out.id = static_cast<int> (number (m, "id", 0.0));
+            if (const auto* bytes = m.getProperty ("bytes", {}).getArray())
+                for (const auto& b : *bytes)
+                    if (out.size < 3)
+                        out.bytes[out.size++] = static_cast<std::uint8_t> (juce::jlimit (0, 255, static_cast<int> (b)));
+            messages.push_back (out);
+        }
+    }
+    sendMidiNow (messages);
+    return Obj().set ("type", "ok");
+}
+
+void Engine::sendMidiNow (const std::vector<audio::PlanMidi>& messages)
+{
+    if (messages.empty())
+        return;
+    juce::Array<juce::var> sent;
+    {
+        const std::lock_guard lock (midiOutMutex_);
+        for (const auto& m : messages)
+        {
+            if (m.size > 0)
+            {
+                midiChannels_.fetch_or (1u << (m.bytes[0] & 0x0f));
+                if (midiOut_ != nullptr)
+                    midiOut_->sendMessageNow (juce::MidiMessage (m.bytes, m.size));
+            }
+            juce::Array<juce::var> bytes;
+            for (int i = 0; i < m.size; ++i)
+                bytes.add (static_cast<int> (m.bytes[i]));
+            sent.add (Obj().set ("id", m.id).set ("bytes", bytes));
+        }
+    }
+    push (Obj().set ("type", "midiOut").set ("messages", sent));
+}
+
+// The MIDI thread: sends what the players queued, a millisecond or so after the audio thread played past it.
+void Engine::runMidiOut()
+{
+    std::vector<audio::PlanMidi> batch;
+    while (! midiStop_.load())
+    {
+        batch.clear();
+        audio::PlanMidi m;
+        while (midiQueue_.pop (m))
+            batch.push_back (m);
+        sendMidiNow (batch);
+        std::this_thread::sleep_for (std::chrono::milliseconds (1));
+    }
 }
 
 // Protocol 9 (LIVE-52): the MIDI inputs to listen to, by name; `all` listens to every input. Each message becomes a `midiIn`
@@ -895,6 +996,8 @@ juce::var Engine::loadSong (const juce::var& message, Slot& s)
     s.specs = std::move (specs);
     s.planSpec.clear(); // a new song plays as written until the app sends its plan
     s.holdSpec.clear();
+    s.midiSpec.clear();
+    s.callSpec.clear();
     s.pendingSwapFrame = -1;
     s.grid = {};
     s.tempo = 1.0;
@@ -917,6 +1020,8 @@ juce::var Engine::unloadSong (Slot& s)
     s.specs.clear();
     s.planSpec.clear();
     s.holdSpec.clear();
+    s.midiSpec.clear();
+    s.callSpec.clear();
     s.pendingSwapFrame = -1;
     s.grid = {};
     s.tempo = 1.0;
@@ -1021,6 +1126,15 @@ juce::var Engine::panic()
     stopPad.key = -1;
     pads_.post (stopPad);
     armTransition();
+
+    // REL-40: All Notes Off and All Sound Off on every channel MIDI out has used.
+    std::vector<audio::PlanMidi> off;
+    const auto used = midiChannels_.load();
+    for (std::uint8_t ch = 0; ch < 16; ++ch)
+        if ((used & (1u << ch)) != 0)
+            for (const std::uint8_t cc : { std::uint8_t { 123 }, std::uint8_t { 120 } })
+                off.push_back ({ 0, { static_cast<std::uint8_t> (0xB0 | ch), cc, 0 }, 3, 0 });
+    sendMidiNow (off);
     return Obj().set ("type", "ok");
 }
 
@@ -1075,7 +1189,7 @@ juce::var Engine::setMaster (const juce::var& message)
     return Obj().set ("type", "ok");
 }
 
-std::unique_ptr<audio::Plan> Engine::buildPlan (double rate, const Slot& s) const
+std::unique_ptr<audio::Plan> Engine::buildPlan (double rate, const Slot& s)
 {
     // Plan seconds become output frames (divided by the tempo); sources stay source frames.
     auto plan = std::make_unique<audio::Plan>();
@@ -1121,6 +1235,43 @@ std::unique_ptr<audio::Plan> Engine::buildPlan (double rate, const Slot& s) cons
         h.padKey = hold.padKey;
         h.click = hold.click;
         plan->holds.push_back (h);
+    }
+
+    for (const auto& m : s.midiSpec)
+    {
+        audio::PlanMidi out;
+        out.frame = frames (m.at);
+        std::copy_n (m.bytes, 3, out.bytes);
+        out.size = m.size;
+        out.id = m.id;
+        plan->midi.push_back (out);
+    }
+
+    // Each clip is read once per song and rate; a call whose file cannot be read is left out.
+    for (const auto& c : s.callSpec)
+    {
+        const auto key = c.file + "|" + std::to_string (c.from) + "|" + std::to_string (c.length) + "|" + std::to_string (rate) + (c.normalize ? "|n" : "");
+        auto& clip = s.song->clips[key];
+        if (clip == nullptr)
+        {
+            juce::String problem;
+            clip = audio::loadClip (juce::File (c.file), rate, formats_, problem, c.from, c.length);
+            if (clip != nullptr && c.normalize)
+            {
+                float peak = 0.0f;
+                for (const auto x : clip->samples)
+                    peak = std::max (peak, std::abs (x));
+                if (peak > 0.0f)
+                    for (auto& x : clip->samples)
+                        x *= 0.5011872f / peak; // −6 dBFS (AUTO-31)
+            }
+        }
+        if (clip == nullptr)
+        {
+            s.song->clips.erase (key);
+            continue;
+        }
+        plan->calls.push_back ({ frames (c.at), clip.get(), audio::decibelsToGain (static_cast<float> (c.gainDb)) });
     }
 
     return plan;
@@ -1182,9 +1333,47 @@ juce::var Engine::setPlan (const juce::var& message, Slot& s)
         std::sort (holds.begin(), holds.end(), [] (const HoldSpec& a, const HoldSpec& b) { return a.at < b.at; });
     }
 
+    // Protocol 13: MIDI messages and spoken calls (AUTO-5, AUTO-21, AUTO-30, AUTO-31, PB-71).
+    std::vector<MidiSpec> midi;
+    if (const auto* list = message.getProperty ("midi", {}).getArray())
+    {
+        for (const auto& m : *list)
+        {
+            MidiSpec spec;
+            spec.at = std::max (0.0, number (m, "at", 0.0));
+            spec.id = static_cast<int> (number (m, "id", 0.0));
+            if (const auto* bytes = m.getProperty ("bytes", {}).getArray())
+                for (const auto& b : *bytes)
+                    if (spec.size < 3)
+                        spec.bytes[spec.size++] = static_cast<std::uint8_t> (juce::jlimit (0, 255, static_cast<int> (b)));
+            midi.push_back (spec);
+        }
+        std::stable_sort (midi.begin(), midi.end(), [] (const MidiSpec& a, const MidiSpec& b) { return a.at < b.at; });
+    }
+
+    std::vector<CallSpec> calls;
+    if (const auto* list = message.getProperty ("calls", {}).getArray())
+    {
+        for (const auto& c : *list)
+        {
+            CallSpec spec;
+            spec.at = std::max (0.0, number (c, "at", 0.0));
+            spec.file = text (c, "file").toStdString();
+            spec.from = number (c, "from", -1.0);
+            spec.length = std::max (0.0, number (c, "length", 0.0));
+            spec.gainDb = number (c, "gainDb", 0.0);
+            spec.normalize = flag (c, "normalize", false);
+            if (! spec.file.empty())
+                calls.push_back (std::move (spec));
+        }
+        std::stable_sort (calls.begin(), calls.end(), [] (const CallSpec& a, const CallSpec& b) { return a.at < b.at; });
+    }
+
     const auto previousTempo = s.tempo;
     s.planSpec = std::move (parsed);
     s.holdSpec = std::move (holds);
+    s.midiSpec = std::move (midi);
+    s.callSpec = std::move (calls);
     s.hasPlan = true;
 
     // Protocol 5: the entry tempo, 50–150 % (PB-60).
