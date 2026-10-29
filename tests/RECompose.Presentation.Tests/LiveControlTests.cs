@@ -105,13 +105,20 @@ public sealed class LiveControlTests : IDisposable
 
     private static async Task Eventually(Func<bool> condition, int timeoutMs = 10000)
     {
+        if (!await EventuallyAsync(condition, timeoutMs))
+            Assert.Fail("The condition was not met in time.");
+    }
+
+    private static async Task<bool> EventuallyAsync(Func<bool> condition, int timeoutMs = 10000)
+    {
         var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
         while (!condition())
         {
             if (DateTime.UtcNow > deadline)
-                Assert.Fail("The condition was not met in time.");
+                return false;
             await Task.Delay(20);
         }
+        return true;
     }
 
     private async Task<double> RenderAsync(MainViewModel vm, double seconds)
@@ -238,7 +245,12 @@ public sealed class LiveControlTests : IDisposable
 
             await vm.PlayPauseAsync(); // the play key: GO reaches the engine before the render
             await RenderAsync(vm, 0.5);
-            await Eventually(() => !vm.IsHolding);
+            // shortcut: failed once in 160 Linux runs (still holding after GO), never reproduced; the message shows the engine's side.
+            if (!await EventuallyAsync(() => !vm.IsHolding))
+            {
+                var (_, _, s) = await vm.EngineForTests!.RenderOfflineAsync(4800, 2, ct: TestContext.Current.CancellationToken);
+                Assert.Fail($"Still holding after GO. Engine: {s.State}, holding {s.Holding}, frame {s.Frame}, heard {s.HeardFrame}, held {s.HoldSec:0.00} s; app: {vm.Status} at {vm.PlanPositionSec:0.000} s.");
+            }
             Assert.Equal("PLAYING", vm.Status);
         }
         finally
