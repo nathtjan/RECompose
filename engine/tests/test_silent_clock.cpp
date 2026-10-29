@@ -53,12 +53,15 @@ TEST ("silent clock counts from the last block a device played")
     std::atomic<std::int64_t> frames { 0 };
     SilentClock clock ([&] (float* const*, int, int numSamples) { frames.fetch_add (numSamples); });
 
-    // The device went quiet 300 ms ago: the clock renders that time at once, then goes on in real time.
+    // The device went quiet 300 ms ago: the clock renders that time at once, then goes on in real time. The sleep is
+    // measured, not assumed: a busy machine (a CI runner) oversleeps, and the clock rightly renders that time too.
+    const auto started = std::chrono::steady_clock::now();
     clock.start (kRate, 2, SilentClock::steadyNowNs() - 300'000'000LL);
     std::this_thread::sleep_for (std::chrono::milliseconds (100));
+    const auto elapsed = std::chrono::duration<double> (std::chrono::steady_clock::now() - started).count();
     clock.stop();
     CHECK (frames.load() >= framesIn (0.35));
-    CHECK (frames.load() <= framesIn (0.45));
+    CHECK (frames.load() <= framesIn (0.3 + elapsed + 0.04) + 2 * SilentClock::kBlock);
 
     // A backdate beyond a second is cut to one.
     frames.store (0);
