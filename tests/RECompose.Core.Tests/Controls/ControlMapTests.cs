@@ -86,7 +86,7 @@ public class ControlMapTests
 
         Assert.Single(router.Key("PageDown", true, 0));
         for (var t = 0.5; t < 3; t += 0.03)
-            Assert.Empty(router.Key("F6", true, t).Where(a => a == ControlAction.Go)); // never the short action while held
+            Assert.DoesNotContain(ControlAction.Go, router.Key("F6", true, t)); // never the short action while held
     }
 
     [Fact]

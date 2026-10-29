@@ -4,7 +4,7 @@ using RECompose.Core.Audio;
 namespace RECompose.Engine.Tests;
 
 // Protocols 3 and 4 against the real engine process, rendering offline (no audio device needed).
-public class EngineClientTests
+public class EngineClientTests : IAsyncDisposable
 {
     private static string Executable()
     {
@@ -20,12 +20,11 @@ public class EngineClientTests
         return executable;
     }
 
-    private static async Task<EngineClient> StartAsync()
-    {
-        var endpoint = Path.Combine(Path.GetTempPath(), $"rec-{Guid.NewGuid():N}"[..14] + ".sock");
-        var session = await EngineHost.ConnectOrStartAsync(new EngineHostOptions(Executable(), endpoint) { IdleExitSeconds = 3 }, TestContext.Current.CancellationToken);
-        return new EngineClient(session);
-    }
+    private readonly TestEngines _engines = new();
+
+    public ValueTask DisposeAsync() => _engines.DisposeAsync();
+
+    private Task<EngineClient> StartAsync() => _engines.StartAsync(Executable());
 
     private static string Folder()
     {

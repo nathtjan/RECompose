@@ -133,9 +133,16 @@ public sealed class LiveControlTests : IDisposable
         return peak[0];
     }
 
-    private static async Task FinishAsync(MainViewModel vm)
+    private async Task FinishAsync(MainViewModel vm)
     {
-        var engine = vm.EngineForTests!;
+        if (vm.EngineForTests is not { } engine)
+        {
+            await vm.DisposeAsync();
+            lock (_ui)
+                Assert.Fail("The engine connection was lost." + string.Concat(_ui.Errors.Select(e => Environment.NewLine + e)));
+            return;
+        }
+
         await engine.StopAsync();
         await engine.RenderOfflineAsync(9600, 2);
         await vm.DisposeAsync();
@@ -147,7 +154,7 @@ public sealed class LiveControlTests : IDisposable
         var (vm, _) = await StartAsync();
         try
         {
-            await vm.EngineForTests!.PlayAsync();
+            await vm.EngineForTests!.PlayAsync(TestContext.Current.CancellationToken);
             await RenderAsync(vm, 2);
             await Eventually(() => vm.State == RECompose.Engine.TransportState.Playing);
 
@@ -186,7 +193,7 @@ public sealed class LiveControlTests : IDisposable
         var (vm, _) = await StartAsync();
         try
         {
-            await vm.EngineForTests!.PlayAsync();
+            await vm.EngineForTests!.PlayAsync(TestContext.Current.CancellationToken);
             await RenderAsync(vm, 2);
             await Eventually(() => vm.State == RECompose.Engine.TransportState.Playing);
 
@@ -216,7 +223,7 @@ public sealed class LiveControlTests : IDisposable
         try
         {
             Assert.True(vm.Song!.Plan.Holds().Count == 1);
-            await vm.EngineForTests!.PlayAsync();
+            await vm.EngineForTests!.PlayAsync(TestContext.Current.CancellationToken);
 
             // Verse 1 (8 s) and its two-bar ring-out (4 s), then the hold at 12 s.
             await RenderAsync(vm, 13);
@@ -245,7 +252,7 @@ public sealed class LiveControlTests : IDisposable
         var (vm, _) = await StartAsync();
         try
         {
-            await vm.EngineForTests!.PlayAsync();
+            await vm.EngineForTests!.PlayAsync(TestContext.Current.CancellationToken);
             await RenderAsync(vm, 10); // inside the chorus
             await Eventually(() => vm.NowLabel == "CHORUS");
 
@@ -273,7 +280,7 @@ public sealed class LiveControlTests : IDisposable
         var (vm, _) = await StartAsync("V1 HOLD C");
         try
         {
-            await vm.EngineForTests!.PlayAsync();
+            await vm.EngineForTests!.PlayAsync(TestContext.Current.CancellationToken);
             await RenderAsync(vm, 13);
             await Eventually(() => vm.IsHolding);
 
@@ -281,13 +288,13 @@ public sealed class LiveControlTests : IDisposable
             var row = vm.Controls.Rows.First(r => r.Action == ControlAction.Go);
             vm.Controls.BeginLearn(ControlAction.Go);
             Assert.True(row.Learning);
-            await vm.EngineForTests.InjectMidiAsync("cc", 1, 64, 127);
+            await vm.EngineForTests.InjectMidiAsync("cc", 1, 64, 127, TestContext.Current.CancellationToken);
             await Eventually(() => !row.Learning && row.Inputs.Contains("CC 64 ch 1 ≥ 64", StringComparison.Ordinal));
             Assert.Contains(vm.Controls.Bindings, b => b.Action == ControlAction.Go && b.Input.Kind == ControlKind.ControlChange);
 
             // The pedal acts and says so.
-            await vm.EngineForTests.InjectMidiAsync("cc", 1, 64, 0);
-            await vm.EngineForTests.InjectMidiAsync("cc", 1, 64, 127);
+            await vm.EngineForTests.InjectMidiAsync("cc", 1, 64, 0, TestContext.Current.CancellationToken);
+            await vm.EngineForTests.InjectMidiAsync("cc", 1, 64, 127, TestContext.Current.CancellationToken);
             await Eventually(() => vm.Controls.LastInput == "Pedal: GO");
             await RenderAsync(vm, 0.5);
             await Eventually(() => !vm.IsHolding);
@@ -304,7 +311,7 @@ public sealed class LiveControlTests : IDisposable
         var (vm, _) = await StartAsync();
         try
         {
-            await vm.EngineForTests!.PlayAsync();
+            await vm.EngineForTests!.PlayAsync(TestContext.Current.CancellationToken);
             await RenderAsync(vm, 2);
             await Eventually(() => vm.State == RECompose.Engine.TransportState.Playing);
 
@@ -329,7 +336,7 @@ public sealed class LiveControlTests : IDisposable
         var (vm, _) = await StartAsync();
         try
         {
-            await vm.EngineForTests!.PlayAsync();
+            await vm.EngineForTests!.PlayAsync(TestContext.Current.CancellationToken);
             await RenderAsync(vm, 10); // in the chorus (8–16 s)
             await Eventually(() => vm.NowLabel == "CHORUS");
 
@@ -385,7 +392,7 @@ public sealed class LiveControlTests : IDisposable
         var (vm, song) = await StartAsync("V1 C");
         try
         {
-            await vm.EngineForTests!.PlayAsync();
+            await vm.EngineForTests!.PlayAsync(TestContext.Current.CancellationToken);
             await RenderAsync(vm, 2);
             await Eventually(() => vm.State == RECompose.Engine.TransportState.Playing);
             var framesBefore = vm.EnginePlanFrames;
@@ -417,7 +424,7 @@ public sealed class LiveControlTests : IDisposable
         string journalText;
         try
         {
-            await vm.EngineForTests!.PlayAsync();
+            await vm.EngineForTests!.PlayAsync(TestContext.Current.CancellationToken);
             await RenderAsync(vm, 10);                 // in the chorus
             await Eventually(() => vm.NowLabel == "CHORUS");
             await vm.LiveAsync(LiveActionKind.Vamp);   // the chorus repeats until moved on
@@ -477,12 +484,12 @@ public sealed class LiveControlTests : IDisposable
         var (vm, _) = await StartAsync();
         try
         {
-            await vm.EngineForTests!.PlayAsync();
+            await vm.EngineForTests!.PlayAsync(TestContext.Current.CancellationToken);
             await RenderAsync(vm, 2);
             await Eventually(() => vm.State == RECompose.Engine.TransportState.Playing);
             var before = vm.PlanPositionSec;
 
-            var route = await vm.EngineForTests.InjectDeviceLossAsync();
+            var route = await vm.EngineForTests.InjectDeviceLossAsync(ct: TestContext.Current.CancellationToken);
             Assert.Equal("silent", route);
             await Eventually(() => vm.OnSilentClock);
             Assert.True(vm.AudioLost);
@@ -497,7 +504,7 @@ public sealed class LiveControlTests : IDisposable
             Assert.Equal(RECompose.Engine.TransportState.Playing, vm.State);
 
             // The device is back: the banner goes.
-            await vm.EngineForTests.InjectDeviceLossAsync(present: true);
+            await vm.EngineForTests.InjectDeviceLossAsync(present: true, ct: TestContext.Current.CancellationToken);
             await Eventually(() => !vm.OnSilentClock);
             Assert.False(vm.HasBanner);
         }
@@ -513,11 +520,11 @@ public sealed class LiveControlTests : IDisposable
         var (vm, _) = await StartAsync();
         try
         {
-            await vm.EngineForTests!.PlayAsync();
+            await vm.EngineForTests!.PlayAsync(TestContext.Current.CancellationToken);
             await RenderAsync(vm, 1);
             await Eventually(() => vm.State == RECompose.Engine.TransportState.Playing);
 
-            await vm.EngineForTests.InjectDeviceLossAsync(silentLimitSec: 1);
+            await vm.EngineForTests.InjectDeviceLossAsync(silentLimitSec: 1, ct: TestContext.Current.CancellationToken);
             await Eventually(() => vm.State == RECompose.Engine.TransportState.Paused, 5000);
             Assert.StartsWith("No audio device for 1 s. Paused at VERSE 1", vm.Banner);
             Assert.InRange(vm.PlanPositionSec, 1.8, 2.6); // a second of rendering plus the silent second
@@ -534,7 +541,7 @@ public sealed class LiveControlTests : IDisposable
         var (vm, _) = await StartAsync();
         try
         {
-            await vm.EngineForTests!.PlayAsync();
+            await vm.EngineForTests!.PlayAsync(TestContext.Current.CancellationToken);
             await RenderAsync(vm, 10);
             await Eventually(() => vm.NowLabel == "CHORUS");
 
@@ -559,7 +566,7 @@ public sealed class LiveControlTests : IDisposable
 
     private async Task PlayingAsync(MainViewModel vm)
     {
-        await vm.EngineForTests!.PlayAsync();
+        await vm.EngineForTests!.PlayAsync(TestContext.Current.CancellationToken);
         await RenderAsync(vm, 1);
         await Eventually(() => vm.State == RECompose.Engine.TransportState.Playing);
     }
@@ -700,7 +707,7 @@ public sealed class LiveControlTests : IDisposable
             await vm.PlanSend; // the plan with the cue reaches the engine
 
             await vm.SeekPlanAsync(0);
-            await vm.EngineForTests!.PlayAsync();
+            await vm.EngineForTests!.PlayAsync(TestContext.Current.CancellationToken);
             await RenderAsync(vm, 9);
             bool Has(string line)
             {
@@ -715,8 +722,9 @@ public sealed class LiveControlTests : IDisposable
             // The LOG tab (AUTO-50): newest first, the Sections chip shows only section notes, Clear view empties it.
             await Eventually(() => vm.ShownLog.Any(e => e.Text == "Section Chorus: MIDI note E3"));
             vm.LogChip = "Sections";
-            Assert.All(vm.ShownLog, e => Assert.StartsWith("Section ", e.Text));
-            Assert.Equal("Section Chorus: MIDI note E3", vm.ShownLog[0].Text);
+            Assert.All(vm.ShownLog, e => Assert.Equal("Sections", e.Chip)); // the log is process-wide: other tests' lines may be there too
+            Assert.DoesNotContain(vm.ShownLog, e => e.Text == "Cue 1: MIDI note C4");
+            Assert.Equal("Section Chorus: MIDI note E3", vm.ShownLog.First(e => e.Text.StartsWith("Section ", StringComparison.Ordinal)).Text); // newest first
             vm.LogChip = "All";
             vm.LogSearch = "cue 1";
             Assert.Contains(vm.ShownLog, e => e.Text == "Cue 1: MIDI note C4");

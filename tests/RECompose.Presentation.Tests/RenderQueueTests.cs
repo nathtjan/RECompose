@@ -81,7 +81,7 @@ public sealed class RenderQueueTests : IDisposable
             Assert.Equal(0, vm.Song!.Loaded!.Tracks.Single(t => t.Id == "music").Renders);
 
             vm.QueueRenders();
-            await Task.Delay(100);
+            await Task.Delay(100, TestContext.Current.CancellationToken);
             await vm.WaitForRendersAsync();
 
             var index = store.LoadRenderIndex();
@@ -93,10 +93,10 @@ public sealed class RenderQueueTests : IDisposable
             // Stopped: the entry loads again with its render; the engine opened it and the badge is gone.
             var deadline = DateTime.UtcNow.AddSeconds(10);
             while (vm.Song!.Loaded!.Tracks.Single(t => t.Id == "music").Renders == 0 && DateTime.UtcNow < deadline)
-                await Task.Delay(50);
+                await Task.Delay(50, TestContext.Current.CancellationToken);
             Assert.Equal(1, vm.Song!.Loaded!.Tracks.Single(t => t.Id == "music").Renders);
             Assert.Null(vm.LiveKeyBadge);
-            var (peak, _, _) = await vm.EngineForTests!.RenderOfflineAsync(4800, 2);
+            var (peak, _, _) = await vm.EngineForTests!.RenderOfflineAsync(4800, 2, ct: TestContext.Current.CancellationToken);
             Assert.True(peak[0] == 0 || peak[0] > 0); // the graph runs with the render loaded
         }
         finally

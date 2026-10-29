@@ -27,14 +27,27 @@ public static class HeadlessApp
 
     /// <summary>
     /// Runs a test body on the UI thread and lets its exceptions out. Session.Dispatch returns as soon as an async body first
-    /// suspends on real work (a process, a file), and an exception in it is lost, so a test can pass having checked nothing.
-    /// This fails in both cases: use it for bodies that only await work that completes at once (no engine).
+    /// suspends on real work (a socket, a file), and an exception in it is lost, so a test can pass having checked nothing.
+    /// This keeps running the UI thread's jobs until the body ends, and fails if it has not ended in time or threw.
     /// </summary>
-    public static async Task RunAsync(Func<Task> body, CancellationToken ct)
+    public static async Task RunAsync(Func<Task> body, CancellationToken ct, int timeoutMs = 30000)
     {
         Exception? failure = null;
         var finished = false;
-        await Session.Dispatch(async () =>
+        await Session.Dispatch(() =>
+        {
+            _ = Run();
+
+            // On a busy machine an await (the engine connect) may not complete at once: its continuation is a UI job.
+            var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+            while (!finished && failure is null && DateTime.UtcNow < deadline && !ct.IsCancellationRequested)
+            {
+                Dispatcher.UIThread.RunJobs();
+                Thread.Sleep(5);
+            }
+        }, ct);
+
+        async Task Run()
         {
             try
             {
@@ -45,7 +58,7 @@ public static class HeadlessApp
             {
                 failure = ex;
             }
-        }, ct);
+        }
 
         if (failure is not null)
             System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();

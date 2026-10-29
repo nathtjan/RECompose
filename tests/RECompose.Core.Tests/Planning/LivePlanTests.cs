@@ -254,7 +254,7 @@ public class LivePlanTests
 
         Assert.Equal(chorus.PlanEnd, result.Pending!.ExecuteAt, 9);
         Assert.Equal(["Verse 1", "Chorus 1", "Chorus 1", "Verse 2"], Labels(live.Plan));
-        Assert.Single(live.Plan.Items.Where(i => i.Label == "Chorus 1" && i.IsLive));
+        Assert.Single(live.Plan.Items, i => i.Label == "Chorus 1" && i.IsLive);
         AssertContiguous(live.Plan);
     }
 

@@ -6,8 +6,12 @@ namespace RECompose.Engine.Tests;
 
 // Protocol 13 (AUTO-5, AUTO-21, AUTO-31, REL-40): the plan's MIDI comes back as midiOut when played, spoken calls sound on
 // the speech track, and panic sends All Notes Off and All Sound Off on the channels used.
-public class AutomationTests
+public class AutomationTests : IAsyncDisposable
 {
+    private readonly TestEngines _engines = new();
+
+    public ValueTask DisposeAsync() => _engines.DisposeAsync();
+
     private static string Executable()
     {
         var executable = Path.Combine(AppContext.BaseDirectory, EnginePaths.ExecutableFileName);
@@ -30,9 +34,8 @@ public class AutomationTests
         var silence = TestWav.Write(Path.Combine(folder, "silence.wav"), 48000, 1, 48000 * 4, (_, _) => 0);
         var clip = TestWav.Write(Path.Combine(folder, "call.wav"), 22050, 1, 2205, (i, _) => 0.1 * Math.Sin(2 * Math.PI * 440 * i / 22050.0));
 
-        var endpoint = Path.Combine(Path.GetTempPath(), $"rec-{Guid.NewGuid():N}"[..14] + ".sock");
         var ct = TestContext.Current.CancellationToken;
-        await using var client = new EngineClient(await EngineHost.ConnectOrStartAsync(new EngineHostOptions(Executable(), endpoint) { IdleExitSeconds = 3 }, ct));
+        await using var client = await _engines.StartAsync(Executable());
         var sent = new List<MidiSent>();
         client.MidiSent += batch => { lock (sent) sent.AddRange(batch); };
 

@@ -256,10 +256,23 @@ internal sealed class LockedDispatcher : IUiDispatcher
 {
     private readonly object _gate = new();
 
+    /// <summary>What posted work threw. Engine events run inline here, so a throw also ends the engine connection.</summary>
+    public List<Exception> Errors { get; } = [];
+
     public void Post(Action action)
     {
         lock (_gate)
-            action();
+        {
+            try
+            {
+                action();
+            }
+            catch (Exception ex)
+            {
+                Errors.Add(ex);
+                throw;
+            }
+        }
     }
 
     public void After(TimeSpan delay, Action action) =>

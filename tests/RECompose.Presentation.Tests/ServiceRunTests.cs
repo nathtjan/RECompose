@@ -140,6 +140,40 @@ public sealed class ServiceRunTests : IDisposable
     }
 
     [Fact]
+    public async Task PB11_removing_the_next_entry_while_it_preloads_leaves_nothing_preloaded()
+    {
+        var vm = await StartAsync(TransitionType.Stop, autoAdvance: false);
+        try
+        {
+            // A key change reloads the next slot; the entry is removed when the engine has the reload but the app has not
+            // recorded it yet. The reload finishing after the removal must not put the song back.
+            var next = vm.NextServiceEntry!;
+            var removed = false;
+            vm.NextLoadedForTests = () =>
+            {
+                if (!removed)
+                {
+                    removed = true;
+                    vm.RemoveEntry(next.Id);
+                }
+
+                return Task.CompletedTask;
+            };
+            vm.SetKeyOffset(next.Id, 2);
+
+            await Eventually(() => removed && vm.NextSongTitle is null);
+            await vm.EngineForTests!.Session.PingAsync(TestContext.Current.CancellationToken); // every refresh has had its replies
+            await Task.Delay(100, TestContext.Current.CancellationToken); // and has gone on from them
+            Assert.Null(vm.NextSongTitle);
+            Assert.False(vm.NextSongCommand.CanExecute(null));
+        }
+        finally
+        {
+            await FinishAsync(vm);
+        }
+    }
+
+    [Fact]
     public async Task AUTO60_leaving_perform_after_a_song_played_writes_the_service_report()
     {
         var vm = await StartAsync(TransitionType.Stop, autoAdvance: false);
@@ -148,11 +182,11 @@ public sealed class ServiceRunTests : IDisposable
             vm.IsPerform = true;
             await RenderAsync(vm, 1);
             await Eventually(() => vm.IsPlaying);
-            await Task.Delay(200); // a snapshot while playing records the item heard
+            await Task.Delay(200, TestContext.Current.CancellationToken); // a snapshot while playing records the item heard
             vm.IsPerform = false;
 
             Assert.NotNull(vm.LastReportPath);
-            var report = await File.ReadAllTextAsync(vm.LastReportPath!);
+            var report = await File.ReadAllTextAsync(vm.LastReportPath!, TestContext.Current.CancellationToken);
             Assert.StartsWith("# Sunday", report);
             Assert.Contains("## Champion", report);
             Assert.Contains("- As played: Whole song", report);
@@ -193,7 +227,7 @@ public sealed class ServiceRunTests : IDisposable
             await RenderAsync(vm, 2); // still in the first song
             Assert.Equal(first, vm.LoadedEntry!.Id);
 
-            await vm.EngineForTests!.RenderOfflineAsync(3 * 48000, 2); // the first song ends at 4 s: the next takes over
+            await vm.EngineForTests!.RenderOfflineAsync(3 * 48000, 2, ct: TestContext.Current.CancellationToken); // the first song ends at 4 s: the next takes over
             await Eventually(() => vm.LoadedEntry?.Id != first);
             Assert.Equal("Goodness", vm.Song!.Title);
             Assert.Null(vm.NextServiceEntry); // it is the last entry
@@ -220,8 +254,8 @@ public sealed class ServiceRunTests : IDisposable
 
             // Play starts the next song on the next downbeat of the click (120 BPM in 4/4: a bar is 2 s from the transition's start).
             vm.PlayPauseCommand.Execute(null);
-            await Task.Delay(200);
-            await vm.EngineForTests!.RenderOfflineAsync(3 * 48000, 2);
+            await Task.Delay(200, TestContext.Current.CancellationToken);
+            await vm.EngineForTests!.RenderOfflineAsync(3 * 48000, 2, ct: TestContext.Current.CancellationToken);
             await Eventually(() => vm.LoadedEntry?.Id != first);
             Assert.Equal("Goodness", vm.Song!.Title);
             await Eventually(() => vm.Status != "TRANSITION");

@@ -87,7 +87,7 @@ public sealed class PerformWindowTests : IDisposable
         var folder = Path.Combine(AppContext.BaseDirectory, "screenshots");
         Directory.CreateDirectory(folder);
         var path = Path.Combine(folder, name + ".png");
-        window.CaptureRenderedFrame()!.Save(path);
+        window.CaptureRenderedFrame()!.Save(path, Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default);
         return path;
     }
 
@@ -137,7 +137,7 @@ public sealed class PerformWindowTests : IDisposable
             Dispatcher.UIThread.RunJobs();
             Assert.Equal(LiveOutcome.Queued, result.Outcome);
             Assert.Equal("NEXT · KEYS · PENDING", perform.FindControl<TextBlock>("NextTagText")!.Text);
-            Assert.True(perform.FindControl<Border>("NextCard")!.Classes.Contains("pending"));
+            Assert.Contains("pending", perform.FindControl<Border>("NextCard")!.Classes);
             Assert.Contains(vm.Tiles, t => t.IsTarget && t.Label == "Ending");
             Assert.Contains(vm.Tiles, t => t.IsSkipped);
             Assert.True(vm.CanCancel);
@@ -155,7 +155,7 @@ public sealed class PerformWindowTests : IDisposable
             vm.ApplySnapshotForTests(Snapshot(vm, hold.AtSec, holding: true, holdSec: 23.4));
             Dispatcher.UIThread.RunJobs();
             Assert.Equal("HOLD", perform.FindControl<TextBlock>("NowLabel")!.Text);
-            Assert.Equal("0:23", perform.FindControl<TextBlock>("Holding")!.Text);
+            Assert.Equal("0:23", perform.FindControl<TextBlock>("HoldTimer")!.Text);
             Assert.Equal("Holding for 0:23", vm.HoldText);
             Assert.Equal("on GO", perform.FindControl<TextBlock>("NextCountdown")!.Text);
             Assert.Equal("GO", vm.PlayLabel);

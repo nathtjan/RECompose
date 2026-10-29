@@ -84,10 +84,27 @@ public sealed partial class MainViewModel
     /// </summary>
     private async Task RefreshNextAsync()
     {
+        // One refresh at a time, and only the newest: an older one finishing late would put back a next song since removed.
         var version = ++_nextVersion;
-        if (_engine is not { } engine)
-            return;
+        await _nextGate.WaitAsync();
+        try
+        {
+            if (version == _nextVersion && _engine is { } engine)
+                await RefreshNextCoreAsync(engine, version);
+        }
+        finally
+        {
+            _nextGate.Release();
+        }
+    }
 
+    private readonly SemaphoreSlim _nextGate = new(1, 1);
+
+    /// <summary>Runs after the next song and its plan have reached the engine, before the app records them; tests change the service there.</summary>
+    internal Func<Task>? NextLoadedForTests { get; set; }
+
+    private async Task RefreshNextCoreAsync(EngineClient engine, int version)
+    {
         try
         {
             var next = NextServiceEntry;
@@ -109,6 +126,8 @@ public sealed partial class MainViewModel
                 var plan = EntryPlan.Build(next, song);
                 var (segments, midi, calls, _) = Automate(plan, song, 0, NextSlotIds);
                 await engine.SetPlanAsync(segments, 0, plan.Grid, plan.TempoFactor, next: true, midi: midi, calls: calls);
+                if (NextLoadedForTests is { } hook)
+                    await hook();
                 _nextEntry = next;
                 _nextSong = song;
                 _nextLoaded = loaded;

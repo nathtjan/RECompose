@@ -368,6 +368,31 @@ public sealed class ServicesTests : IDisposable
     }
 
     [Fact]
+    public async Task REL3_run_check_in_perform_shows_the_quick_check_and_does_not_store_it()
+    {
+        var vm = await NewViewModelAsync();
+        vm.QuickCheckCommand.Execute(null);
+        Assert.Equal("Load a service to check it.", vm.Toast);
+
+        vm = await SundayAsync();
+        vm.QuickCheckCommand.Execute(null);
+        Assert.Matches("^(✓ Ready|⚠ Ready with warnings|✗ Not ready)", vm.Toast);
+        Assert.Equal("Not checked", vm.CheckBadgeText); // only the full check is kept on the service (REL-2)
+    }
+
+    [Fact]
+    public async Task AUTO50_the_log_tab_keeps_the_newest_lines_up_to_its_limit()
+    {
+        var vm = await NewViewModelAsync();
+        for (var i = 0; i < 5100; i++)
+            AppLog.Write("Services", $"Log limit test {i}");
+
+        await Eventually(() => vm.ShownLog.Any(e => e.Text == "Services: Log limit test 5099"));
+        Assert.Equal(5000, vm.ShownLog.Count);
+        Assert.DoesNotContain(vm.ShownLog, e => e.Text == "Services: Log limit test 0");
+    }
+
+    [Fact]
     public async Task REL45_export_and_import_bring_the_service_back_as_a_new_one()
     {
         var vm = await SundayAsync();

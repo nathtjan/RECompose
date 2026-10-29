@@ -5,7 +5,7 @@ using RECompose.Core.Voice;
 namespace RECompose.Engine.Tests;
 
 // Protocol 12 (VC-10): speech into the engine's voice detector comes back as an utterance, and the listen worker hears it.
-public class VoiceInputTests
+public class VoiceInputTests : IAsyncDisposable
 {
     private static string Executable()
     {
@@ -21,12 +21,11 @@ public class VoiceInputTests
         return executable;
     }
 
-    private static async Task<EngineClient> StartAsync()
-    {
-        var endpoint = Path.Combine(Path.GetTempPath(), $"rec-{Guid.NewGuid():N}"[..14] + ".sock");
-        var session = await EngineHost.ConnectOrStartAsync(new EngineHostOptions(Executable(), endpoint) { IdleExitSeconds = 3 }, TestContext.Current.CancellationToken);
-        return new EngineClient(session);
-    }
+    private readonly TestEngines _engines = new();
+
+    public ValueTask DisposeAsync() => _engines.DisposeAsync();
+
+    private Task<EngineClient> StartAsync() => _engines.StartAsync(Executable());
 
     private static byte[] Pcm16(IEnumerable<double> samples)
     {

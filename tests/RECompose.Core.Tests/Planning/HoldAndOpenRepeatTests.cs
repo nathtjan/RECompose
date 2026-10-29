@@ -59,7 +59,7 @@ public class HoldAndOpenRepeatTests
         var segments = plan.Segments();
         for (var i = 1; i < segments.Count; i++)
             Assert.Equal(segments[i - 1].End, segments[i].Start, 9); // contiguous: the hold is not a segment
-        Assert.True(segments.Any(s => s.Click && s.Src is null));    // the count-in clicks
+        Assert.Contains(segments, s => s.Click && s.Src is null); // the count-in clicks
     }
 
     [Fact]

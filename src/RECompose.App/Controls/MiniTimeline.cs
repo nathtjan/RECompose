@@ -16,7 +16,7 @@ namespace RECompose.App.Controls;
 /// </summary>
 public sealed class MiniTimeline : Control
 {
-    public const double Height = 64;
+    private const double PreferredHeight = 64;
     private const double LabelBand = 18;
 
     public static readonly StyledProperty<SongPlan?> PlanProperty = AvaloniaProperty.Register<MiniTimeline, SongPlan?>(nameof(Plan));
@@ -31,7 +31,7 @@ public sealed class MiniTimeline : Control
 
     public MiniTimeline()
     {
-        MinHeight = Height;
+        MinHeight = PreferredHeight;
         Cursor = new Cursor(StandardCursorType.Hand);
     }
 
@@ -50,7 +50,7 @@ public sealed class MiniTimeline : Control
     public event Action<double>? SeekRequested;
 
     protected override Size MeasureOverride(Size availableSize) =>
-        new(double.IsInfinity(availableSize.Width) ? 400 : availableSize.Width, Height);
+        new(double.IsInfinity(availableSize.Width) ? 400 : availableSize.Width, PreferredHeight);
 
     private IBrush Brush(string token) =>
         this.TryFindResource(token, ActualThemeVariant, out var value) && value is IBrush brush ? brush : Brushes.Gray;

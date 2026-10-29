@@ -496,7 +496,7 @@ public class ArrangementTests
 
         var tokens = QuickOrder.Parse("V2 x2 +1", infos);
         Assert.False(tokens.HasProblems);
-        Assert.Equal(1, tokens.Entries.Count);
+        Assert.Single(tokens.Entries);
         Assert.Equal(2, tokens.Entries[0].Repeat.Count);
         Assert.Equal(1, tokens.Entries[0].Transpose);
 
