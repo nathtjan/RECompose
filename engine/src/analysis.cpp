@@ -304,7 +304,9 @@ namespace
         std::vector<double> out (static_cast<size_t> (outLength));
         r8b::CDSPResampler24 resampler (rate, 16000, 65536);
         resampler.oneshot (in.data(), inLength, out.data(), outLength);
-        return std::vector<float> (out.begin(), out.end());
+        std::vector<float> result (out.size());
+        std::transform (out.begin(), out.end(), result.begin(), [] (double v) { return static_cast<float> (v); });
+        return result;
     }
 
     std::string trim (const std::string& s)

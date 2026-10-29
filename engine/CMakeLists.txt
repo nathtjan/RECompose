@@ -98,6 +98,14 @@ if(RECOMPOSE_WHISPER)
         get_target_property(dirs ${target} INTERFACE_INCLUDE_DIRECTORIES)
         set_target_properties(${target} PROPERTIES INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${dirs}")
     endforeach()
+    # Nor their sources: MSVC's narrowing conversions and GCC pragmas in whisper.cpp and ggml.
+    if(MSVC)
+        foreach(target whisper ggml ggml-base ggml-cpu)
+            if(TARGET ${target})
+                target_compile_options(${target} PRIVATE /wd4244 /wd4267 /wd4068)
+            endif()
+        endforeach()
+    endif()
 endif()
 
 # JUCE modules compiled once into a static library that the engine and the tests share

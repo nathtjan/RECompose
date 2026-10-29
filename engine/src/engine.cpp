@@ -1290,27 +1290,27 @@ juce::var Engine::setPlan (const juce::var& message, Slot& s)
 
     std::vector<PlanSegmentSpec> parsed;
     double previousEnd = 0.0;
-    for (const auto& s : *segments)
+    for (const auto& seg : *segments)
     {
         PlanSegmentSpec spec;
-        spec.start = number (s, "start", -1.0);
-        spec.end = number (s, "end", -1.0);
+        spec.start = number (seg, "start", -1.0);
+        spec.end = number (seg, "end", -1.0);
         if (spec.start < 0.0 || spec.end < spec.start)
             return makeError ({}, "badMessage", "A plan segment needs start and end, in order.");
         if (! parsed.empty() && std::abs (spec.start - previousEnd) > 1e-6)
             return makeError ({}, "badMessage", "Plan segments must be contiguous.");
         previousEnd = spec.end;
 
-        const auto src = s.getProperty ("src", {});
+        const auto src = seg.getProperty ("src", {});
         spec.silent = src.isVoid() || ! (src.isInt() || src.isInt64() || src.isDouble());
         spec.src = spec.silent ? 0.0 : static_cast<double> (src);
-        spec.fadeIn = std::max (0.0, number (s, "fadeIn", 0.0));
-        spec.fadeOut = std::max (0.0, number (s, "fadeOut", 0.0));
-        spec.click = flag (s, "click", false);
-        spec.key = juce::jlimit (-24, 24, static_cast<int> (number (s, "key", 0.0)));
-        spec.songKey = juce::jlimit (-1, 11, static_cast<int> (number (s, "songKey", -1.0)));
-        spec.pad = juce::jlimit (-1, 11, static_cast<int> (number (s, "pad", -1.0)));
-        if (const auto* mute = s.getProperty ("mute", {}).getArray())
+        spec.fadeIn = std::max (0.0, number (seg, "fadeIn", 0.0));
+        spec.fadeOut = std::max (0.0, number (seg, "fadeOut", 0.0));
+        spec.click = flag (seg, "click", false);
+        spec.key = juce::jlimit (-24, 24, static_cast<int> (number (seg, "key", 0.0)));
+        spec.songKey = juce::jlimit (-1, 11, static_cast<int> (number (seg, "songKey", -1.0)));
+        spec.pad = juce::jlimit (-1, 11, static_cast<int> (number (seg, "pad", -1.0)));
+        if (const auto* mute = seg.getProperty ("mute", {}).getArray())
             for (const auto& id : *mute)
                 if (id.isString())
                     spec.mute.push_back (id.toString().toStdString());
