@@ -93,6 +93,13 @@ public sealed record Song
     public string? AudioHash { get; init; }
 
     public string Notes { get; init; } = string.Empty;
+
+    /// <summary>Cues at source times (AUTO-1).</summary>
+    public List<global::RECompose.Core.Automation.Cue> Cues { get; init; } = [];
+
+    /// <summary>Automatic section cues (AUTO-20).</summary>
+    public global::RECompose.Core.Automation.SongAutomation Automation { get; init; } = new();
+
     public DateTimeOffset CreatedAt { get; init; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; init; } = DateTimeOffset.UtcNow;
 
@@ -112,7 +119,7 @@ public sealed record Song
             arrangements = (Arrangements ?? []).Where(a => a is not null).Select(a => a.Normalized()).ToList();
         var defaultId = DefaultArrangementId is { } id && arrangements.Any(a => a.Id == id) ? id : null;
 
-        if (Tracks is not null && MixPresets is not null && Sections is not null && Notes is not null
+        if (Tracks is not null && MixPresets is not null && Sections is not null && Notes is not null && Cues is not null && Automation is not null
             && ReferenceEquals(guide, GuideAnalysis) && ReferenceEquals(arrangements, Arrangements) && defaultId == DefaultArrangementId)
             return this;
         return this with
@@ -121,6 +128,8 @@ public sealed record Song
             MixPresets = MixPresets ?? [],
             Sections = Sections ?? [],
             Notes = Notes ?? string.Empty,
+            Cues = Cues ?? [],
+            Automation = Automation ?? new(),
             GuideAnalysis = guide,
             Arrangements = arrangements,
             DefaultArrangementId = defaultId,

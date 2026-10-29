@@ -87,6 +87,30 @@ public sealed record PadSettings
     public bool Follow { get; init; }
 }
 
+/// <summary>Settings › MIDI out (SET-30).</summary>
+public sealed record MidiOutSettings
+{
+    /// <summary>The output port; null = none on Windows, the virtual "RECompose" source on macOS.</summary>
+    public string? Port { get; init; }
+
+    /// <summary>1–16.</summary>
+    public int Channel { get; init; } = 1;
+    public int Velocity { get; init; } = 127;
+    public int LengthMs { get; init; } = 100;
+
+    /// <summary>What MIDI note 60 is called: "C3" or "C4".</summary>
+    public string MiddleC { get; init; } = "C3";
+
+    /// <summary>The section-type notes the user changed (AUTO-21); the rest are the defaults.</summary>
+    public Dictionary<RECompose.Core.Sections.SectionType, int>? Notes { get; init; }
+
+    /// <summary>Send the section note again on each pass of a repeat (AUTO-21).</summary>
+    public bool ResendOnRepeat { get; init; } = true;
+
+    /// <summary>Starting or resuming mid-section sends the current section's note (AUTO-21).</summary>
+    public bool ResendOnPlay { get; init; } = true;
+}
+
 /// <summary>settings.json (DM-90).</summary>
 public sealed record AppSettings
 {
@@ -126,4 +150,10 @@ public sealed record AppSettings
 
     /// <summary>Pad volume, fade time and Follow song; null in files written before pads existed.</summary>
     public PadSettings? Pads { get; init; }
+
+    /// <summary>MIDI out; null in files written before milestone 8.</summary>
+    public MidiOutSettings? MidiOut { get; init; }
+
+    /// <summary>Settings › Playback "Replace guide calls" (AUTO-30).</summary>
+    public bool ReplaceGuideCalls { get; init; } = true;
 }

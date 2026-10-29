@@ -185,6 +185,7 @@ public static class PlanBuilder
                             KeyTotal = options.KeyOffset,
                             SongPitchClass = options.PitchClassAt(options.KeyOffset),
                             PadPitchClass = entry.Kind == EntryKind.Pad ? PadPitchClass(entry, options) : null,
+                            SpokenCount = entry.SpokenCount,
                         });
                         cursor += length;
                         break;
@@ -317,6 +318,8 @@ public static class PlanBuilder
             MutedTrackIds = muted ?? [],
             Note = entry?.Note,
             Ending = entry?.Ending ?? EndingMode.Continue,
+            GuideCall = entry?.GuideCall ?? GuideCallMode.Auto,
+            GuideCallText = entry?.GuideCallText,
         };
         cursor += length;
         return item;

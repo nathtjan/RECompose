@@ -90,6 +90,13 @@ public sealed record PlanItem
     /// <summary>Added while playing (a vamp pass, a repeat once, a jump target) rather than by the arrangement (PB-40 origin).</summary>
     public bool IsLive { get; init; }
 
+    /// <summary>What the guide announces before this item (ARR-40, AUTO-30) and the text of a custom call.</summary>
+    public GuideCallMode GuideCall { get; init; }
+    public string? GuideCallText { get; init; }
+
+    /// <summary>Click bars and count-ins count aloud (ARR-39, PB-71).</summary>
+    public bool SpokenCount { get; init; } = true;
+
     public double Length => PlanEnd - PlanStart;
     public bool IsOpen => Passes == 0;
 
@@ -396,6 +403,48 @@ public sealed class SongPlan
                 Pad = i.Kind == PlanItemKind.Pad ? i.PadPitchClass : null,
             })
             .ToList();
+
+    /// <summary>
+    /// The segments with <paramref name="trackIds"/> muted over each silence (AUTO-30: the guide's written call). A segment
+    /// is split at the silence's edges; its source carries on, so the split has no seam.
+    /// </summary>
+    public IReadOnlyList<PlanSegment> Segments(IReadOnlyList<(double Start, double End)> silences, IReadOnlyList<string> trackIds)
+    {
+        var segments = Segments();
+        if (silences.Count == 0 || trackIds.Count == 0)
+            return segments;
+
+        var result = new List<PlanSegment>(segments.Count + silences.Count * 2);
+        foreach (var segment in segments)
+        {
+            var inside = silences.Where(s => s.End > segment.Start && s.Start < segment.End).OrderBy(s => s.Start).ToList();
+            // shortcut: a silence is left out where the segment fades, since splitting would restart the fade; calls fall in plain sections.
+            if (inside.Count == 0 || segment.FadeIn > 0 || segment.FadeOut > 0)
+            {
+                result.Add(segment);
+                continue;
+            }
+
+            var cuts = inside.SelectMany(s => new[] { s.Start, s.End }).Append(segment.Start).Append(segment.End)
+                .Select(t => Math.Clamp(t, segment.Start, segment.End)).Distinct().Order().ToList();
+            for (var i = 0; i + 1 < cuts.Count; i++)
+            {
+                var (from, to) = (cuts[i], cuts[i + 1]);
+                if (to - from < 1e-6)
+                    continue;
+                var silent = inside.Any(s => s.Start <= from + 1e-9 && s.End >= to - 1e-9);
+                result.Add(segment with
+                {
+                    Start = from,
+                    End = to,
+                    Src = segment.Src + (from - segment.Start),
+                    Mute = silent ? segment.Mute.Union(trackIds).ToList() : segment.Mute,
+                });
+            }
+        }
+
+        return result;
+    }
 
     // ---- Readouts ---------------------------------------------------------------------
 
