@@ -9,6 +9,7 @@
 | [whisper.cpp](https://github.com/ggml-org/whisper.cpp) 1.9.5 with ggml | offline guide transcription (engine) | MIT |
 | Whisper `ggml-base.en` model (OpenAI Whisper weights converted by whisper.cpp) | speech model, shipped in `models/` | MIT |
 | [Avalonia](https://github.com/AvaloniaUI/Avalonia) | desktop UI | MIT |
+| [Anthropic C# SDK](https://github.com/anthropics/anthropic-sdk-csharp) 13.3 with Microsoft.Extensions.AI.Abstractions | the optional assistant | Apache 2.0 (SDK), MIT |
 | [Hanken Grotesk](https://github.com/marcologous/hanken-grotesk) | UI font | SIL Open Font License 1.1, `design/licenses/HankenGrotesk-OFL.txt` |
 | [Martian Mono](https://github.com/evilmartians/mono) | font for live numbers | SIL Open Font License 1.1, `design/licenses/MartianMono-OFL.txt` |
 | REC Accidentals (subset of DejaVu Sans Bold) | ♭ ♮ ♯ glyphs | Bitstream Vera / DejaVu licence, `design/licenses/RECAccidentals-DejaVu-LICENSE.txt` |

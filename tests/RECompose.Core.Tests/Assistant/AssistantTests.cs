@@ -155,7 +155,7 @@ public class AssistantTests
     public void AS12_the_state_snapshot_has_the_service_and_the_selected_song()
     {
         var (world, service) = World();
-        var json = AssistantState.Build("prepare", null, new DateTime(2026, 10, 25, 19, 42, 0), service, world.Services, world.FindSong, "24:30", null, null, Champion(), new(), null);
+        var json = AssistantState.Build("prepare", null, new DateTime(2026, 10, 25, 19, 42, 0), service, world.Services, world.FindSong, "24:30", null, Champion(), new(), null);
         var state = JsonNode.Parse(json)!;
 
         Assert.Equal("Sun 19:42", state["clock"]!.GetValue<string>());
@@ -167,9 +167,10 @@ public class AssistantTests
         Assert.Equal("E3", state["sectionNoteMap"]!["chorus"]!.GetValue<string>());
         Assert.Equal(["Drums", "Vocals"], state["selectedSong"]!["groups"]!.AsArray().Select(g => g!.GetValue<string>()));
 
-        var prompt = AssistantPrompt.System("perform", "service", json);
-        Assert.Contains("Mode is perform / lock service.", prompt, StringComparison.Ordinal);
-        Assert.EndsWith($"<state>{json}</state>", prompt, StringComparison.Ordinal);
+        var turn = AssistantPrompt.State("perform", "service", json);
+        Assert.StartsWith("Mode is perform / lock service.", turn, StringComparison.Ordinal);
+        Assert.EndsWith($"<state>{json}</state>", turn, StringComparison.Ordinal);
+        Assert.DoesNotContain("<state>", AssistantPrompt.System, StringComparison.Ordinal); // the system prompt never changes in a conversation
     }
 
     [Fact]

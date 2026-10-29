@@ -13,7 +13,7 @@ using RECompose.Core.Timing;
 namespace RECompose.Core.Assistant;
 
 /// <summary>What is playing, as the readouts show it (AS-12 transport). Null when nothing is loaded.</summary>
-public sealed record AssistantTransport(string State, int? Entry, string Now, string SongBar, string Elapsed, string Remaining, string? Next, string? Pending, bool Vamp, bool Hold);
+public sealed record AssistantTransport(string State, int? Entry, string Now, string SongBar, string Elapsed, string Remaining, string? Next, string? Pending, bool Hold);
 
 /// <summary>The state snapshot sent with every request (AS-12).</summary>
 public static class AssistantState
@@ -22,14 +22,14 @@ public static class AssistantState
 
     public static string Build(
         string mode, string? lockMode, DateTime now, Service? service, IReadOnlyList<Service> services, Func<string, Song?> findSong,
-        string? totalLength, CheckResult? check, AssistantTransport? transport, Song? selected, MidiOutSettings midi, JsonObject? pads)
+        string? totalLength, AssistantTransport? transport, Song? selected, MidiOutSettings midi, JsonObject? pads)
     {
         var state = new JsonObject
         {
             ["mode"] = mode,
             ["lock"] = lockMode,
             ["clock"] = now.ToString("ddd HH:mm", Inv),
-            ["service"] = service is null ? null : ServiceNode(service, findSong, totalLength, check),
+            ["service"] = service is null ? null : ServiceNode(service, findSong, totalLength),
             ["transport"] = transport is null ? null : new JsonObject
             {
                 ["state"] = transport.State,
@@ -40,7 +40,6 @@ public static class AssistantState
                 ["remaining"] = transport.Remaining,
                 ["next"] = transport.Next,
                 ["pending"] = transport.Pending,
-                ["vamp"] = transport.Vamp,
                 ["hold"] = transport.Hold,
             },
             ["selectedSong"] = selected is null ? null : SongNode(selected, midi),
@@ -51,7 +50,7 @@ public static class AssistantState
         return state.ToJsonString(new JsonSerializerOptions { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping });
     }
 
-    public static JsonObject ServiceNode(Service service, Func<string, Song?> findSong, string? totalLength, CheckResult? check = null)
+    public static JsonObject ServiceNode(Service service, Func<string, Song?> findSong, string? totalLength)
     {
         var entries = new JsonArray();
         for (var i = 0; i < service.Entries.Count; i++)
@@ -91,12 +90,13 @@ public static class AssistantState
             ["totalLength"] = totalLength,
             ["entries"] = entries,
         };
-        if (check is not null)
+        if (service.LastCheck is { } check)
         {
             node["check"] = new JsonObject
             {
-                ["result"] = check.Overall.ToString(),
-                ["items"] = new JsonArray([.. check.Items.Where(c => c.Status is CheckStatus.Warning or CheckStatus.Error).Select(c => (JsonNode)$"{c.Title}: {c.Detail}")]),
+                ["result"] = check.Result,
+                ["at"] = check.At.ToString("yyyy-MM-ddTHH:mm", Inv),
+                ["items"] = new JsonArray([.. check.Items.Select(i => (JsonNode)i)]),
             };
         }
 

@@ -22,6 +22,13 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
 
+        // The assistant's newest message stays in view (UI-17).
+        AssistantScroll.PropertyChanged += (_, e) =>
+        {
+            if (e.Property == ScrollViewer.ExtentProperty)
+                AssistantScroll.ScrollToEnd();
+        };
+
         // Shortcuts (KEY-1) are handled before controls see the key, so Space never also
         // presses a focused button.
         AddHandler(KeyDownEvent, OnKeyDownTunnel, RoutingStrategies.Tunnel);
@@ -444,6 +451,12 @@ public partial class MainWindow : Window
                     return;
                 case Key.OemComma:
                     vm.OpenSettingsCommand.Execute(null);
+                    e.Handled = true;
+                    return;
+                case Key.J:
+                    vm.ToggleAssistantCommand.Execute(null);
+                    if (vm.Assistant.IsOpen)
+                        Avalonia.Threading.Dispatcher.UIThread.Post(() => AssistantComposer.Focus());
                     e.Handled = true;
                     return;
                 case Key.F:

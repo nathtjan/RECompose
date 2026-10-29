@@ -25,7 +25,12 @@ public static class AssistantPrompt
 
     public static string Offline(string detail) => $"Assistant error: Couldn't reach the Anthropic API ({detail}).";
 
-    public static string System(string mode, string? lockMode, string stateJson) => $"""
+    /// <summary>
+    /// The system prompt (AS-11). It stays the same for a whole conversation: the mode and the state snapshot change, so they go
+    /// with each message instead (<see cref="State"/>); editing the system prompt mid-conversation would invalidate the model's
+    /// earlier thinking.
+    /// </summary>
+    public const string System = """
         You are the assistant inside RECompose, used by a church music director to prepare and run the Sunday service.
         Make changes only through tools; never claim a change you did not make.
         - Users often dictate; fix obvious transcription errors ("he change" = "hey, change").
@@ -34,10 +39,13 @@ public static class AssistantPrompt
         - Arrangement entries support: bar ranges, repeats (n or until cued), key lifts, mutes (groups/tracks), fades, endings (continue/ringOut/cut), guide-call overrides, MD notes, and click/pad/hold entries.
         - Ask before overwriting a song's shared variant; prefer changing only this service's entry unless the user says otherwise.
         - After changes, review affected songs and mention real problems briefly with an offer to fix (note clashes, missing endings, open repeats at the end, key lifts > ±5, service length vs. any target the user gave, failing service-check items).
-        - Mode is {mode} / lock {lockMode ?? "none"}. In Perform, every change you propose is shown to the MD for confirmation; keep proposals small and never alter the item currently playing.
+        - Every message ends with the mode and the app state as it is now; the latest one is current. In Perform, every change you propose is shown to the MD for confirmation; keep proposals small and never alter the item currently playing.
         - Reply in short plain prose, no headings or lists unless asked.
-        <state>{stateJson}</state>
         """;
+
+    /// <summary>The mode line and the state snapshot (AS-11, AS-12), sent after every user message and every round of tool results.</summary>
+    public static string State(string mode, string? lockMode, string stateJson) =>
+        $"Mode is {mode} / lock {lockMode ?? "none"}.\n<state>{stateJson}</state>";
 
     private static JsonObject Props(params (string Name, JsonNode Schema)[] props)
     {

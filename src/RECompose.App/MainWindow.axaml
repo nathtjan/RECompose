@@ -122,6 +122,13 @@
           </ComboBox.ItemTemplate>
         </ComboBox>
 
+        <Button DockPanel.Dock="Right" Command="{Binding ToggleAssistantCommand}" ToolTip.Tip="Assistant (Ctrl+J)" Margin="12,0,0,0" VerticalAlignment="Center"
+                AutomationProperties.Name="Assistant">
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <c:Icon Glyph="assistant" IconSize="16" VerticalAlignment="Center" />
+            <TextBlock Text="Assistant" VerticalAlignment="Center" />
+          </StackPanel>
+        </Button>
         <Button DockPanel.Dock="Right" Command="{Binding OpenControlsCommand}" ToolTip.Tip="Keys, pedals and jump timing" Margin="12,0,0,0" VerticalAlignment="Center"
                 AutomationProperties.Name="Controls">
           <StackPanel Orientation="Horizontal" Spacing="6">
@@ -1107,5 +1114,102 @@
   
     <!-- Perform replaces the whole window below the title (UI-40); playback never stops when it opens -->
     <local:PerformView x:Name="Perform" Grid.Row="0" Grid.RowSpan="3" IsVisible="{Binding IsPerform}" />
+
+    <!-- Assistant (UI-17, AS-2): a drawer over the right edge in Prepare and Perform; Ctrl+J -->
+    <Border Grid.Row="0" Grid.RowSpan="3" Width="400" HorizontalAlignment="Right" Classes="panel" BorderBrush="{DynamicResource border}" BorderThickness="1,0,0,0"
+            Background="{DynamicResource bg-surface}" IsVisible="{Binding IsOpen}" DataContext="{Binding $parent[Window].((vm:MainViewModel)DataContext).Assistant}" x:DataType="vm:AssistantViewModel">
+      <DockPanel Margin="12">
+        <!-- Header: title, Undo, New conversation, settings, close -->
+        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+          <Button DockPanel.Dock="Right" Classes="ghost" Command="{Binding $parent[Window].((vm:MainViewModel)DataContext).ToggleAssistantCommand}" ToolTip.Tip="Close (Ctrl+J)" AutomationProperties.Name="Close assistant">
+            <c:Icon Glyph="close" IconSize="14" />
+          </Button>
+          <Button DockPanel.Dock="Right" Classes="ghost" Command="{Binding SettingsCommand}" ToolTip.Tip="Settings › Assistant" AutomationProperties.Name="Assistant settings">
+            <c:Icon Glyph="settings" IconSize="14" />
+          </Button>
+          <Button DockPanel.Dock="Right" Classes="ghost" Content="New conversation" Command="{Binding NewConversationCommand}" />
+          <Button DockPanel.Dock="Right" Classes="ghost" Command="{Binding UndoCommand}" ToolTip.Tip="Undo the assistant's last change" AutomationProperties.Name="Undo assistant change">
+            <StackPanel Orientation="Horizontal" Spacing="4">
+              <c:Icon Glyph="undo" IconSize="14" VerticalAlignment="Center" />
+              <TextBlock Text="Undo" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+          <TextBlock Classes="heading" Text="Assistant" VerticalAlignment="Center" />
+        </DockPanel>
+
+        <!-- Settings › Assistant (AS-1) -->
+        <Border DockPanel.Dock="Top" Classes="inset" Padding="12" Margin="0,0,0,8" IsVisible="{Binding ShowSettings}">
+          <StackPanel Spacing="6">
+            <TextBlock Classes="label" Text="ANTHROPIC API KEY" />
+            <DockPanel>
+              <Button DockPanel.Dock="Right" Content="Save" Command="{Binding SaveKeyCommand}" Margin="6,0,0,0" />
+              <TextBox Text="{Binding KeyText}" PasswordChar="•" PlaceholderText="sk-ant-…" AutomationProperties.Name="Anthropic API key" />
+            </DockPanel>
+            <TextBlock Classes="meta" Text="{Binding KeyStatus}" TextWrapping="Wrap" />
+            <TextBlock Classes="label" Text="WORKSPACE ID (OPTIONAL)" Margin="0,6,0,0" />
+            <TextBox Text="{Binding WorkspaceId}" AutomationProperties.Name="Workspace ID" />
+            <TextBlock Classes="label" Text="MODEL" Margin="0,6,0,0" />
+            <AutoCompleteBox Text="{Binding Model}" ItemsSource="{Binding SuggestedModels}" FilterMode="StartsWith" AutomationProperties.Name="Model" />
+            <CheckBox IsChecked="{Binding ConfirmInPerform}" Content="Allow changes during Perform, with confirmation" Margin="0,6,0,0" />
+            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,6,0,0">
+              <Button Content="Test connection" Command="{Binding TestCommand}" />
+              <TextBlock Text="{Binding TestResult}" VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="220" />
+            </StackPanel>
+            <TextBlock Classes="meta" Text="{Binding PrivacyNote}" TextWrapping="Wrap" Margin="0,6,0,0" />
+          </StackPanel>
+        </Border>
+
+        <!-- Composer -->
+        <DockPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
+          <Button DockPanel.Dock="Right" Classes="primary" Content="Send" Command="{Binding SendCommand}" Margin="6,0,0,0" VerticalAlignment="Bottom" />
+          <TextBox x:Name="AssistantComposer" Text="{Binding Draft}" TextWrapping="Wrap" MaxHeight="120" AcceptsReturn="False"
+                   PlaceholderText="Describe a change to the service, a song or its cues…" AutomationProperties.Name="Message to the assistant">
+            <TextBox.KeyBindings>
+              <KeyBinding Gesture="Enter" Command="{Binding SendCommand}" />
+            </TextBox.KeyBindings>
+          </TextBox>
+        </DockPanel>
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Spacing="6" IsVisible="{Binding IsWorking}" Margin="0,6,0,0">
+          <c:Icon Glyph="rendering" IconSize="14" VerticalAlignment="Center" TextElement.Foreground="{DynamicResource state-pending}" />
+          <TextBlock Classes="meta" Text="Working on it" VerticalAlignment="Center" />
+        </StackPanel>
+
+        <!-- UI-80: no key yet -->
+        <Border DockPanel.Dock="Top" Classes="inset" Padding="12" IsVisible="{Binding NeedsKey}">
+          <StackPanel Spacing="8">
+            <TextBlock Text="Add your Anthropic API key to use the assistant" TextWrapping="Wrap" />
+            <Button Content="Open settings" Command="{Binding SettingsCommand}" HorizontalAlignment="Left" />
+          </StackPanel>
+        </Border>
+
+        <!-- Messages -->
+        <ScrollViewer x:Name="AssistantScroll">
+          <ItemsControl ItemsSource="{Binding Rows}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:AssistantRow">
+                <Panel Margin="0,4">
+                  <Border IsVisible="{Binding IsUser}" Classes="inset" Padding="10,6" HorizontalAlignment="Right" MaxWidth="320" Background="{DynamicResource accent-subtle}">
+                    <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap" />
+                  </Border>
+                  <SelectableTextBlock IsVisible="{Binding IsAssistant}" Text="{Binding Text}" TextWrapping="Wrap" />
+                  <TextBlock IsVisible="{Binding IsNote}" Classes="meta" Classes.error="{Binding IsError}" Text="{Binding Text}" TextWrapping="Wrap" />
+                  <Border IsVisible="{Binding IsCard}" Classes="inset" Padding="10" BorderBrush="{DynamicResource state-pending}" BorderThickness="1">
+                    <StackPanel Spacing="8">
+                      <TextBlock Classes="label" Text="CONFIRM CHANGE" />
+                      <TextBlock Text="{Binding Text}" TextWrapping="Wrap" />
+                      <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding IsPending}">
+                        <Button Classes="primary" Content="Apply" Command="{Binding ApplyCommand}" />
+                        <Button Content="Discard" Command="{Binding DiscardCommand}" />
+                      </StackPanel>
+                      <TextBlock Classes="meta" Text="{Binding Status}" IsVisible="{Binding !IsPending}" />
+                    </StackPanel>
+                  </Border>
+                </Panel>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </ScrollViewer>
+      </DockPanel>
+    </Border>
 </Grid>
 </Window>

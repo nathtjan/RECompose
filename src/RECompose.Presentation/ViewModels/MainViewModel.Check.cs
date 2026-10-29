@@ -145,7 +145,7 @@ public sealed partial class MainViewModel
             FreeDiskBytes = free,
             OnBattery = SystemPower.OnBattery,
             BatteryPercent = SystemPower.BatteryPercent,
-            AssistantEnabled = false,
+            AssistantEnabled = Assistant.HasKey,
         };
     }
 

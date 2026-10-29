@@ -14,4 +14,8 @@
     <InternalsVisibleTo Include="RECompose.Presentation.Tests" />
     <InternalsVisibleTo Include="RECompose.App.Tests" />
   </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Anthropic" />
+  </ItemGroup>
 </Project>

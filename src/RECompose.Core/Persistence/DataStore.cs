@@ -104,7 +104,7 @@ public sealed class DataStore(string root)
     /// Before a document is replaced, the file as it was goes to versions/&lt;id&gt;/&lt;timestamp&gt;.json, unless the newest
     /// version is less than five minutes old; the 20 newest are kept. A failure here never stops the save.
     /// </summary>
-    private void KeepVersion(string path, string id)
+    private void KeepVersion(string path, string id, bool always = false)
     {
         try
         {
@@ -113,7 +113,7 @@ public sealed class DataStore(string root)
             var folder = Path.Combine(VersionsFolder, id);
             var versions = ListVersions(id);
             var now = Now();
-            if (versions.Count > 0 && now - versions[0].At < VersionInterval)
+            if (versions.Count > 0 && (now - versions[0].At < VersionInterval && !always || now - versions[0].At < TimeSpan.FromSeconds(1)))
                 return;
             Directory.CreateDirectory(folder);
             File.Copy(path, Path.Combine(folder, now.UtcDateTime.ToString("yyyyMMdd'T'HHmmss'Z'", System.Globalization.CultureInfo.InvariantCulture) + ".json"), overwrite: true);
@@ -124,6 +124,9 @@ public sealed class DataStore(string root)
         {
         }
     }
+
+    /// <summary>A version of a song or a service as it is now, whatever the age of the last one (DM-90: before an assistant turn changes it).</summary>
+    public void KeepVersionNow(string id, bool isSong) => KeepVersion(isSong ? SongPath(id) : ServicePath(id), id, always: true);
 
     /// <summary>The kept versions of a song or a service, newest first.</summary>
     public List<DocumentVersion> ListVersions(string id)
