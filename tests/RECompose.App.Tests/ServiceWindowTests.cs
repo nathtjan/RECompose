@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Input;
 using Avalonia.Logging;
+using Avalonia;
 using Avalonia.Threading;
 using RECompose.App.Dialogs;
 using RECompose.Core.Arrangements;
@@ -171,5 +172,57 @@ public sealed class ServiceWindowTests : IDisposable
         }
 
         Assert.True(problems.Count == 0, "Avalonia reported:\n" + string.Join("\n", problems.Take(30)));
+    }
+
+    [Fact]
+    public async Task Picking_a_variant_with_the_mouse_changes_the_entry_without_breaking_the_select()
+    {
+        await HeadlessApp.RunAsync(async () =>
+        {
+            var store = SaveLibrary();
+            var missing = Path.Combine(_root, "no-engine", EnginePaths.ExecutableFileName);
+            await using var vm = new MainViewModel(store, new EngineHostOptions(missing, Path.Combine(_root, "e.sock")), new EngineTools(missing),
+                new AvaloniaDispatcher(), new AcceptingDialogs(), new SpeechModel(store.Root, allowDownload: false));
+
+            var window = new MainWindow { DataContext = vm, Width = 1280, Height = 760 };
+            window.Show();
+            await vm.InitializeAsync();
+            await vm.LoadEntryAsync(vm.Setlist.Rows[0].Id);
+            vm.SelectedTab = MainViewModel.EntryTab;
+            Dispatcher.UIThread.RunJobs();
+
+            // The select refreshes the entry from inside its own selection change (the list it shows must survive that).
+            var select = window.FindControl<ComboBox>("VariantSelect")!;
+            Assert.Equal("Short", vm.Entry.SelectedVariant?.Name);
+            Pick(select, 0);
+            Assert.Equal("As written", vm.Entry.SelectedVariant?.Name);
+            Assert.Equal(ArrangementChoiceType.AsWritten, vm.LoadedEntry!.Arrangement.Type);
+            Pick(select, 1);
+            Assert.Equal("Short", vm.Entry.SelectedVariant?.Name);
+            Assert.Equal("Short · default", (select.SelectedItem as VariantChoice)?.Display);
+
+            // From a custom arrangement: picking a variant drops "Custom for this service" from the list it was picked in.
+            vm.MakeEntryCustom(vm.LoadedEntry!.Id);
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal(3, select.ItemCount);
+            Assert.Equal(EntryArrangement.CustomName, (select.SelectedItem as VariantChoice)?.Name);
+            Pick(select, 0);
+            Assert.Equal(ArrangementChoiceType.AsWritten, vm.LoadedEntry!.Arrangement.Type);
+            Assert.Equal(2, select.ItemCount);
+            Assert.Equal("As written", (select.SelectedItem as VariantChoice)?.Name);
+            window.Close();
+
+            void Pick(ComboBox combo, int index)
+            {
+                combo.IsDropDownOpen = true;
+                Dispatcher.UIThread.RunJobs();
+                var item = (Control)combo.ContainerFromIndex(index)!;
+                var root = TopLevel.GetTopLevel(item)!;
+                var at = item.TranslatePoint(new Point(item.Bounds.Width / 2, item.Bounds.Height / 2), root)!.Value;
+                root.MouseDown(at, MouseButton.Left);
+                root.MouseUp(at, MouseButton.Left);
+                Dispatcher.UIThread.RunJobs();
+            }
+        }, TestContext.Current.CancellationToken);
     }
 }

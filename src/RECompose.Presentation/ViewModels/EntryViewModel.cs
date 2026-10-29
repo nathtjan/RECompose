@@ -174,14 +174,20 @@ public sealed class EntryViewModel : ObservableObject
         {
             if (_loading || value is null || !Set(ref _selectedVariant, value))
                 return;
-            if (Song?.Entry is { } entry)
-            {
-                if (!value.IsCustom)
-                    _main.SetEntryArrangement(entry.Id, value.Id is { } id ? ArrangementChoice.OfVariant(id) : ArrangementChoice.AsWritten, value.Name);
-                return;
-            }
 
-            _main.SelectVariant(value.Id);
+            // Applied after the select's own selection change: the refresh rebuilds this list (picking a variant drops
+            // "Custom for this service"), and a list that shrinks mid-change throws inside Avalonia.
+            _main.Later(() =>
+            {
+                if (Song?.Entry is { } entry)
+                {
+                    if (!value.IsCustom)
+                        _main.SetEntryArrangement(entry.Id, value.Id is { } id ? ArrangementChoice.OfVariant(id) : ArrangementChoice.AsWritten, value.Name);
+                    return;
+                }
+
+                _main.SelectVariant(value.Id);
+            });
         }
     }
 

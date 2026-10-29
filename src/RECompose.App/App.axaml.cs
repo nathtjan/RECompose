@@ -136,6 +136,8 @@ public sealed class AvaloniaDispatcher : IUiDispatcher
             Dispatcher.UIThread.Post(action);
     }
 
+    public void Queue(Action action) => Dispatcher.UIThread.Post(action);
+
     public void After(TimeSpan delay, Action action) =>
         Dispatcher.UIThread.Post(() => DispatcherTimer.RunOnce(action, delay));
 }

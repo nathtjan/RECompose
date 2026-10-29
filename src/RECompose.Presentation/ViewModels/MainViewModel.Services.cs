@@ -48,6 +48,9 @@ public sealed partial class MainViewModel
     /// <summary>The song of an entry: the loaded copy when it is loaded, otherwise the one on disk.</summary>
     public Song? SongOf(string songId) => CurrentSong(songId);
 
+    /// <summary>Runs <paramref name="action"/> on the UI thread once the current input event is done.</summary>
+    internal void Later(Action action) => _ui.Queue(action);
+
     // ---- Choosing and loading (UI-11, SL-4, PB-12) ----------------------------------------------
 
     public void SelectService(string? id)

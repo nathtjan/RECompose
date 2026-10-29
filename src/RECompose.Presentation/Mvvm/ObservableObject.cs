@@ -72,6 +72,9 @@ public interface IUiDispatcher
 {
     void Post(Action action);
 
+    /// <summary>Runs <paramref name="action"/> once the current UI event is done, never inside it (inline in tests).</summary>
+    void Queue(Action action) => Post(action);
+
     /// <summary>Runs <paramref name="action"/> after a delay on the UI thread.</summary>
     void After(TimeSpan delay, Action action);
 }
