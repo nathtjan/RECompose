@@ -31,7 +31,7 @@ public sealed class MenuWindowTests
             {
                 Assert.False(window.FindControl<Button>("AppMenuButton")!.IsVisible);
                 groups = NativeMenu.GetMenu(window)!.Items.OfType<NativeMenuItem>()
-                    .Select(g => (g.Header!, g.Menu!.Items.OfType<NativeMenuItem>().Select(i => i.Command).ToList())).ToList();
+                    .Select(g => (g.Header!, g.Menu!.Items.OfType<NativeMenuItem>().Where(i => i is not NativeMenuItemSeparator).Select(i => i.Command).ToList())).ToList();
             }
             else
             {

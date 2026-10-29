@@ -20,7 +20,8 @@ public class EngineHostTests
 
         // A short, unique endpoint per test (socket paths are limited to about 100 bytes).
         var endpoint = Path.Combine(Path.GetTempPath(), $"rec-{Guid.NewGuid():N}"[..14] + ".sock");
-        return new EngineHostOptions(executable, endpoint) { IdleExitSeconds = 3 };
+        // Long enough for a loaded CI runner to connect; the test of the idle exit itself sets a short one.
+        return new EngineHostOptions(executable, endpoint) { IdleExitSeconds = 30 };
     }
 
     private static async Task WaitForExitAsync(int pid)
@@ -82,7 +83,7 @@ public class EngineHostTests
     [Fact]
     public async Task The_engine_exits_by_itself_when_no_app_is_connected()
     {
-        var options = Options();
+        var options = Options() with { IdleExitSeconds = 3 };
         var ct = TestContext.Current.CancellationToken;
 
         var session = await EngineHost.ConnectOrStartAsync(options, ct);

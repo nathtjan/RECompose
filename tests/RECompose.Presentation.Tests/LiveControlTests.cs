@@ -236,7 +236,7 @@ public sealed class LiveControlTests : IDisposable
             Assert.Equal("on GO", vm.CountdownText);
             Assert.StartsWith("Holding for", vm.HoldText);
 
-            vm.PlayPauseCommand.Execute(null);
+            await vm.PlayPauseAsync(); // the play key: GO reaches the engine before the render
             await RenderAsync(vm, 0.5);
             await Eventually(() => !vm.IsHolding);
             Assert.Equal("PLAYING", vm.Status);

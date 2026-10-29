@@ -801,7 +801,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     // ---- Transport (PB-20…26) and readouts (PB-30…36) --------------------------------
 
-    private async Task PlayPauseAsync()
+    internal async Task PlayPauseAsync()
     {
         if (_engine is null || _song is null)
             return;

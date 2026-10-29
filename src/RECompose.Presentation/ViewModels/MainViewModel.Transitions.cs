@@ -37,6 +37,7 @@ public sealed partial class MainViewModel
     /// <summary>Between two songs: a pad transition waits for Play, or a Carry over ended (status TRANSITION, NEXT SONG).</summary>
     public bool TransitionPending => _transition == "waiting" || _awaitingNext;
 
+
     public RelayCommand NextSongCommand => _nextSongCommand ??= new RelayCommand(NextSongAsync, () => NextServiceEntry is not null);
 
     private RelayCommand? _nextSongCommand;
@@ -102,6 +103,13 @@ public sealed partial class MainViewModel
 
     /// <summary>Runs after the next song and its plan have reached the engine, before the app records them; tests change the service there.</summary>
     internal Func<Task>? NextLoadedForTests { get; set; }
+
+    /// <summary>Waits for a running refresh of the next slot, including the transition it sends after the next song; for tests.</summary>
+    internal async Task NextSettledForTestsAsync()
+    {
+        await _nextGate.WaitAsync();
+        _nextGate.Release();
+    }
 
     private async Task RefreshNextCoreAsync(EngineClient engine, int version)
     {

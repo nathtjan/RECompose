@@ -78,12 +78,24 @@ public sealed class ServiceRunTests : IDisposable
         var service = new Service { Id = "s", Name = "Sunday", AutoAdvance = autoAdvance, Entries = [first, ServiceEdit.NewEntry(b)] };
         store.SaveService(service);
 
-        var vm = new MainViewModel(store, new EngineHostOptions(executable, _endpoint) { IdleExitSeconds = 3 }, new EngineTools(executable), new LockedDispatcher(),
+        var vm = new MainViewModel(store, new EngineHostOptions(executable, _endpoint) { IdleExitSeconds = 3 }, new EngineTools(executable), _ui,
             new ServiceDialogs(), new SpeechModel(store.Root, allowDownload: false));
         await vm.InitializeAsync();
         await vm.LoadEntryAsync(first.Id);
+        // The next song is preloaded, and the transition sent just after it has reached the engine.
         await Eventually(() => vm.NextSongTitle == "Goodness");
+        await vm.NextSettledForTestsAsync();
         return vm;
+    }
+
+    private readonly LockedDispatcher _ui = new();
+
+    /// <summary>Reads the view model under the dispatcher's lock, where engine events change it.</summary>
+    private T OnUi<T>(Func<T> read)
+    {
+        T value = default!;
+        _ui.Post(() => value = read());
+        return value;
     }
 
     private static async Task Eventually(Func<bool> condition, int timeoutMs = 10000)
@@ -206,9 +218,8 @@ public sealed class ServiceRunTests : IDisposable
         {
             var first = vm.LoadedEntry!.Id;
             await RenderAsync(vm, 4.5); // the first song is 4 s long
-            await Eventually(() => vm.LoadedEntry?.Id != first);
+            await Eventually(() => OnUi(() => vm.LoadedEntry?.Id != first && vm.Setlist.Rows is { Count: 2 } rows && rows[1].IsLoaded));
             Assert.Equal("Goodness", vm.Song!.Title);
-            Assert.True(vm.Setlist.Rows[1].IsLoaded);
             Assert.False(vm.IsPlaying);
         }
         finally
