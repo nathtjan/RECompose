@@ -6,6 +6,7 @@ name: Release
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch: # a dry run of the packaging before tagging
 
 permissions:
   contents: write
@@ -45,7 +46,8 @@ jobs:
 
       - name: Version
         shell: bash
-        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+        # A manual run from a branch is a dry run: it packs under a test version and publishes nothing.
+        run: echo "VERSION=${{ github.ref_type == 'tag' && '${GITHUB_REF_NAME#v}' || format('0.0.0-dryrun.{0}', github.run_number) }}" >> "$GITHUB_ENV"
 
       - name: Build engine
         shell: bash
@@ -129,7 +131,7 @@ jobs:
           fi
 
           vpk pack -u RECompose -v "$VERSION" -r ${{ matrix.rid }} -c ${{ matrix.rid }} -p publish -e RECompose \
-            --packTitle RECompose --packAuthors nathtjan --bundleId io.github.nathtjan.recompose --plist build/Info.plist --icon packaging/macos/RECompose.icns \
+            --packTitle RECompose --packAuthors nathtjan --plist build/Info.plist --icon packaging/macos/RECompose.icns \
             --signEntitlements packaging/macos/RECompose.entitlements -o releases "${SIGN[@]}"
 
           # The DMG holds the same (signed, stapled) app as the portable zip, so it updates itself too.
@@ -152,6 +154,7 @@ jobs:
 
   publish:
     needs: build
+    if: github.ref_type == 'tag'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/setup-dotnet@v6
