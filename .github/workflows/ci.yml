@@ -38,6 +38,7 @@ jobs:
       DOTNET_NOLOGO: "1"
       DOTNET_CLI_TELEMETRY_OPTOUT: "1"
       REC_REQUIRE_NATIVE: "1"
+      REC_REQUIRE_SPEED: "1" # the engine's PB-91 speed check fails only here, on known runners
 
     steps:
       - uses: actions/checkout@v7
