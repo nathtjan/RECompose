@@ -44,9 +44,9 @@ Frames are at the **engine rate**: the open device's sample rate (48 000 when no
 
 `hello` and `shutdown` keep this shape in every future version.
 
-### Protocol 2 to 9 (milestones 1 to 5)
+### Protocol 2 to 10 (milestones 1 to 6)
 
-Protocol 3 adds `setPlan` and the `planFrames` snapshot field; everything else is as in 2. Protocol 4 adds the engine's click: a generated track in `loadSong`, the song grid in `setPlan` and a `click` flag per segment. Protocol 5 adds live key and tempo: `transposes` per track, `key` per segment and `tempo` per plan. Protocol 6 adds pads: `loadPadSet`, `pad`, `songKey` and `pad` per segment, and `pad` in the snapshot. Protocol 7 adds the second song slot and transitions: `slot` on `loadSong`, `unloadSong` and `setPlan`, `setTransition`, `startNext`, `promoteNext`, the `songChanged` and `songEnded` events, and `next` and `transition` in the snapshot. Protocol 8 adds live plan changes and holds: `swapAt` and `holds` on `setPlan`, the `go` and `panic` requests, and `holding` and `holdSec` in the snapshot. Protocol 9 adds MIDI input: `setMidiInputs`, the `midiInputs` list in the `listDevices` reply and the `midiIn` event.
+Protocol 3 adds `setPlan` and the `planFrames` snapshot field; everything else is as in 2. Protocol 4 adds the engine's click: a generated track in `loadSong`, the song grid in `setPlan` and a `click` flag per segment. Protocol 5 adds live key and tempo: `transposes` per track, `key` per segment and `tempo` per plan. Protocol 6 adds pads: `loadPadSet`, `pad`, `songKey` and `pad` per segment, and `pad` in the snapshot. Protocol 7 adds the second song slot and transitions: `slot` on `loadSong`, `unloadSong` and `setPlan`, `setTransition`, `startNext`, `promoteNext`, the `songChanged` and `songEnded` events, and `next` and `transition` in the snapshot. Protocol 8 adds live plan changes and holds: `swapAt` and `holds` on `setPlan`, the `go` and `panic` requests, and `holding` and `holdSec` in the snapshot. Protocol 9 adds MIDI input: `setMidiInputs`, the `midiInputs` list in the `listDevices` reply and the `midiIn` event. Protocol 10 adds device failover: `setFallbackDevice`, `switchToMain`, `injectDeviceLoss`, the `route`, `lostSec` and `mainBack` snapshot fields, the `deviceLost`, `deviceRestored`, `mainDeviceBack`, `silentClockStopped`, `xrun` and `midiInputsChanged` events, and `missing` in the `setMidiInputs` reply.
 
 | Request | Fields | Reply |
 |---|---|---|
@@ -58,7 +58,10 @@ Protocol 3 adds `setPlan` and the `planFrames` snapshot field; everything else i
 | `seek` | `frame` | `ok`. While playing: a 10 ms fade-out, then playback resumes exactly at `frame` once every track has data there (PB-26, PB-55). |
 | `setTrack` | `trackId`, any of `gainDb`, `mute`, `solo`, `output`, `transposes` (5) | `ok`. Changes ramp over one 256-frame block; `transposes` applies from the audio not yet read ahead (up to 4 s later). |
 | `setMaster` | `gainDb` | `ok` |
-| `setMidiInputs` (9) | `names?: [..]`, `all?` | `midiInputs {open: [names]}`. Listens to the named MIDI inputs (or all); each message arrives as a `midiIn` event. An empty call closes them. |
+| `setMidiInputs` (9) | `names?: [..]`, `all?` | `midiInputs {open: [names], missing: [names]}` (`missing` 10). Listens to the named MIDI inputs (or all); each message arrives as a `midiIn` event. An empty call closes them. Inputs that go away are reopened when they return (10). |
+| `setFallbackDevice` (10) | `deviceType?`, `name?` (absent name = none) | `fallback {name, present}`. The device that takes over when the main one is lost (REL-20). |
+| `switchToMain` (10) | | `device {device}` or `deviceError`. From the fallback back to the main device, with the clock running (REL-23). |
+| `injectDeviceLoss` (10) | `device?` (`main` or `fallback`), `present` (default false), `silentLimitSec?` | `ok {route}`. Tests only: the engine sees that device as unplugged or back and takes the same paths as for a real one. With no device open at all, a loss starts the silent clock. |
 | `injectMidi` (9) | `kind`, `channel`, `number`, `value` | `ok`. Tests only: raises the `midiIn` event a device would. |
 | `go` (8) | | `ok`. Releases the hold the playhead waits at (PB-52). |
 | `panic` (8) | | `ok`. Stops the current and the next song with a 100 ms fade (at once during a hold), fades the pad out, cancels the transition and its click (UI-40). |
@@ -84,6 +87,8 @@ Protocol 3 adds `setPlan` and the `planFrames` snapshot field; everything else i
 
 **Live plan changes (protocol 8, PB-47, ARR-90).** A jump, a vamp, a repeat or a move on is a new plan built by the app. With `swapAt` (plan seconds) a plan sent while playing takes effect at that frame with no seek: the player keeps playing the old plan up to the frame and the new one from it, so the two plans must be identical before it. The disk thread tags every block with the version of the plan it was read for; at the swap frame it starts again with its streams where the old plan had them, so a new plan that carries on from the same source has no seam and one that jumps gets the usual splice (PB-55). Blocks of the old plan from the frame on are dropped as they come up. A swap whose frame the playhead has already passed takes effect where the playhead is (the disk catches up; a short gap). A second swap before the first has landed starts from the earlier frame. A swap needs the same `tempo`; otherwise, and when the song is not playing, `setPlan` applies as before and the reply has no `swapped`.
 
+**Device loss (protocol 10, REL-20…24, AT-42, AT-43).** The device `setDevice` opened is the *main* device. The engine notices that it has gone (it is closed, JUCE opened another one in its place, or it stopped calling back for 500 ms), closes whatever is open and starts the **silent clock**: the same audio graph rendered in 512-frame blocks at real-time pace into a buffer nobody hears, counted from the last block the device played, so the plan moves on as if heard. If a fallback is set and connected it is opened at once (the silent clock covers the opening) and plays from the frame the clock reached; `deviceLost {name, route: "fallback", fallback, device}`. Otherwise `deviceLost {name, route: "silent"}`; the main device is looked for every second and reopened as soon as it is back, at the bar the clock reached (`deviceRestored {name, device}`). After `silentLimitSec` (default 60) the playing songs pause (`silentClockStopped {afterSec}`). On the fallback, a main device that returns is reported once with `mainDeviceBack {name}`; the app sends `switchToMain` (Switch back, or at the next section boundary). A device that starts always takes over from the silent clock before it renders, so only one thread renders at a time. The snapshot's `route` is `main`, `fallback`, `silent` or `none` (no device chosen), `lostSec` the seconds since the loss and `mainBack` whether the main device is back. Each new xrun is sent as `xrun {count, frame}` (plan frame, REL-24). MIDI inputs are checked every 2 s: one that went away is closed and opened again when it returns, with `midiInputsChanged {open, missing}`.
+
 **Holds (protocol 8, PB-52, ARR-38).** `holds` lists plan seconds where the plan clock waits; each lies on a segment boundary (the ring-out before it is in the plan). On reaching one the playhead stops and the stems are silent. With `pad` and a `padKey` (pitch class) the pad fades in; with `click` a free-running click plays at the song tempo on the click track's output (accent on the first beat counted from the hold). `go` releases it: the playhead moves on, the pad fades out, and the count-in that follows is ordinary click segments in the plan. The snapshot reports `holding` and `holdSec` (real seconds waited). A plan swapped in without the hold, or a seek, releases it. A hold at the very end of the plan waits too; the song ends at `go`.
 
 `device` = `{type, name, sampleRate, bufferSize, outputChannels: [names], activeOutputs, sampleRates, bufferSizes, outputLatency}`.
@@ -92,10 +97,16 @@ Protocol 3 adds `setPlan` and the `planFrames` snapshot field; everything else i
 
 | Event | Fields |
 |---|---|
-| `snapshot` | `state` (`stopped`, `playing`, `paused`), `frame` (next frame to render, in plan frames), `t` (engine clock, ns), `latency` (output latency, in plan frames), `sampleRate`, `songId`, `lengthFrames` (the files), `planFrames` (the plan; the transport ends here), `buffered`, `waiting`, `starved`, `xruns`, `cpu`, `deviceOpen`, `meters: [{id, peak}]`, `master: [left, right]`, `holding`, `holdSec` (8). Sent at 60 Hz while playing, otherwise on change and once a second. The heard frame is `frame − latency` while playing (PB-4). |
+| `snapshot` | `state` (`stopped`, `playing`, `paused`), `frame` (next frame to render, in plan frames), `t` (engine clock, ns), `latency` (output latency, in plan frames), `sampleRate`, `songId`, `lengthFrames` (the files), `planFrames` (the plan; the transport ends here), `buffered`, `waiting`, `starved`, `xruns`, `cpu`, `deviceOpen`, `meters: [{id, peak}]`, `master: [left, right]`, `holding`, `holdSec` (8), `route`, `lostSec`, `mainBack` (10). Sent at 60 Hz while playing, otherwise on change and once a second. The heard frame is `frame − latency` while playing (PB-4). |
 | `midiIn` (9) | `kind` (`note`, `cc`, `pc`), `channel` (1–16), `number`, `value`. Note on has its velocity as `value` and note off 0; a program change has 0. The app matches them against its bindings (LIVE-52); the engine does not interpret them. |
 | `deviceChanged` | `device` (or null when it went away) |
 | `deviceError` | `message` |
+| `deviceLost` (10) | `name`, `route` (`fallback` or `silent`), `fallback?`, `device?` |
+| `deviceRestored` (10) | `name`, `device` |
+| `mainDeviceBack` (10) | `name` |
+| `silentClockStopped` (10) | `afterSec` |
+| `xrun` (10) | `count`, `frame` |
+| `midiInputsChanged` (10) | `open: [names]`, `missing: [names]` |
 | `fileMissing` | `trackId`, `problem` (REL-50) |
 | `songReloaded` | the `song` object, after a device rate change |
 

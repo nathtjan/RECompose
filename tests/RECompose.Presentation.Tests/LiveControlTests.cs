@@ -455,6 +455,66 @@ public sealed class LiveControlTests : IDisposable
         }
     }
 
+    // ---- Device loss (protocol 10, REL-20…22, AT-43). With no device here the loss starts the silent clock at once.
+
+    [Fact]
+    public async Task AT43_with_no_fallback_the_clock_keeps_real_time_silently_and_the_banner_says_so()
+    {
+        var (vm, _) = await StartAsync();
+        try
+        {
+            await vm.EngineForTests!.PlayAsync();
+            await RenderAsync(vm, 2);
+            await Eventually(() => vm.State == RECompose.Engine.TransportState.Playing);
+            var before = vm.PlanPositionSec;
+
+            var route = await vm.EngineForTests.InjectDeviceLossAsync();
+            Assert.Equal("silent", route);
+            await Eventually(() => vm.OnSilentClock);
+            Assert.True(vm.AudioLost);
+            Assert.Contains("was lost", vm.Banner);
+            Assert.Equal("No audio device · keeping time", vm.AudioStatus);
+
+            // Nothing renders offline now: the silent clock moves the song on in real time.
+            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+            await Task.Delay(1500);
+            await Task.Delay(100); // the snapshot reaches the view model
+            var moved = vm.PlanPositionSec - before;
+            Assert.InRange(moved, stopwatch.Elapsed.TotalSeconds - 0.4, stopwatch.Elapsed.TotalSeconds + 0.1);
+            Assert.Equal(RECompose.Engine.TransportState.Playing, vm.State);
+
+            // The device is back: the banner goes.
+            await vm.EngineForTests.InjectDeviceLossAsync(present: true);
+            await Eventually(() => !vm.OnSilentClock);
+            Assert.False(vm.HasBanner);
+        }
+        finally
+        {
+            await FinishAsync(vm);
+        }
+    }
+
+    [Fact]
+    public async Task REL21_the_silent_clock_pauses_the_song_at_its_limit()
+    {
+        var (vm, _) = await StartAsync();
+        try
+        {
+            await vm.EngineForTests!.PlayAsync();
+            await RenderAsync(vm, 1);
+            await Eventually(() => vm.State == RECompose.Engine.TransportState.Playing);
+
+            await vm.EngineForTests.InjectDeviceLossAsync(silentLimitSec: 1);
+            await Eventually(() => vm.State == RECompose.Engine.TransportState.Paused, 5000);
+            Assert.StartsWith("No audio device for 1 s. Paused at VERSE 1", vm.Banner);
+            Assert.InRange(vm.PlanPositionSec, 1.8, 2.6); // a second of rendering plus the silent second
+        }
+        finally
+        {
+            await FinishAsync(vm);
+        }
+    }
+
     [Fact]
     public async Task REL41_panic_leaves_the_song_loaded_and_offers_to_resume_where_it_stopped()
     {

@@ -60,6 +60,11 @@
     <Setter Property="BorderThickness" Value="0,0,0,1" />
     <Setter Property="Padding" Value="16,8" />
   </Style>
+  <!-- The main audio device is lost (REL-20, UI-70) -->
+  <Style Selector="Border.banner.error">
+    <Setter Property="Background" Value="{DynamicResource state-error-subtle}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource state-error}" />
+  </Style>
   <Style Selector="Border.toast">
     <Setter Property="Background" Value="{DynamicResource bg-raised}" />
     <Setter Property="BorderBrush" Value="{DynamicResource border}" />

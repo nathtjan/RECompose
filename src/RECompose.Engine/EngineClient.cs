@@ -141,7 +141,10 @@ public sealed record EngineSnapshot(
     bool NextBuffered = false,
     string Transition = "none",
     bool Holding = false,
-    double HoldSec = 0)
+    double HoldSec = 0,
+    string Route = "none",
+    double LostSec = 0,
+    bool MainBack = false)
 {
     /// <summary>The frame being heard: the render position minus the output latency while playing (PB-4).</summary>
     public long HeardFrame => State == TransportState.Playing ? Math.Max(0, Frame - Latency) : Frame;
@@ -177,9 +180,18 @@ public sealed record EngineSnapshot(
             (bool?)o["next"]?["buffered"] ?? false,
             (string?)o["transition"] ?? "none",
             (bool?)o["holding"] ?? false,
-            (double?)o["holdSec"] ?? 0);
+            (double?)o["holdSec"] ?? 0,
+            (string?)o["route"] ?? "none",
+            (double?)o["lostSec"] ?? 0,
+            (bool?)o["mainBack"] ?? false);
     }
 }
+
+/// <summary>
+/// The engine lost its device (protocol 10, REL-20, REL-21). <paramref name="Route"/> is "fallback" (playing on
+/// <paramref name="Fallback"/>) or "silent" (the clock keeps time with no sound).
+/// </summary>
+public sealed record DeviceLoss(string Name, string Route, string? Fallback, DeviceInfo? Device);
 
 /// <summary>
 /// Typed access to the engine protocol (docs/engine-protocol.md). Events are raised on a background
@@ -208,6 +220,24 @@ public sealed class EngineClient : IAsyncDisposable
     /// <summary>The current song played to its end with nothing handing over (a Stop transition); its id.</summary>
     public event Action<string>? SongEnded;
     public event Action? Disconnected;
+
+    /// <summary>The device stopped; the engine moved to the fallback device or the silent clock (protocol 10).</summary>
+    public event Action<DeviceLoss>? DeviceLost;
+
+    /// <summary>The main device plays again (from the silent clock by itself, or after <see cref="SwitchToMainAsync"/>).</summary>
+    public event Action<string, DeviceInfo?>? DeviceRestored;
+
+    /// <summary>On the fallback device, the main one is connected again (REL-23).</summary>
+    public event Action<string>? MainDeviceBack;
+
+    /// <summary>The silent clock ran for its limit with no device; the song paused (REL-21). The limit in seconds.</summary>
+    public event Action<double>? SilentClockStopped;
+
+    /// <summary>An xrun on the device: the total count, and the plan frame it happened near (REL-24).</summary>
+    public event Action<int, long>? Xrun;
+
+    /// <summary>A MIDI input was unplugged or came back (REL-50): the inputs open now and the ones missing.</summary>
+    public event Action<IReadOnlyList<string>, IReadOnlyList<string>>? MidiInputsChanged;
 
     /// <summary>A MIDI message from a controller or foot pedal (protocol 9, LIVE-52). Raised on a background thread.</summary>
     public event Action<RECompose.Core.Controls.MidiMessage>? MidiReceived;
@@ -255,6 +285,34 @@ public sealed class EngineClient : IAsyncDisposable
         if (bufferSize > 0) request["bufferSize"] = bufferSize;
         var reply = await Session.Connection.RequestAsync("setDevice", request, ct).ConfigureAwait(false);
         return DeviceInfo.From(reply["device"]);
+    }
+
+    /// <summary>The device that takes over when the main one is lost (REL-20); a null name clears it. True when it is connected now.</summary>
+    public async Task<bool> SetFallbackDeviceAsync(string? type, string? name, CancellationToken ct = default)
+    {
+        var request = new JsonObject();
+        if (!string.IsNullOrEmpty(type)) request["deviceType"] = type;
+        if (!string.IsNullOrEmpty(name)) request["name"] = name;
+        var reply = await Session.Connection.RequestAsync("setFallbackDevice", request, ct).ConfigureAwait(false);
+        return (bool?)reply["present"] ?? false;
+    }
+
+    /// <summary>Goes back from the fallback device to the main one with the clock running (REL-23).</summary>
+    /// <exception cref="EngineErrorException">With code "deviceError" when the main device is not there or will not open.</exception>
+    public async Task<DeviceInfo?> SwitchToMainAsync(CancellationToken ct = default)
+    {
+        var reply = await Session.Connection.RequestAsync("switchToMain", cancellationToken: ct).ConfigureAwait(false);
+        return DeviceInfo.From(reply["device"]);
+    }
+
+    /// <summary>Tests: the engine sees the main (or fallback) device as unplugged or back. Returns the route it is on.</summary>
+    public async Task<string> InjectDeviceLossAsync(bool present = false, bool fallback = false, double? silentLimitSec = null, CancellationToken ct = default)
+    {
+        var request = new JsonObject { ["present"] = present, ["device"] = fallback ? "fallback" : "main" };
+        if (silentLimitSec is { } limit)
+            request["silentLimitSec"] = limit;
+        var reply = await Session.Connection.RequestAsync("injectDeviceLoss", request, ct).ConfigureAwait(false);
+        return (string?)reply["route"] ?? "none";
     }
 
     public Task<LoadedSong> LoadSongAsync(string songId, IEnumerable<EngineTrack> tracks, double masterGainDb, long startFrame = 0, CancellationToken ct = default) =>
@@ -489,6 +547,25 @@ public sealed class EngineClient : IAsyncDisposable
                 break;
             case "deviceError":
                 DeviceError?.Invoke((string?)message["message"] ?? "The audio device reported an error.");
+                break;
+            case "deviceLost":
+                DeviceLost?.Invoke(new DeviceLoss((string?)message["name"] ?? string.Empty, (string?)message["route"] ?? "silent",
+                    (string?)message["fallback"], DeviceInfo.From(message["device"])));
+                break;
+            case "deviceRestored":
+                DeviceRestored?.Invoke((string?)message["name"] ?? string.Empty, DeviceInfo.From(message["device"]));
+                break;
+            case "mainDeviceBack":
+                MainDeviceBack?.Invoke((string?)message["name"] ?? string.Empty);
+                break;
+            case "silentClockStopped":
+                SilentClockStopped?.Invoke((double?)message["afterSec"] ?? 60);
+                break;
+            case "xrun":
+                Xrun?.Invoke((int?)message["count"] ?? 0, (long?)message["frame"] ?? 0);
+                break;
+            case "midiInputsChanged":
+                MidiInputsChanged?.Invoke(DeviceInfo.Strings(message["open"]), DeviceInfo.Strings(message["missing"]));
                 break;
             case "fileMissing":
                 FileMissing?.Invoke((string?)message["trackId"] ?? string.Empty, (string?)message["problem"] ?? "File missing");

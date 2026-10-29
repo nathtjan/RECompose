@@ -450,6 +450,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         _ = OpenMidiAsync(engine);
         engine.DeviceChanged += d => _ui.Post(() => ShowDevice(d));
         engine.DeviceError += m => _ui.Post(() => Banner = $"The audio device reported a problem: {m}");
+        HookDeviceEvents(engine);
         engine.FileMissing += (id, problem) => _ui.Post(() => MarkMissing(id, problem));
         engine.SongReloaded += song => _ui.Post(() => { if (_song is not null && _song.Id == song.SongId) _song.Loaded = song; });
         engine.SongChanged += id => _ui.Post(() => _ = OnSongChangedAsync(id));
@@ -468,6 +469,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             await OpenDeviceAsync();
         else
             ShowDevice(device);
+        ApplyRoute(snapshot);
+        await SendFallbackAsync();
 
         try
         {
@@ -597,7 +600,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         if (device is null)
         {
             AudioOk = false;
-            AudioStatus = "No audio device";
+            AudioStatus = OnSilentClock ? "No audio device · keeping time" : "No audio device";
             return;
         }
 
@@ -913,6 +916,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private void ApplySnapshot(EngineSnapshot s)
     {
         ShowEnginePad(s.PadKey); // pads sound whether or not a song is loaded (SL-40)
+        ApplyRoute(s);
         if (s.Xruns + s.Starved != _dropouts)
         {
             _dropouts = (int)(s.Xruns + s.Starved);
@@ -941,6 +945,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         if (holdChanged)
             OnHoldChanged();
         TickLive();
+        CheckSwitchBack();
         _controls?.Tick();
         JournalTick(s.State);
         CheckRangeEnd(s.State);
@@ -1240,6 +1245,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         _store.SaveSettings(_settings);
         Banner = null;
         await OpenDeviceAsync();
+        await SendFallbackAsync();
 
         // Re-route every track when Main or Cue moved (demo step 6).
         var a = _settings.Audio;

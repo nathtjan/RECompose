@@ -15,7 +15,7 @@
     <TextBlock Classes="title" Text="Audio" />
     <TextBlock Classes="mono" Foreground="{DynamicResource text-secondary}" Text="{Binding CurrentDevice}" TextWrapping="Wrap" />
 
-    <Grid ColumnDefinitions="140,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="10">
+    <Grid ColumnDefinitions="140,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="10">
       <TextBlock Grid.Row="0" Classes="label" Text="DRIVER" VerticalAlignment="Center" />
       <ComboBox Grid.Row="0" Grid.Column="1" ItemsSource="{Binding DeviceTypes}" SelectedItem="{Binding SelectedType}" HorizontalAlignment="Stretch" />
 
@@ -36,6 +36,14 @@
 
       <TextBlock Grid.Row="6" Grid.Column="1" Classes="meta" TextWrapping="Wrap"
                  Text="Channels listed are the open device's outputs. Choose the device first and apply, then pick outputs if it has more than two." />
+
+      <TextBlock Grid.Row="7" Classes="label" Text="FALLBACK" VerticalAlignment="Center" ToolTip.Tip="Takes over within a second if the main device is lost" />
+      <ComboBox Grid.Row="7" Grid.Column="1" ItemsSource="{Binding FallbackOptions}" SelectedItem="{Binding SelectedFallback}" HorizontalAlignment="Stretch"
+                AutomationProperties.Name="Fallback device" />
+
+      <CheckBox Grid.Row="8" Grid.Column="1" IsChecked="{Binding AutoSwitchBack}" Content="Switch back to the main device by itself" />
+      <TextBlock Grid.Row="9" Grid.Column="1" Classes="meta" TextWrapping="Wrap"
+                 Text="If the main device is lost, playback moves to the fallback at the same position. Without one, the song keeps time silently for a minute. When the main device returns, RECompose switches back at the next section boundary." />
     </Grid>
 
     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8" Margin="0,8,0,0">

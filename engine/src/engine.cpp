@@ -80,6 +80,7 @@ Engine::Engine()
 Engine::~Engine()
 {
     stopTimer();
+    silent_.stop();
     midiInputs_.clear(); // the MIDI thread stops before anything it pushes to goes away
     devices_.removeChangeListener (this);
     devices_.removeAudioCallback (this);
@@ -98,6 +99,9 @@ juce::var Engine::handle (const juce::String& type, const juce::var& message)
 {
     if (type == "listDevices")  return listDevices();
     if (type == "setDevice")    return setDevice (message);
+    if (type == "setFallbackDevice") return setFallbackDevice (message);
+    if (type == "switchToMain") return switchToMain();
+    if (type == "injectDeviceLoss") return injectDeviceLoss (message);
     if (type == "loadSong")     return loadSong (message, slotFor (message));
     if (type == "unloadSong")   return unloadSong (slotFor (message));
     if (type == "setTransition") return setTransition (message);
@@ -152,7 +156,7 @@ void Engine::post (Slot& s, const audio::Command& command)
 {
     s.player.post (command);
     disk_->wake();
-    if (! callbackActive_.load())
+    if (! processing())
     {
         s.player.processCommandsOnly();
         collectRetired();
@@ -243,7 +247,7 @@ juce::var Engine::pad (const juce::var& message)
         disk_->wake();
     }
 
-    if (! callbackActive_.load())
+    if (! processing())
         collectRetired();
     return Obj().set ("type", "ok");
 }
@@ -299,6 +303,10 @@ juce::var Engine::setMidiInputs (const juce::var& message)
     if (const auto* names = message.getProperty ("names", {}).getArray())
         for (const auto& name : *names)
             wanted.add (name.toString());
+    midiAll_ = all;
+    midiWanted_ = wanted;
+    midiMissing_.clear();
+    lastMidiCheckMs_ = juce::Time::getMillisecondCounter();
 
     juce::Array<juce::var> open;
     for (const auto& device : juce::MidiInput::getAvailableDevices())
@@ -313,7 +321,10 @@ juce::var Engine::setMidiInputs (const juce::var& message)
         }
     }
 
-    return Obj().set ("type", "midiInputs").set ("open", open);
+    for (const auto& name : wanted)
+        if (! open.contains (name))
+            midiMissing_.add (name);
+    return Obj().set ("type", "midiInputs").set ("open", open).set ("missing", toArray (midiMissing_));
 }
 
 // Tests: the same event a device would produce.
@@ -347,39 +358,347 @@ juce::var Engine::setDevice (const juce::var& message)
     if (juce::SystemStats::getEnvironmentVariable ("RECOMPOSE_NO_DEVICE", {}) == "1")
         return makeError ({}, "deviceError", "Audio output is switched off for this run.");
 
+    const DeviceChoice choice { text (message, "deviceType"), text (message, "name"), number (message, "sampleRate", 0.0),
+                                static_cast<int> (number (message, "bufferSize", 0.0)) };
+    if (const auto error = openDevice (choice); error.isNotEmpty())
+    {
+        // The device that was open is closed now. With one chosen before, the clock keeps time and the engine opens
+        // it again when it can (REL-21).
+        if (! main_.empty())
+        {
+            if (! silent_.running())
+                silent_.start (engineRate(), deviceChannels_.load(), lastCallbackNs_.load());
+            route_ = Route::silent;
+            lostAtMs_ = juce::Time::getMillisecondCounter();
+            silentPaused_ = false;
+        }
+        return makeError ({}, "deviceError", error);
+    }
+
+    // The main device is whatever this opened (an empty name means the type's default).
+    main_ = { devices_.getCurrentAudioDeviceType(), devices_.getCurrentAudioDevice()->getName(), choice.sampleRate, choice.bufferSize };
+    route_ = Route::main;
+    mainGone_ = false;
+    mainBack_ = false;
+    silentPaused_ = false;
+    return Obj().set ("type", "device").set ("device", deviceInfo());
+}
+
+//==============================================================================
+// Device loss (protocol 10, REL-20…24). The engine notices a device that went away (JUCE closes it, opens another of
+// its own choosing, or it stops calling back), keeps the clock with the silent clock, and moves to the fallback device
+// when one is set. A returning main device takes over again by itself from the silent clock; from the fallback the
+// app decides (Switch back, or at the next section boundary).
+const char* Engine::routeName (Route route)
+{
+    switch (route)
+    {
+        case Route::main: return "main";
+        case Route::fallback: return "fallback";
+        case Route::silent: return "silent";
+        case Route::none: break;
+    }
+    return "none";
+}
+
+// Opens a device while the clock keeps running: our callback is off the device manager while the device opens, the
+// silent clock renders if something is playing, and the new device's start (audioDeviceAboutToStart) stops it again.
+juce::String Engine::openDevice (const DeviceChoice& choice)
+{
     if (! deviceInitialised_)
     {
         const auto error = devices_.initialise (0, kMaxOutputChannels, nullptr, true);
         deviceInitialised_ = true;
-        devices_.addAudioCallback (this);
         juce::ignoreUnused (error);
     }
 
-    const auto type = text (message, "deviceType");
-    const auto name = text (message, "name");
+    if (callbackRegistered_)
+    {
+        const auto last = lastCallbackNs_.load();
+        devices_.removeAudioCallback (this);
+        callbackRegistered_ = false;
+        if (isPlaying() && ! silent_.running())
+            silent_.start (engineRate(), deviceChannels_.load(), last);
+    }
 
-    if (type.isNotEmpty() && type != devices_.getCurrentAudioDeviceType())
-        devices_.setCurrentAudioDeviceType (type, true);
+    if (choice.type.isNotEmpty() && choice.type != devices_.getCurrentAudioDeviceType())
+        devices_.setCurrentAudioDeviceType (choice.type, true);
 
     auto setup = devices_.getAudioDeviceSetup();
-    if (name.isNotEmpty())
-        setup.outputDeviceName = name;
+    if (choice.name.isNotEmpty())
+        setup.outputDeviceName = choice.name;
     setup.inputDeviceName = {};
     setup.useDefaultInputChannels = false;
     setup.inputChannels.clear();
     setup.useDefaultOutputChannels = false;
     setup.outputChannels.clear();
     setup.outputChannels.setRange (0, kMaxOutputChannels, true);
-    if (const auto rate = number (message, "sampleRate", 0.0); rate > 0.0)
-        setup.sampleRate = rate;
-    if (const auto size = static_cast<int> (number (message, "bufferSize", 0.0)); size > 0)
-        setup.bufferSize = size;
+    if (choice.sampleRate > 0.0)
+        setup.sampleRate = choice.sampleRate;
+    if (choice.bufferSize > 0)
+        setup.bufferSize = choice.bufferSize;
 
     const auto error = devices_.setAudioDeviceSetup (setup, true);
+    seenCallbacks_ = callbacks_.load();
+    seenCallbacksAtMs_ = juce::Time::getMillisecondCounter();
     if (error.isNotEmpty() || devices_.getCurrentAudioDevice() == nullptr)
-        return makeError ({}, "deviceError", error.isNotEmpty() ? error : juce::String ("No audio device could be opened."));
+        return error.isNotEmpty() ? error : juce::String ("No audio device could be opened.");
 
+    devices_.addAudioCallback (this);
+    callbackRegistered_ = true;
+    return {};
+}
+
+bool Engine::isPresent (const DeviceChoice& choice, bool scan)
+{
+    if (choice.empty() || (&choice == &main_ && mainGone_) || (&choice == &fallback_ && fallbackGone_))
+        return false;
+    if (! deviceInitialised_)
+        return false;
+
+    for (auto* type : devices_.getAvailableDeviceTypes())
+    {
+        if (choice.type.isNotEmpty() && type->getTypeName() != choice.type)
+            continue;
+        if (scan)
+            type->scanForDevices();
+        if (type->getDeviceNames (false).contains (choice.name))
+            return true;
+    }
+    return false;
+}
+
+void Engine::checkDevice (bool forcePresence)
+{
+    const auto now = juce::Time::getMillisecondCounter();
+
+    if (route_ == Route::main || route_ == Route::fallback)
+    {
+        const auto& want = route_ == Route::main ? main_ : fallback_;
+        const bool gone = route_ == Route::main ? mainGone_ : fallbackGone_;
+        if (const auto count = callbacks_.load(); count != seenCallbacks_)
+        {
+            seenCallbacks_ = count;
+            seenCallbacksAtMs_ = now;
+        }
+        auto* device = devices_.getCurrentAudioDevice();
+        const bool stalled = now - seenCallbacksAtMs_ > 500;
+        if (gone || device == nullptr || device->getName() != want.name || ! device->isPlaying() || stalled)
+        {
+            onDeviceLost();
+            return;
+        }
+    }
+
+    if ((route_ == Route::fallback || route_ == Route::silent) && ! main_.empty() && (forcePresence || now - lastPresenceCheckMs_ >= 1000))
+    {
+        lastPresenceCheckMs_ = now;
+        const bool present = isPresent (main_, true);
+        if (present && route_ == Route::silent)
+        {
+            reopenMain(); // the sound returns at the bar the clock has reached (REL-22)
+        }
+        else if (present && ! mainBack_)
+        {
+            mainBack_ = true;
+            push (Obj().set ("type", "mainDeviceBack").set ("name", main_.name));
+        }
+        else if (! present)
+        {
+            mainBack_ = false;
+        }
+    }
+
+    // The silent clock runs for a minute at most; then the song pauses where it is (REL-21).
+    if (route_ == Route::silent && ! silentPaused_ && now - lostAtMs_ > static_cast<juce::uint32> (silentLimitSec_ * 1000.0))
+    {
+        silentPaused_ = true;
+        for (auto& slot : slots_)
+        {
+            if (slot.player.state() == audio::TransportState::playing)
+            {
+                audio::Command command;
+                command.type = audio::Command::Type::pause;
+                post (slot, command);
+            }
+        }
+        push (Obj().set ("type", "silentClockStopped").set ("afterSec", silentLimitSec_));
+    }
+}
+
+void Engine::onDeviceLost()
+{
+    const bool fromFallback = route_ == Route::fallback;
+    const auto lostName = fromFallback ? fallback_.name : main_.name;
+    const auto last = lastCallbackNs_.load();
+    const auto now = juce::Time::getMillisecondCounter();
+
+    if (callbackRegistered_)
+    {
+        devices_.removeAudioCallback (this);
+        callbackRegistered_ = false;
+    }
+    devices_.closeAudioDevice(); // and not whatever device JUCE opened in its place
+    if (! silent_.running())
+        silent_.start (engineRate(), deviceChannels_.load(), last);
+    lostAtMs_ = now;
+    lastPresenceCheckMs_ = now;
+    silentPaused_ = false;
+    mainBack_ = false;
+
+    if (! fromFallback && isPresent (fallback_, true) && openDevice (fallback_).isEmpty())
+    {
+        route_ = Route::fallback;
+        push (Obj().set ("type", "deviceLost").set ("name", lostName).set ("route", "fallback").set ("fallback", fallback_.name).set ("device", deviceInfo()));
+        return;
+    }
+
+    route_ = Route::silent;
+    push (Obj().set ("type", "deviceLost").set ("name", lostName).set ("route", "silent"));
+}
+
+bool Engine::reopenMain()
+{
+    const bool fromFallback = route_ == Route::fallback;
+    if (openDevice (main_).isEmpty())
+    {
+        route_ = Route::main;
+        mainBack_ = false;
+        silentPaused_ = false;
+        push (Obj().set ("type", "deviceRestored").set ("name", main_.name).set ("device", deviceInfo()));
+        return true;
+    }
+
+    // It is listed but would not open: back to the fallback if it is still there, else the clock keeps time.
+    if (fromFallback && isPresent (fallback_, false) && openDevice (fallback_).isEmpty())
+        return false;
+    if (! silent_.running())
+        silent_.start (engineRate(), deviceChannels_.load(), lastCallbackNs_.load());
+    if (route_ != Route::silent)
+    {
+        route_ = Route::silent;
+        lostAtMs_ = juce::Time::getMillisecondCounter();
+        silentPaused_ = false;
+        push (Obj().set ("type", "deviceLost").set ("name", fromFallback ? fallback_.name : main_.name).set ("route", "silent"));
+    }
+    return false;
+}
+
+juce::var Engine::setFallbackDevice (const juce::var& message)
+{
+    fallback_ = { text (message, "deviceType"), text (message, "name"), 0.0, 0 };
+    fallbackGone_ = false;
+    return Obj().set ("type", "fallback").set ("name", fallback_.name).set ("present", isPresent (fallback_, true));
+}
+
+juce::var Engine::switchToMain()
+{
+    if (route_ == Route::main)
+        return Obj().set ("type", "device").set ("device", deviceInfo());
+    if (! isPresent (main_, true))
+        return makeError ({}, "deviceError", "The main audio device is not connected.");
+    if (! reopenMain())
+        return makeError ({}, "deviceError", "The main audio device could not be opened.");
     return Obj().set ("type", "device").set ("device", deviceInfo());
+}
+
+// Tests: the engine sees the main or the fallback device as unplugged (present false) or back (true), the same paths a
+// real device takes. Without any device open (tests that render offline) a loss starts the silent clock.
+juce::var Engine::injectDeviceLoss (const juce::var& message)
+{
+    if (const auto limit = number (message, "silentLimitSec", -1.0); limit >= 0.0)
+        silentLimitSec_ = limit;
+    const bool present = flag (message, "present", false);
+    if (text (message, "device") == "fallback")
+        fallbackGone_ = ! present;
+    else
+        mainGone_ = ! present;
+
+    if (! present && route_ == Route::none)
+    {
+        for (auto& slot : slots_)
+            slot.player.prepare (engineRate(), audio::SilentClock::kBlock, deviceChannels_.load());
+        transitions_.prepare (engineRate());
+        pads_.prepare (engineRate());
+        silent_.start (engineRate(), deviceChannels_.load());
+        route_ = Route::silent;
+        lostAtMs_ = juce::Time::getMillisecondCounter();
+        silentPaused_ = false;
+        push (Obj().set ("type", "deviceLost").set ("name", juce::String()).set ("route", "silent"));
+    }
+    else if (present && route_ == Route::silent && main_.empty())
+    {
+        silent_.stop();
+        route_ = Route::none;
+        push (Obj().set ("type", "deviceRestored").set ("name", juce::String()));
+    }
+    else
+    {
+        checkDevice (true);
+    }
+
+    return Obj().set ("type", "ok").set ("route", routeName (route_));
+}
+
+// A controller that is unplugged is dropped and opened again when it returns, checked every 2 s (REL-50).
+void Engine::checkMidiInputs()
+{
+    if (! midiAll_ && midiWanted_.isEmpty())
+        return;
+    const auto now = juce::Time::getMillisecondCounter();
+    if (now - lastMidiCheckMs_ < 2000)
+        return;
+    lastMidiCheckMs_ = now;
+
+    const auto available = juce::MidiInput::getAvailableDevices();
+    bool changed = false;
+    for (auto it = midiInputs_.begin(); it != midiInputs_.end();)
+    {
+        const auto id = (*it)->getIdentifier();
+        if (std::none_of (available.begin(), available.end(), [&id] (const auto& d) { return d.identifier == id; }))
+        {
+            midiMissing_.addIfNotAlreadyThere ((*it)->getName());
+            it = midiInputs_.erase (it);
+            changed = true;
+        }
+        else
+        {
+            ++it;
+        }
+    }
+
+    for (const auto& device : available)
+    {
+        if (! midiAll_ && ! midiWanted_.contains (device.name))
+            continue;
+        if (std::any_of (midiInputs_.begin(), midiInputs_.end(), [&device] (const auto& in) { return in->getIdentifier() == device.identifier; }))
+            continue;
+        if (auto input = juce::MidiInput::openDevice (device.identifier, this))
+        {
+            input->start();
+            midiMissing_.removeString (device.name);
+            midiInputs_.push_back (std::move (input));
+            changed = true;
+        }
+    }
+
+    if (changed)
+    {
+        juce::Array<juce::var> open;
+        for (const auto& in : midiInputs_)
+            open.add (in->getName());
+        push (Obj().set ("type", "midiInputsChanged").set ("open", open).set ("missing", toArray (midiMissing_)));
+    }
+}
+
+// Each new xrun is logged with where the song was (REL-24).
+void Engine::checkXruns()
+{
+    auto* device = devices_.getCurrentAudioDevice();
+    const int count = device != nullptr ? std::max (0, device->getXRunCount()) : 0;
+    if (count > lastXruns_)
+        push (Obj().set ("type", "xrun").set ("count", count).set ("frame", static_cast<juce::int64> (cur().toPlanFrames (cur().player.position()))));
+    lastXruns_ = count;
 }
 
 //==============================================================================
@@ -855,6 +1174,9 @@ juce::var Engine::renderOffline (const juce::var& message)
     const bool hadDevice = callbackActive_.load();
     if (hadDevice)
         devices_.removeAudioCallback (this);
+    const bool hadSilent = silent_.running(); // one renderer at a time
+    if (hadSilent)
+        silent_.stop();
 
     for (auto& slot : slots_)
         slot.player.prepare (s.song->sampleRate, 512, channels);
@@ -897,6 +1219,10 @@ juce::var Engine::renderOffline (const juce::var& message)
 
     if (hadDevice)
         devices_.addAudioCallback (this);
+    if (hadSilent)
+        silent_.start (s.song->sampleRate, channels);
+    seenCallbacks_ = callbacks_.load(); // the device was off on purpose: no stall
+    seenCallbacksAtMs_ = juce::Time::getMillisecondCounter();
 
     return Obj()
         .set ("type", "rendered")
@@ -955,6 +1281,9 @@ juce::var Engine::snapshot()
         .set ("xruns", device != nullptr ? device->getXRunCount() : 0)
         .set ("cpu", devices_.getCpuUsage())
         .set ("deviceOpen", callbackActive_.load())
+        .set ("route", routeName (route_))
+        .set ("lostSec", route_ == Route::silent || route_ == Route::fallback ? static_cast<double> (juce::Time::getMillisecondCounter() - lostAtMs_) / 1000.0 : 0.0)
+        .set ("mainBack", mainBack_)
         .set ("meters", meters)
         .set ("master", masterArray)
         .set ("pad", Obj().set ("key", pads_.key() >= 0 ? juce::var (pads_.key()) : juce::var()).set ("level", pads_.level()))
@@ -966,7 +1295,11 @@ juce::var Engine::snapshot()
 
 void Engine::timerCallback()
 {
-    if (! callbackActive_.load())
+    checkDevice (false);
+    checkXruns();
+    checkMidiInputs();
+
+    if (! processing())
         for (auto& slot : slots_)
             slot.player.processCommandsOnly();
     collectRetired();
@@ -992,7 +1325,7 @@ void Engine::timerCallback()
     // While playing: every tick. Otherwise only when something changed, plus a slow heartbeat.
     const auto key = stateName (s.player.state()).toString() + ":" + juce::String (s.player.position()) + ":"
                    + (s.song != nullptr ? juce::String (s.song->id) + (s.song->isBuffered() ? "b" : "") : juce::String())
-                   + (callbackActive_.load() ? "d" : "");
+                   + (callbackActive_.load() ? "d" : "") + routeName (route_);
     ++idleTicks_;
     if (playing || key != lastSnapshotKey_ || idleTicks_ >= 10)
     {
@@ -1147,7 +1480,17 @@ juce::var Engine::promoteNext()
 void Engine::audioDeviceIOCallbackWithContext (const float* const*, int, float* const* outputs, int numOutputs,
                                                int numSamples, const juce::AudioIODeviceCallbackContext&)
 {
+    if (silent_.running())
+    {
+        // The silent clock still owns the graph (the device started before it was told to stop): one renderer at a time.
+        for (int ch = 0; ch < numOutputs; ++ch)
+            if (outputs[ch] != nullptr)
+                std::memset (outputs[ch], 0, sizeof (float) * static_cast<std::size_t> (numSamples));
+        return;
+    }
     processBlock (outputs, numOutputs, numSamples, false);
+    callbacks_.fetch_add (1, std::memory_order_relaxed);
+    lastCallbackNs_.store (audio::SilentClock::steadyNowNs(), std::memory_order_relaxed);
 }
 
 void Engine::processBlock (float* const* outputs, int numOutputs, int numSamples, bool offline) noexcept
@@ -1163,7 +1506,9 @@ void Engine::processBlock (float* const* outputs, int numOutputs, int numSamples
 
 void Engine::audioDeviceAboutToStart (juce::AudioIODevice* device)
 {
+    silent_.stop(); // the device takes over from the clock at the frame it reached
     const auto rate = device->getCurrentSampleRate();
+    deviceChannels_.store (std::max (2, device->getActiveOutputChannels().getHighestBit() + 1));
     for (auto& slot : slots_)
         slot.player.prepare (rate, device->getCurrentBufferSizeSamples(), device->getActiveOutputChannels().getHighestBit() + 1);
     transitions_.prepare (rate);
@@ -1195,5 +1540,6 @@ void Engine::audioDeviceError (const juce::String& message)
 void Engine::changeListenerCallback (juce::ChangeBroadcaster*)
 {
     push (Obj().set ("type", "deviceChanged").set ("device", deviceInfo()));
+    checkDevice (true); // a device came or went: look now rather than at the next second
 }
 } // namespace rec

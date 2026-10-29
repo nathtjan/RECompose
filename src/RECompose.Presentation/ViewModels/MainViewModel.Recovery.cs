@@ -100,6 +100,9 @@ public sealed partial class MainViewModel
         // Off the UI thread, newest first: a slow disk must not stall the screen, and nothing optional may stop the music (REL-50).
         lock (_journalLock)
         {
+            // A quit has flushed and will delete the journal: a late snapshot must not write it back (REL-31).
+            if (_shuttingDown)
+                return;
             _journalWrite = _journalWrite.ContinueWith(_ =>
             {
                 try

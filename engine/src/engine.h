@@ -8,6 +8,7 @@
 #include "audio/disk_streamer.h"
 #include "audio/pads.h"
 #include "audio/player.h"
+#include "audio/silent_clock.h"
 #include "audio/song.h"
 #include "audio/transition.h"
 
@@ -118,9 +119,24 @@ private:
     const Slot& cur() const noexcept { return slots_[static_cast<std::size_t> (cur_.load())]; }
     Slot& slotFor (const juce::var& message);
 
+    // The device the engine plays through (REL-20…23): the main one the app chose, the fallback that takes over when it
+    // is lost, or the silent clock when neither is there.
+    enum class Route { none, main, fallback, silent };
+
+    struct DeviceChoice
+    {
+        juce::String type, name;
+        double sampleRate = 0;
+        int bufferSize = 0;
+        bool empty() const { return name.isEmpty(); }
+    };
+
     // Requests.
     juce::var listDevices();
     juce::var setDevice (const juce::var& message);
+    juce::var setFallbackDevice (const juce::var& message);
+    juce::var switchToMain();
+    juce::var injectDeviceLoss (const juce::var& message);
     juce::var loadSong (const juce::var& message, Slot& s);
     juce::var unloadSong (Slot& s);
     juce::var setTransition (const juce::var& message);
@@ -144,6 +160,20 @@ private:
     juce::var loadPadSet (const juce::var& message);
     juce::var pad (const juce::var& message);
     void openPadBank (double rate);
+
+    // Devices (message thread).
+    juce::String openDevice (const DeviceChoice& choice);
+    bool isPresent (const DeviceChoice& choice, bool scan);
+    void checkDevice (bool forcePresence);
+    void onDeviceLost();
+    bool reopenMain();
+    void checkMidiInputs();
+    void checkXruns();
+    static const char* routeName (Route route);
+
+    // Somebody renders the audio graph: the device callback or the silent clock. When nobody does, the message thread
+    // drains the players' commands itself.
+    bool processing() const noexcept { return callbackActive_.load() || silent_.running(); }
 
     // Helpers.
     juce::var deviceInfo();
@@ -176,6 +206,10 @@ private:
     void timerCallback() override;
 
     std::vector<std::unique_ptr<juce::MidiInput>> midiInputs_;
+    bool midiAll_ = false;
+    juce::StringArray midiWanted_;
+    juce::StringArray midiMissing_;
+    juce::uint32 lastMidiCheckMs_ = 0;
     juce::AudioFormatManager formats_;
     juce::AudioDeviceManager devices_;
     bool deviceInitialised_ = false;
@@ -193,6 +227,23 @@ private:
     std::atomic<bool> callbackActive_ { false };
     std::atomic<int> outputLatency_ { 0 };
     std::atomic<double> deviceRate_ { 0.0 };
+    std::atomic<int> deviceChannels_ { 2 };
+    std::atomic<std::uint64_t> callbacks_ { 0 };     // device blocks played, to tell a device that stopped calling back
+    std::atomic<std::int64_t> lastCallbackNs_ { 0 }; // SilentClock::steadyNowNs() of the last one
+
+    DeviceChoice main_, fallback_;
+    Route route_ = Route::none;
+    bool callbackRegistered_ = false;
+    bool mainGone_ = false, fallbackGone_ = false; // injectDeviceLoss: the engine sees these as unplugged
+    bool mainBack_ = false;                        // on the fallback with the main device present again
+    bool silentPaused_ = false;
+    double silentLimitSec_ = 60.0;
+    juce::uint32 lostAtMs_ = 0, lastPresenceCheckMs_ = 0, seenCallbacksAtMs_ = 0;
+    std::uint64_t seenCallbacks_ = 0;
+    int lastXruns_ = 0;
+
+    // It renders through the slots, the transitions and the pads above; ~Engine stops it before anything else.
+    audio::SilentClock silent_ { [this] (float* const* outputs, int numOutputs, int numSamples) { processBlock (outputs, numOutputs, numSamples, false); } };
 
     std::mutex outgoingMutex_;
     std::vector<std::string> outgoing_;

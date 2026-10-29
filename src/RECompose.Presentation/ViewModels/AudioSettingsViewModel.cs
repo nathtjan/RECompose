@@ -7,10 +7,14 @@ using RECompose.Presentation.Mvvm;
 
 namespace RECompose.Presentation.ViewModels;
 
-/// <summary>Settings › Audio (SET-10): driver, device, rate, buffer, and the Main and Cue outputs (PB-85).</summary>
+/// <summary>
+/// Settings › Audio (SET-10): driver, device, rate, buffer, the Main and Cue outputs (PB-85), and the fallback device
+/// that takes over when the main one is lost, with switching back by itself (REL-20, REL-23).
+/// </summary>
 public sealed class AudioSettingsViewModel : ObservableObject
 {
     public const string DeviceRate = "Device rate";
+    public const string NoFallback = "None";
 
     private readonly IReadOnlyList<DeviceTypeInfo> _types;
     private readonly DeviceInfo? _current;
@@ -21,6 +25,9 @@ public sealed class AudioSettingsViewModel : ObservableObject
     private string _selectedBuffer = "256";
     private string _mainOutput;
     private string _cueOutput;
+    private readonly Dictionary<string, (string Type, string Name)> _fallbacks = [];
+    private string _selectedFallback = NoFallback;
+    private bool _autoSwitchBack;
 
     public AudioSettingsViewModel(IReadOnlyList<DeviceTypeInfo> types, DeviceInfo? current, AudioSettings settings)
     {
@@ -40,7 +47,24 @@ public sealed class AudioSettingsViewModel : ObservableObject
         OutputOptions = ChannelOptions(current?.OutputChannels.Count ?? 2);
         _mainOutput = OutputRef.Direct(settings.MainChannel, settings.MainWidth).Label;
         _cueOutput = OutputRef.Direct(settings.CueChannel, settings.CueWidth).Label;
+
+        foreach (var type in types)
+            foreach (var device in type.Devices)
+                _fallbacks[FallbackLabel(type.Name, device)] = (type.Name, device);
+        FallbackOptions = [NoFallback, .. _fallbacks.Keys];
+        if (settings.FallbackDeviceName is { } fallback)
+        {
+            var label = FallbackLabel(settings.FallbackDeviceType ?? string.Empty, fallback);
+            if (!_fallbacks.ContainsKey(label))
+                FallbackOptions = [.. FallbackOptions, label]; // not connected now: still the choice
+            _fallbacks.TryAdd(label, (settings.FallbackDeviceType ?? string.Empty, fallback));
+            _selectedFallback = label;
+        }
+
+        _autoSwitchBack = settings.AutoSwitchBack;
     }
+
+    private static string FallbackLabel(string type, string device) => type.Length > 0 ? $"{device} ({type})" : device;
 
     public IReadOnlyList<string> DeviceTypes { get; }
     public IReadOnlyList<string> SampleRates { get; }
@@ -80,6 +104,14 @@ public sealed class AudioSettingsViewModel : ObservableObject
 
     public bool CueSharesMain => _cueOutput == _mainOutput;
 
+    /// <summary>"None", then every device as "Name (Driver)".</summary>
+    public IReadOnlyList<string> FallbackOptions { get; }
+
+    public string SelectedFallback { get => _selectedFallback; set => Set(ref _selectedFallback, value ?? NoFallback); }
+
+    /// <summary>Go back to the main device by itself: at once when stopped, at the next section boundary when playing.</summary>
+    public bool AutoSwitchBack { get => _autoSwitchBack; set => Set(ref _autoSwitchBack, value); }
+
     public AudioSettings ToSettings(AudioSettings previous)
     {
         var main = OutputRef.Parse(OutputChoices.ToOutput(MainOutput));
@@ -94,6 +126,9 @@ public sealed class AudioSettingsViewModel : ObservableObject
             MainWidth = main.Kind == OutputKind.Direct ? main.Width : 2,
             CueChannel = cue.Kind == OutputKind.Direct ? cue.Channel : 0,
             CueWidth = cue.Kind == OutputKind.Direct ? cue.Width : 2,
+            FallbackDeviceType = _fallbacks.TryGetValue(SelectedFallback, out var f) && f.Type.Length > 0 ? f.Type : null,
+            FallbackDeviceName = _fallbacks.TryGetValue(SelectedFallback, out var g) ? g.Name : null,
+            AutoSwitchBack = AutoSwitchBack,
         };
     }
 

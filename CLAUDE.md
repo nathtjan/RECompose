@@ -20,7 +20,7 @@ Milestones 0–5 are on `main`; the next one is M6 (reliability: render cache, s
 
 - Two clocks: *plan time* is the engine position and the as-heard timeline; *source time* is stems, sections, M and review. Convert only through `SongPlan` (`SourceAt`, `PlanAt`, `Remap`).
 - `MainViewModel` owns the playhead (`PlanPositionSec`, `PositionSec`, `TimelinePosition`); never mix them.
-- The engine plays a plan sent with `setPlan` (protocol 9 now, see `docs/engine-protocol.md`); plan building lives in `RECompose.Core.Planning`.
+- The engine plays a plan sent with `setPlan` (protocol 10 now, see `docs/engine-protocol.md`); plan building lives in `RECompose.Core.Planning`.
 - Services (M4): a service entry picks a variant, a custom arrangement or as written, plus key, tempo, count-in, mix preset and the transition after it. `EntryPlan`/`PlanOptions.For(entry, song)` build its plan; the engine plays key and tempo live (protocol 5), click and count-ins (4), pads (6), and a second song slot with segue, crossfade and pad transitions (7). Rendered keys come in M6; spoken counts in M7.
 - Live control (M5): a live change is a plan rewrite. `LivePlan` (Core) holds the committed plan and one pending action; the app sends the pending plan with `setPlan` + `swapAt` and the engine swaps gap-free at that frame (protocol 8). Holds are `setPlan.holds` waiting for `go`; open repeats and vamps are built as up to 16 passes that count once (`ExpectedDurationSec`, `DisplayItems`). `PerformReadouts.Build` gives the NEXT card and the strip; `ControlRouter` (Core) routes keys and MIDI (protocol 9, `midiIn`) with debounce and long press. Window tests must use `HeadlessApp.RunAsync` or they can pass vacuously.
 

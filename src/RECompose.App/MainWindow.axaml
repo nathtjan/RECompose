@@ -142,6 +142,14 @@
             <TextBlock Classes="mono" Text="{Binding AudioStatus}" VerticalAlignment="Center" />
           </StackPanel>
         </Button>
+        <Button DockPanel.Dock="Right" Classes="ghost" Command="{Binding OpenCheckCommand}" VerticalAlignment="Center" IsVisible="{Binding HasMidiStatus}"
+                ToolTip.Tip="MIDI controllers. Click for the service check." AutomationProperties.Name="MIDI">
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <Ellipse Classes="led" Classes.ok="{Binding MidiOk}" VerticalAlignment="Center" />
+            <TextBlock Classes="label" Text="MIDI" VerticalAlignment="Center" />
+            <TextBlock Classes="mono" Text="{Binding MidiStatus}" VerticalAlignment="Center" />
+          </StackPanel>
+        </Button>
         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="0,0,16,0"
                     IsVisible="{Binding HasBackgroundActivity}" ToolTip.Tip="{Binding BackgroundActivity}">
           <c:Icon Glyph="rendering" IconSize="14" VerticalAlignment="Center" TextElement.Foreground="{DynamicResource state-pending}" />
@@ -152,7 +160,7 @@
     </Border>
 
     <!-- Banner (UI-70): stays until dismissed or resolved -->
-    <Border Grid.Row="1" Classes="banner">
+    <Border Grid.Row="1" Classes="banner" Classes.error="{Binding AudioLost}">
       <Border.IsVisible>
         <MultiBinding Converter="{x:Static BoolConverters.And}">
           <Binding Path="HasBanner" />
@@ -161,6 +169,7 @@
       </Border.IsVisible>
       <DockPanel>
         <Button DockPanel.Dock="Right" Classes="ghost" Content="Dismiss" Command="{Binding DismissBannerCommand}" />
+        <Button DockPanel.Dock="Right" Classes="primary" Content="Switch back" Command="{Binding SwitchBackCommand}" IsVisible="{Binding CanSwitchBack}" Margin="0,0,8,0" />
         <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
           <c:Icon Glyph="warning" IconSize="16" TextElement.Foreground="{DynamicResource state-warning}" VerticalAlignment="Center" />
           <TextBlock Text="{Binding Banner}" TextWrapping="Wrap" VerticalAlignment="Center" />

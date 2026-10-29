@@ -10,7 +10,7 @@
 
 namespace rec
 {
-inline constexpr int REC_PROTOCOL_VERSION = 9;
+inline constexpr int REC_PROTOCOL_VERSION = 10;
 
 // Frames larger than this are a protocol error (both directions).
 inline constexpr std::uint32_t kMaxFrameBytes = 16u * 1024u * 1024u;

@@ -137,6 +137,12 @@
               <TextBlock Classes="label" Text="AUDIO" VerticalAlignment="Center" />
             </StackPanel>
           </Button>
+          <Button Classes="ghost" Command="{Binding OpenCheckCommand}" IsVisible="{Binding HasMidiStatus}" ToolTip.Tip="{Binding MidiStatus}" AutomationProperties.Name="MIDI">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Ellipse Classes="led" Classes.ok="{Binding MidiOk}" VerticalAlignment="Center" />
+              <TextBlock Classes="label" Text="MIDI" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
         </StackPanel>
 
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="2">
@@ -158,9 +164,10 @@
 
     <!-- Banners push the body down (UI-70) -->
     <StackPanel Grid.Row="1">
-      <Border Classes="banner" IsVisible="{Binding HasBanner}">
+      <Border Classes="banner" Classes.error="{Binding AudioLost}" IsVisible="{Binding HasBanner}">
         <DockPanel>
           <Button DockPanel.Dock="Right" Classes="ghost" Content="Dismiss" Command="{Binding DismissBannerCommand}" />
+          <Button DockPanel.Dock="Right" Classes="primary" Content="Switch back" Command="{Binding SwitchBackCommand}" IsVisible="{Binding CanSwitchBack}" Margin="0,0,8,0" />
           <TextBlock Text="{Binding Banner}" TextWrapping="Wrap" VerticalAlignment="Center" />
         </DockPanel>
       </Border>
