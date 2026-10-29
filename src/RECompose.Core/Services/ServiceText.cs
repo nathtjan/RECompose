@@ -84,6 +84,38 @@ public static class ServiceText
         return keyOffset == 0 ? key : $"{key} ({Signed(keyOffset)})";
     }
 
+    /// <summary>The nearest offset (−5…+6) from <paramref name="original"/> to <paramref name="target"/>'s root.</summary>
+    public static int KeyOffsetTo(Key original, Key target)
+    {
+        var offset = ((target.PitchClass - original.PitchClass) % 12 + 12) % 12;
+        return offset > 6 ? offset - 12 : offset;
+    }
+
+    /// <summary>
+    /// A typed entry key (PB-60): a key ("C", "B♭", "A (−1)" as shown) or semitones ("+2", "−1", "0").
+    /// Null when it is neither, or names a key while the song's key is unknown.
+    /// </summary>
+    public static int? ParseKeyOffset(Song song, string text)
+    {
+        text = text.Trim();
+        if (int.TryParse(text.Replace('−', '-'), NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var semitones))
+            return semitones;
+        var name = text.Split('(')[0].Trim();
+        return Key.TryParse(name, out var target) && Key.TryParse(song.OriginalKey, out var original) ? KeyOffsetTo(original, target) : null;
+    }
+
+    /// <summary>A typed entry tempo (PB-60): a percent ("95", "95%") or the BPM heard ("68 BPM"). Null when it is neither.</summary>
+    public static int? ParseTempoPercent(Song song, string text)
+    {
+        text = text.Trim().TrimEnd('%').Trim();
+        var bpm = text.EndsWith("bpm", StringComparison.OrdinalIgnoreCase);
+        if (bpm)
+            text = text[..^3].Trim();
+        if (!double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var value) || value <= 0)
+            return null;
+        return (int)Math.Round(bpm ? value / song.Bpm * 100 : value);
+    }
+
     /// <summary>"+2", "−1", "0" with a real minus sign.</summary>
     public static string Signed(int value) =>
         value > 0 ? $"+{value.ToString(CultureInfo.InvariantCulture)}"

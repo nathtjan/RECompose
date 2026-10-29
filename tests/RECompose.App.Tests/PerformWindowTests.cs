@@ -324,7 +324,7 @@ public sealed class PerformWindowTests : IDisposable
     }
 
     [Fact]
-    public async Task Space_is_a_shortcut_and_never_also_presses_the_focused_key()
+    public async Task Space_never_also_presses_the_focused_key_and_a_double_clicked_key_takes_typing()
     {
         await HeadlessApp.RunAsync(async () =>
         {
@@ -343,11 +343,55 @@ public sealed class PerformWindowTests : IDisposable
             var settings = window.GetVisualDescendants().OfType<Button>().First(b => ToolTip.GetTip(b) as string == "Settings (Ctrl+,)");
             Assert.Equal(0, Clicks(settings));
 
+            // PB-60: double-click KEY to type it; Enter applies.
+            var key = window.FindControl<TextBlock>("HeaderKey")!;
+            var keyEdit = window.FindControl<TextBox>("HeaderKeyEdit")!;
+            Assert.Equal("B♭", key.Text);
+            var box = (Control)key.Parent!;
+            var (boxBefore, keyBefore) = (box.Bounds, key.Bounds);
+            DoubleClick(key);
+            Assert.True(keyEdit.IsVisible);
+            Assert.True(keyEdit.IsFocused);
+            Assert.Equal(boxBefore, box.Bounds); // nothing moves when the field shows
+            Assert.Equal(keyBefore, key.Bounds);
+            Assert.Equal(keyBefore.Width, keyEdit.Bounds.Width);
+            keyEdit.Text = "C";
+            window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+            Dispatcher.UIThread.RunJobs();
+            Assert.False(keyEdit.IsVisible);
+            Assert.Equal("C (+2)", key.Text);
+            Assert.False(keyEdit.IsFocused);
+
+            // A click on something that takes no focus (the TEMPO label) applies and closes it too.
+            var tempo = window.FindControl<TextBlock>("HeaderTempo")!;
+            var tempoEdit = window.FindControl<TextBox>("HeaderTempoEdit")!;
+            DoubleClick(tempo);
+            Assert.True(tempoEdit.IsVisible);
+            tempoEdit.Text = "90";
+            var label = ((Panel)tempo.Parent!).Children.OfType<TextBlock>().First(t => t.Text == "TEMPO");
+            var labelAt = label.TranslatePoint(new Point(label.Bounds.Width / 2, label.Bounds.Height / 2), window)!.Value;
+            window.MouseDown(labelAt, MouseButton.Left);
+            window.MouseUp(labelAt, MouseButton.Left);
+            Dispatcher.UIThread.RunJobs();
+            Assert.False(tempoEdit.IsVisible);
+            Assert.Equal("90%", tempo.Text);
+
             vm.IsPerform = true;
             vm.ApplySnapshotForTests(Snapshot(vm, 6));
             Dispatcher.UIThread.RunJobs();
             Assert.Equal(0, Clicks(window.FindControl<PerformView>("Perform")!.FindControl<ToggleButton>("LoopKey")!));
             window.Close();
+
+            void DoubleClick(Control target)
+            {
+                var at = target.TranslatePoint(new Point(target.Bounds.Width / 2, target.Bounds.Height / 2), window)!.Value;
+                for (var i = 0; i < 2; i++)
+                {
+                    window.MouseDown(at, MouseButton.Left);
+                    window.MouseUp(at, MouseButton.Left);
+                }
+                Dispatcher.UIThread.RunJobs();
+            }
 
             int Clicks(Button key)
             {

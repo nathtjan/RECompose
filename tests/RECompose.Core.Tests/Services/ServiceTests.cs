@@ -335,6 +335,30 @@ public class ServiceTests
     }
 
     [Fact]
+    public void PB60_a_typed_key_or_tempo_becomes_an_offset_or_a_percent()
+    {
+        var song = SongA(); // B♭, 72 BPM
+        Assert.Equal(2, ServiceText.ParseKeyOffset(song, "C"));
+        Assert.Equal(-1, ServiceText.ParseKeyOffset(song, " a "));
+        Assert.Equal(-1, ServiceText.ParseKeyOffset(song, "A (−1)")); // as shown
+        Assert.Equal(-3, ServiceText.ParseKeyOffset(song, "G"));
+        Assert.Equal(6, ServiceText.ParseKeyOffset(song, "E"));
+        Assert.Equal(0, ServiceText.ParseKeyOffset(song, "Bb"));
+        Assert.Equal(-2, ServiceText.ParseKeyOffset(song, "−2"));
+        Assert.Equal(3, ServiceText.ParseKeyOffset(song, "+3"));
+        Assert.Null(ServiceText.ParseKeyOffset(song, "H"));
+        Assert.Null(ServiceText.ParseKeyOffset(song with { OriginalKey = null }, "C"));
+        Assert.Equal(1, ServiceText.ParseKeyOffset(song with { OriginalKey = null }, "+1"));
+
+        Assert.Equal(95, ServiceText.ParseTempoPercent(song, "95"));
+        Assert.Equal(95, ServiceText.ParseTempoPercent(song, "95 %"));
+        Assert.Equal(125, ServiceText.ParseTempoPercent(song, "90 BPM"));
+        Assert.Equal(100, ServiceText.ParseTempoPercent(song, "72bpm"));
+        Assert.Null(ServiceText.ParseTempoPercent(song, "fast"));
+        Assert.Null(ServiceText.ParseTempoPercent(song, "0"));
+    }
+
+    [Fact]
     public void SL20_chips_and_explanations()
     {
         var db = RECompose.Core.Music.Key.Parse("Db");

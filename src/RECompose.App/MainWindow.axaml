@@ -495,7 +495,8 @@
                     <c:Icon Glyph="minus" IconSize="14" />
                   </Button>
                   <TextBlock Grid.Row="0" Grid.Column="2" x:Name="HeaderKey" Classes="mono" Classes.warning="{Binding EntryKeyWarning}" Text="{Binding EntryKeyText}"
-                             MinWidth="64" TextAlignment="Center" VerticalAlignment="Center" />
+                             MinWidth="64" TextAlignment="Center" VerticalAlignment="Center" Background="Transparent" ToolTip.Tip="Double-click to type a key" />
+                  <TextBox Grid.Row="0" Grid.Column="2" x:Name="HeaderKeyEdit" Classes="inline" IsVisible="False" AutomationProperties.Name="Key" />
                   <Button Grid.Row="0" Grid.Column="3" Classes="cell" Command="{Binding KeyUpCommand}" ToolTip.Tip="Key up (Ctrl+↑)" AutomationProperties.Name="Key up">
                     <c:Icon Glyph="plus" IconSize="14" />
                   </Button>
@@ -503,7 +504,9 @@
                   <Button Grid.Row="1" Grid.Column="1" Classes="cell" Command="{Binding TempoDownCommand}" ToolTip.Tip="Tempo −1% (Ctrl+←, Shift for 5%)" AutomationProperties.Name="Tempo down">
                     <c:Icon Glyph="minus" IconSize="14" />
                   </Button>
-                  <TextBlock Grid.Row="1" Grid.Column="2" Classes="mono" Text="{Binding EntryTempoText}" MinWidth="64" TextAlignment="Center" VerticalAlignment="Center" />
+                  <TextBlock Grid.Row="1" Grid.Column="2" x:Name="HeaderTempo" Classes="mono" Text="{Binding EntryTempoText}" MinWidth="64" TextAlignment="Center" VerticalAlignment="Center"
+                             Background="Transparent" ToolTip.Tip="Double-click to type a tempo" />
+                  <TextBox Grid.Row="1" Grid.Column="2" x:Name="HeaderTempoEdit" Classes="inline" IsVisible="False" AutomationProperties.Name="Tempo" />
                   <Button Grid.Row="1" Grid.Column="3" Classes="cell" Command="{Binding TempoUpCommand}" ToolTip.Tip="Tempo +1% (Ctrl+→, Shift for 5%)" AutomationProperties.Name="Tempo up">
                     <c:Icon Glyph="plus" IconSize="14" />
                   </Button>
@@ -621,14 +624,21 @@
                   <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,0,16,4">
                     <TextBlock Classes="label" Text="KEY" VerticalAlignment="Center" Margin="0,0,4,0" />
                     <Button Classes="cell" Command="{Binding KeyDownCommand}" AutomationProperties.Name="Entry key down"><c:Icon Glyph="minus" IconSize="14" /></Button>
-                    <TextBlock Classes="mono" Classes.warning="{Binding KeyWarning}" Text="{Binding KeyText}" MinWidth="60" TextAlignment="Center" VerticalAlignment="Center"
-                               ToolTip.Tip="{Binding KeyTip}" />
+                    <Panel>
+                      <TextBlock x:Name="EntryKey" Classes="mono" Classes.warning="{Binding KeyWarning}" Text="{Binding KeyText}" MinWidth="60" TextAlignment="Center" VerticalAlignment="Center"
+                                 Background="Transparent" ToolTip.Tip="{Binding KeyTip}" />
+                      <TextBox x:Name="EntryKeyEdit" Classes="inline" IsVisible="False" AutomationProperties.Name="Entry key" />
+                    </Panel>
                     <Button Classes="cell" Command="{Binding KeyUpCommand}" AutomationProperties.Name="Entry key up"><c:Icon Glyph="plus" IconSize="14" /></Button>
                   </StackPanel>
                   <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,0,16,4">
                     <TextBlock Classes="label" Text="TEMPO" VerticalAlignment="Center" Margin="0,0,4,0" />
                     <Button Classes="cell" Command="{Binding TempoDownCommand}" AutomationProperties.Name="Entry tempo down"><c:Icon Glyph="minus" IconSize="14" /></Button>
-                    <TextBlock Classes="mono" Text="{Binding TempoText}" MinWidth="48" TextAlignment="Center" VerticalAlignment="Center" />
+                    <Panel>
+                      <TextBlock x:Name="EntryTempo" Classes="mono" Text="{Binding TempoText}" MinWidth="48" TextAlignment="Center" VerticalAlignment="Center"
+                                 Background="Transparent" ToolTip.Tip="Double-click to type a tempo" />
+                      <TextBox x:Name="EntryTempoEdit" Classes="inline" IsVisible="False" AutomationProperties.Name="Entry tempo" />
+                    </Panel>
                     <Button Classes="cell" Command="{Binding TempoUpCommand}" AutomationProperties.Name="Entry tempo up"><c:Icon Glyph="plus" IconSize="14" /></Button>
                   </StackPanel>
                   <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,16,4">

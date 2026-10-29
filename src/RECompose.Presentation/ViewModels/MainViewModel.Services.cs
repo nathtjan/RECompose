@@ -250,6 +250,28 @@ public sealed partial class MainViewModel
         StepKey(Math.Clamp(offset, -ServiceEntry.MaxKeyOffset, ServiceEntry.MaxKeyOffset) - entry.KeyOffset, entryId);
     }
 
+    /// <summary>A key typed into KEY (PB-60): the selected entry, or the loaded one.</summary>
+    public void TypeKey(string text)
+    {
+        if (TargetEntry(null) is not { } entry || SongOf(entry.SongId) is not { } song)
+            return;
+        if (ServiceText.ParseKeyOffset(song, text) is { } offset)
+            SetKeyOffset(entry.Id, offset);
+        else
+            ShowToast($"{text.Trim()} isn't a key. Type one such as B♭, or semitones such as +2.");
+    }
+
+    /// <summary>A tempo typed into TEMPO (PB-60): a percent or a BPM.</summary>
+    public void TypeTempo(string text)
+    {
+        if (TargetEntry(null) is not { } entry || SongOf(entry.SongId) is not { } song)
+            return;
+        if (ServiceText.ParseTempoPercent(song, text) is { } percent)
+            SetTempo(entry.Id, percent);
+        else
+            ShowToast($"{text.Trim()} isn't a tempo. Type a percent such as 95, or a BPM such as 68 BPM.");
+    }
+
     public void SetCountIn(string entryId, CountIn countIn) =>
         UpdateServiceEntry(entryId, "Count-in", e => e with { CountIn = countIn });
 

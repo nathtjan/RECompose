@@ -201,9 +201,7 @@ public static class AssistantCommands
             throw new ToolException($"\"{text}\" is not a key.");
         if (!Key.TryParse(song.OriginalKey, out var original))
             throw new ToolException($"{song.Title} has no known key; set its key in the song first.");
-        var offset = ((target.PitchClass - original.PitchClass) % 12 + 12) % 12;
-        if (offset > 6)
-            offset -= 12;
+        var offset = ServiceText.KeyOffsetTo(original, target);
         var key = original.Transpose(offset).ToDisplayString();
         var from = ServiceText.EntryKey(song, entry.KeyOffset)?.ToDisplayString();
         var result = UpdateEntry(service, entry, e => e with { KeyOffset = offset }, $"{service.Name}: {song.Title} to {key}.");

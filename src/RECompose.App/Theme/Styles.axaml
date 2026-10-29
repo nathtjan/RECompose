@@ -208,6 +208,17 @@
     <Setter Property="MinHeight" Value="{DynamicResource size-key-compact}" />
   </Style>
 
+  <!-- A readout typed into in place (double-click KEY or TEMPO): no minimum size, so the row and the column never move. -->
+  <Style Selector="TextBox.inline">
+    <Setter Property="FontFamily" Value="{DynamicResource FontMono}" />
+    <Setter Property="FontSize" Value="{DynamicResource type-mono-size}" />
+    <Setter Property="MinWidth" Value="0" />
+    <Setter Property="MinHeight" Value="0" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="TextAlignment" Value="Center" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+  </Style>
+
   <Style Selector="TabItem">
     <Setter Property="FontSize" Value="{DynamicResource type-label-size}" />
     <Setter Property="FontWeight" Value="Bold" />

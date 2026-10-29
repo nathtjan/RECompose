@@ -174,6 +174,12 @@ public partial class MainWindow : Window
         ReviewRenameButton.Click += (_, _) => ViewModel?.Sections.ReviewRename();
         ReviewTypeButton.Click += (_, _) => ViewModel?.Sections.ReviewChangeType();
 
+        // Double-click KEY or TEMPO to type it (PB-60).
+        InlineEdit(HeaderKey, HeaderKeyEdit, text => ViewModel?.TypeKey(text));
+        InlineEdit(HeaderTempo, HeaderTempoEdit, text => ViewModel?.TypeTempo(text));
+        InlineEdit(EntryKey, EntryKeyEdit, text => ViewModel?.TypeKey(text));
+        InlineEdit(EntryTempo, EntryTempoEdit, text => ViewModel?.TypeTempo(text));
+
         DataContextChanged += (_, _) =>
         {
             if (ViewModel is { } vm)
@@ -182,6 +188,49 @@ public partial class MainWindow : Window
                 vm.Sections.FocusTypeRequested += id => FocusCell(id, "section-type");
             }
         };
+    }
+
+    /// <summary>The readout swaps for a field: Enter or leaving it applies a changed value, Esc keeps the old one.</summary>
+    private void InlineEdit(TextBlock view, TextBox edit, Action<string> commit)
+    {
+        // A click on something that takes no focus (a panel, a label) doesn't end the edit by itself.
+        AddHandler(PointerPressedEvent, (_, e) =>
+        {
+            if (edit.IsVisible && !(e.Source is Avalonia.Visual source && (source == edit || edit.IsVisualAncestorOf(source))))
+                Close(true);
+        }, RoutingStrategies.Tunnel, handledEventsToo: true);
+        view.DoubleTapped += (_, e) =>
+        {
+            // The field takes the readout's place exactly: the readout keeps its space (only hidden), the field its width.
+            edit.Text = view.Text;
+            edit.Width = view.Bounds.Width;
+            view.Opacity = 0;
+            edit.IsVisible = true;
+            edit.Focus();
+            edit.SelectAll();
+            e.Handled = true;
+        };
+        edit.KeyDown += (_, e) =>
+        {
+            if (e.Key is Key.Enter or Key.Escape)
+            {
+                Close(e.Key == Key.Enter);
+                e.Handled = true;
+            }
+        };
+        edit.LostFocus += (_, _) => Close(true);
+
+        void Close(bool apply)
+        {
+            if (!edit.IsVisible)
+                return; // hiding the field moves focus away, which calls this again
+            edit.IsVisible = false;
+            view.Opacity = 1;
+            if (edit.IsFocused)
+                Focus(); // a hidden field keeping focus would turn the single-key shortcuts off (KEY-1)
+            if (apply && edit.Text is { } text && text.Trim() != view.Text?.Trim())
+                commit(text);
+        }
     }
 
     private static bool CommitCell(TextBox? box)
