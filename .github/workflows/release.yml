@@ -47,7 +47,7 @@ jobs:
       - name: Version
         shell: bash
         # A manual run from a branch is a dry run: it packs under a test version and publishes nothing.
-        run: echo "VERSION=${{ github.ref_type == 'tag' && '${GITHUB_REF_NAME#v}' || format('0.0.0-dryrun.{0}', github.run_number) }}" >> "$GITHUB_ENV"
+        run: echo "VERSION=${{ github.ref_type == 'tag' && '${GITHUB_REF_NAME#v}' || format('0.0.1-dryrun.{0}', github.run_number) }}" >> "$GITHUB_ENV"
 
       - name: Build engine
         shell: bash
