@@ -81,6 +81,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         _dialogs = dialogs;
         _settings = store.LoadSettings();
         Outputs = new AudioSettingsResolver(() => _settings.Audio);
+        HookLog();
 
         ImportCommand = new RelayCommand(ImportAsync);
         PlayPauseCommand = new RelayCommand(PlayPauseAsync, () => _song is not null);
@@ -740,6 +741,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             PlanPositionSec = resumeSec; // after an engine restart the plan clock continues where it was
         await SendPlanAsync(resumeSec);
         PrepareClips(_song!.Plan);
+        ReportLoaded();
         AppLog.Write("Transport", entry is null ? $"Loaded {model.Title}" : $"Loaded {model.Title} ({EntryArrangement.Resolve(entry, model).Name}, {ServiceText.KeyText(model, entry.KeyOffset)})");
         _settings = _settings with { LastSongId = id, LastEntryId = entry?.Id };
         _store.SaveSettings(_settings);
@@ -966,6 +968,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         if (holdChanged)
             OnHoldChanged();
         TickLive();
+        ReportTick();
         CheckSwitchBack();
         _controls?.Tick();
         JournalTick(s.State);
@@ -1343,6 +1346,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         Flush();
+        UnhookLog();
         await ShutdownEngineAsync();
     }
 

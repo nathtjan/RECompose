@@ -6,6 +6,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:RECompose.Presentation.ViewModels"
         xmlns:c="using:RECompose.App.Controls"
+        xmlns:log="using:RECompose.Core.Logging"
         xmlns:local="using:RECompose.App"
         x:Class="RECompose.App.MainWindow"
         x:DataType="vm:MainViewModel"
@@ -204,6 +205,7 @@
                     <Separator />
                     <MenuItem Header="Restore earlier version…" Command="{Binding RestoreVersionCommand}" />
                     <MenuItem Header="Export service…" Command="{Binding ExportServiceCommand}" />
+                    <MenuItem Header="Export report" Command="{Binding $parent[Window].((vm:MainViewModel)DataContext).ExportReportCommand}" />
                     <MenuItem Header="Import service…" Command="{Binding ImportServiceCommand}" />
                     <Separator />
                     <MenuItem Header="Delete" Command="{Binding DeleteServiceCommand}" />
@@ -961,6 +963,35 @@
                   </ItemsControl.ItemTemplate>
                 </ItemsControl>
               </ScrollViewer>
+            </DockPanel>
+          </TabItem>
+
+          <!-- Log (AUTO-50) -->
+          <TabItem Header="LOG">
+            <DockPanel Margin="16,12,16,0">
+              <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8">
+                  <TextBox Text="{Binding LogSearch}" PlaceholderText="Search" Width="200" AutomationProperties.Name="Search the log" />
+                  <Button Content="Clear view" Command="{Binding ClearLogCommand}" ToolTip.Tip="Empties this view; the log files keep everything" />
+                  <Button Content="Export…" Command="{Binding ExportLogCommand}" ToolTip.Tip="Save the lines shown as .txt or .csv" />
+                </StackPanel>
+                <ListBox ItemsSource="{Binding LogChipChoices}" SelectedItem="{Binding LogChip}" Background="Transparent"
+                         AutomationProperties.Name="Log category">
+                  <ListBox.ItemsPanel>
+                    <ItemsPanelTemplate>
+                      <WrapPanel Orientation="Horizontal" />
+                    </ItemsPanelTemplate>
+                  </ListBox.ItemsPanel>
+                </ListBox>
+              </DockPanel>
+              <TextBlock DockPanel.Dock="Top" Classes="meta" Margin="8" IsVisible="{Binding !ShownLog.Count}" Text="Nothing logged yet." />
+              <ListBox ItemsSource="{Binding ShownLog}" Background="Transparent">
+                <ListBox.ItemTemplate>
+                  <DataTemplate x:DataType="log:LogEntry">
+                    <SelectableTextBlock Classes="mono" Text="{Binding Line}" FontFamily="{DynamicResource FontMono}" TextWrapping="Wrap" />
+                  </DataTemplate>
+                </ListBox.ItemTemplate>
+              </ListBox>
             </DockPanel>
           </TabItem>
 

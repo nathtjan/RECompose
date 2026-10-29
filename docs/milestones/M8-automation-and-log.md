@@ -2,7 +2,7 @@
 
 **Goal:** the plan drives the room. Lights follow the sections over MIDI, cues fire where they were placed, the guide calls the section that will really play next, count-ins are spoken, and after the service there is a log and a report of what happened.
 
-**Status:** in progress (29 Oct 2026).
+**Status:** done (29 Oct 2026). How to try it: [M8 test guide](../testing/M8-test-guide.md).
 
 **Starting point:** milestone 7. The engine plays plans, a generated click track and one-off clips (`playClip`, protocol 12); TTS clips are cached in `cache/tts` (`SpeechClips`). The guide's words and calls are stored with each section's written call (`Section.CallId`). MIDI comes in (protocol 9) but nothing goes out. The log is a daily text file.
 
@@ -32,6 +32,22 @@
 | WP3 | App: settings, automation card, C key, CUES tab, Cues lane, plan sending with clips, log lines | Presentation tests |
 | WP4 | LOG tab, service log file, service report | Presentation tests |
 | WP5 | Docs, test guide | |
+
+## As built
+
+- MIDI out and Replace guide calls are in **Settings › Controls and playback**, not pages of their own; velocity and note length use the defaults (127, 100 ms) and the note map is the default one (no editor yet).
+- The automatic section cues card is under the SECTIONS tab; the CUES and LOG tabs sit next to it in Prepare.
+- Cue markers (◆ and the name) are drawn at the top of the sections lane rather than in a lane of their own.
+- Spoken calls the platform voice has not rendered yet are left out of the plan sent first; once rendered the plan is sent again, taking effect at the end of the current item.
+- A guide call inside a segment that fades in or out is not silenced (splitting the segment would restart the fade).
+- The report is written when leaving Perform after a song played (and with Service ⋯ › Export report) to `reports/` in the data folder; it lists live changes, ignored voice commands and errors from the log.
+
+## Known gaps
+
+- No editor for the section-type note map, velocity or note length (SET-30); the defaults are used.
+- The guide-call replacement uses the guide's own recording of the incoming section's call when it has one, and the platform voice otherwise; the as-heard Guide lane does not show silenced or replaced calls (AUTO-30 step 6).
+- A song started by a segue or crossfade is not added to the report as a song of its own.
+- `LiveControlTests.AT23` and `AT43` sometimes fail when the whole solution's tests run at once and pass alone (timing under load).
 
 ## Out
 

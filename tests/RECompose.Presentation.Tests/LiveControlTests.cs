@@ -676,6 +676,17 @@ public sealed class LiveControlTests : IDisposable
             await Eventually(() => Has("Section Verse 1: MIDI note D3") && Has("Cue 1: MIDI note C4") && Has("Section Chorus: MIDI note E3"));
             lock (lines)
                 Assert.DoesNotContain("Section Verse 2: MIDI note D3", lines); // not reached yet
+
+            // The LOG tab (AUTO-50): newest first, the Sections chip shows only section notes, Clear view empties it.
+            await Eventually(() => vm.ShownLog.Any(e => e.Text == "Section Chorus: MIDI note E3"));
+            vm.LogChip = "Sections";
+            Assert.All(vm.ShownLog, e => Assert.StartsWith("Section ", e.Text));
+            Assert.Equal("Section Chorus: MIDI note E3", vm.ShownLog[0].Text);
+            vm.LogChip = "All";
+            vm.LogSearch = "cue 1";
+            Assert.Contains(vm.ShownLog, e => e.Text == "Cue 1: MIDI note C4");
+            vm.ClearLogCommand.Execute(null);
+            Assert.Empty(vm.ShownLog);
         }
         finally
         {

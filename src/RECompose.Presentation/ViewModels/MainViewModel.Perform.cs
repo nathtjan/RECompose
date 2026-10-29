@@ -87,7 +87,11 @@ public sealed partial class MainViewModel
             {
                 OnPropertyChanged(nameof(IsPrepare));
                 if (!value)
+                {
                     ClearArmedTile();
+                    SaveReport(onDemand: false); // AUTO-60
+                    _reportSongs.Clear();
+                }
                 OnPerformPower(value);
             }
         }

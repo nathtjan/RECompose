@@ -140,6 +140,31 @@ public sealed class ServiceRunTests : IDisposable
     }
 
     [Fact]
+    public async Task AUTO60_leaving_perform_after_a_song_played_writes_the_service_report()
+    {
+        var vm = await StartAsync(TransitionType.Stop, autoAdvance: false);
+        try
+        {
+            vm.IsPerform = true;
+            await RenderAsync(vm, 1);
+            await Eventually(() => vm.IsPlaying);
+            await Task.Delay(200); // a snapshot while playing records the item heard
+            vm.IsPerform = false;
+
+            Assert.NotNull(vm.LastReportPath);
+            var report = await File.ReadAllTextAsync(vm.LastReportPath!);
+            Assert.StartsWith("# Sunday", report);
+            Assert.Contains("## Champion", report);
+            Assert.Contains("- As played: Whole song", report);
+            Assert.Contains("- Songs: 1", report);
+        }
+        finally
+        {
+            await FinishAsync(vm);
+        }
+    }
+
+    [Fact]
     public async Task SL12_with_auto_advance_a_stop_transition_cues_the_next_entry()
     {
         var vm = await StartAsync(TransitionType.Stop, autoAdvance: true);
