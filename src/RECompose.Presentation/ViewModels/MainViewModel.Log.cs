@@ -100,7 +100,7 @@ public sealed partial class MainViewModel
         if (_log.Count > MaxLogEntries)
             _log.RemoveRange(0, _log.Count - MaxLogEntries);
         if (shown.Count > 0)
-            ShownLog = [.. Enumerable.Reverse(shown), .. _shownLog];
+            ShownLog = [.. Enumerable.Reverse(shown), .. _shownLog.Take(Math.Max(0, MaxLogEntries - shown.Count))];
     }
 
     private void FilterLog() =>

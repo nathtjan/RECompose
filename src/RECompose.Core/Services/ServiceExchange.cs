@@ -58,6 +58,10 @@ public static class ServiceExchange
             throw new InvalidDataException("This service file is damaged.", ex);
         }
 
+        // Song and track ids become file names in the data folder; one from a shared file must not point outside it.
+        if (songs.Any(s => !IsSafeId(s.Id) || s.Tracks.Any(t => !IsSafeId(t.Id))))
+            throw new InvalidDataException("This service file is damaged.");
+
         var map = new Dictionary<string, string>();
         var added = new List<Song>();
         var missing = new List<string>();
@@ -80,4 +84,7 @@ public static class ServiceExchange
         var imported = service.Normalized() with { Id = newId(), Entries = entries, LastCheck = null, UpdatedAt = DateTimeOffset.UtcNow };
         return new ServiceImport(imported, added, missing);
     }
+
+    private static bool IsSafeId(string? id) =>
+        !string.IsNullOrEmpty(id) && id == Path.GetFileName(id) && id is not ("." or "..") && id.IndexOfAny(Path.GetInvalidFileNameChars()) < 0;
 }

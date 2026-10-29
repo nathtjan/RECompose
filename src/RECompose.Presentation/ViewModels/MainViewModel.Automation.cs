@@ -198,7 +198,7 @@ public sealed partial class MainViewModel
                 return;
             // Playing: the same plan again, taking effect when the current item ends, so nothing is heard to change (ARR-90).
             var index = sent.Plan.ItemIndexAt(_planPosition);
-            _ = SendPlanAsync(null, sent.Plan, IsPlaying ? sent.SwapAt ?? sent.Plan.Items[index].PlanEnd : null);
+            PlanSend = SendPlanAsync(null, sent.Plan, IsPlaying ? sent.SwapAt ?? sent.Plan.Items[index].PlanEnd : null);
         });
     }
 

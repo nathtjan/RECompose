@@ -89,7 +89,13 @@ public class LibraryTests
         try
         {
             File.WriteAllText(Path.Combine(root, "settings.json"), "{ not json");
-            Assert.Equal(256, new DataStore(root).LoadSettings().Audio.BufferSize);
+            var store = new DataStore(root);
+            Assert.Equal(256, store.LoadSettings().Audio.BufferSize);
+
+            // The next save must not replace it: it is kept beside the new one (DM-90).
+            store.SaveSettings(store.LoadSettings());
+            var kept = Assert.Single(Directory.GetFiles(root, "settings.json.damaged-*"));
+            Assert.Equal("{ not json", File.ReadAllText(kept));
         }
         finally
         {

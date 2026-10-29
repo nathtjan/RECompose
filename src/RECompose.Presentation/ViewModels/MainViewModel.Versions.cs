@@ -38,6 +38,34 @@ public sealed partial class MainViewModel
         ShowToast($"Restored {service.Name} from {versions[index].Version.At.ToLocalTime().ToString("d MMM, HH:mm", CultureInfo.InvariantCulture)}.");
     }
 
+    /// <summary>Song › Restore earlier version…: the same for the loaded song, e.g. as it was before an assistant turn (DM-90).</summary>
+    public async Task RestoreSongVersionAsync()
+    {
+        if (_song is not { } song)
+            return;
+        var versions = _store.ListVersions(song.Id)
+            .Select(v => (Version: v, Song: _store.LoadSongVersion(v)))
+            .Where(v => v.Song is not null)
+            .ToList();
+        if (versions.Count == 0)
+        {
+            ShowToast("No earlier versions of this song yet. One is kept every five minutes while you edit.");
+            return;
+        }
+
+        var labels = versions.Select(v =>
+        {
+            var count = v.Song!.Sections.Count;
+            return $"{v.Version.At.ToLocalTime().ToString("ddd d MMM, HH:mm", CultureInfo.InvariantCulture)} · {v.Song.Title} · {count} section{(count == 1 ? string.Empty : "s")}";
+        }).ToList();
+        if (await _dialogs.ChooseAsync("Restore earlier version", $"Choose the version of {song.Title} to restore. The current one is kept as a version too.", labels, "Restore") is not { } index)
+            return;
+
+        var restored = versions[index].Song! with { Id = song.Id };
+        Commit($"Restore {song.Title} from {labels[index]}", restored, []);
+        ShowToast($"Restored {song.Title} from {versions[index].Version.At.ToLocalTime().ToString("d MMM, HH:mm", CultureInfo.InvariantCulture)}.");
+    }
+
     /// <summary>Export service…: the service and its songs' details, no audio (REL-45).</summary>
     public async Task ExportServiceAsync()
     {

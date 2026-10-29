@@ -76,6 +76,4 @@ public sealed class VoiceSafeguards
         _last = (key, clockSec);
         return VoiceVerdict.Accept;
     }
-
-    public void Reset() => _last = null;
 }

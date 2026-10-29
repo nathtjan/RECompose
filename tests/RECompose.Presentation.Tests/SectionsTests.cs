@@ -116,6 +116,21 @@ public sealed class SectionsTests : IDisposable
         Assert.Equal(string.Empty, vm.NowLabel);
     }
 
+    [Fact]
+    public async Task DM90_restore_earlier_version_brings_the_song_back()
+    {
+        await using var vm = await ImportedAsync();
+        Directory.Delete(Path.Combine(_root, "data", "versions"), true); // the import's own saves were versions too
+        await vm.DetectSectionsAsync(); // the first change keeps the song as it was
+        Assert.NotEmpty(vm.Song!.Model.Sections);
+
+        await vm.RestoreSongVersionAsync(); // the scripted dialog chooses the newest
+        Assert.Empty(vm.Song!.Model.Sections);
+
+        vm.UndoCommand.Execute(null); // one undo step
+        Assert.NotEmpty(vm.Song!.Model.Sections);
+    }
+
     // ---- Milestone 3: arrangements on the Prepare screen ---------------------------------------
 
     private static long PlanFrames(MainViewModel vm) => (long)Math.Round(vm.Song!.Plan.DurationSec * 48000);

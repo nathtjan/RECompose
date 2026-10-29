@@ -100,4 +100,19 @@ public sealed class VersionsAndExchangeTests : IDisposable
         using var junk = new MemoryStream("not a zip"u8.ToArray());
         Assert.ThrowsAny<InvalidDataException>(() => ServiceExchange.Import(junk, [], _ => true, () => "x"));
     }
+
+    [Theory]
+    [InlineData("../../x", "t0")]
+    [InlineData("..", "t0")]
+    [InlineData("a", "../t")]
+    [InlineData("a", "")]
+    public void REL45_ids_that_would_leave_the_data_folder_are_refused(string songId, string trackId)
+    {
+        var song = MakeSong(songId, "Champion", "C:/stems/keys.wav") with { Tracks = [new Track { Id = trackId, Name = "Keys", File = "C:/stems/keys.wav" }] };
+        using var file = new MemoryStream();
+        ServiceExchange.Export(new Service { Id = "s", Name = "Sunday", Entries = [ServiceEdit.NewEntry(song)] }, [song], file);
+
+        file.Position = 0;
+        Assert.Throws<InvalidDataException>(() => ServiceExchange.Import(file, [], _ => true, () => "x"));
+    }
 }

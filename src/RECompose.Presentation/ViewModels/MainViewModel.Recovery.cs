@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-using System.Globalization;
 using RECompose.Core.Planning;
 using RECompose.Core.Recovery;
 using RECompose.Engine;
@@ -242,6 +241,4 @@ public sealed partial class MainViewModel
         OnPropertyChanged(nameof(PanicResumeText));
         OnPropertyChanged(nameof(HasPanicResume));
     }
-
-    private static string Invariant(double value) => value.ToString("0.###", CultureInfo.InvariantCulture);
 }

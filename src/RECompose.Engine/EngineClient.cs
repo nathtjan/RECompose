@@ -455,8 +455,6 @@ public sealed class EngineClient : IAsyncDisposable
         return LoadedSong.From(reply) ?? throw new EngineProtocolException("loadSong returned no song.");
     }
 
-    public Task UnloadSongAsync(CancellationToken ct = default) => Session.Connection.RequestAsync("unloadSong", cancellationToken: ct);
-
     public Task UnloadNextSongAsync(CancellationToken ct = default) =>
         Session.Connection.RequestAsync("unloadSong", new JsonObject { ["slot"] = "next" }, ct);
 

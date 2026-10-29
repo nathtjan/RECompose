@@ -131,6 +131,9 @@
           <Button Classes="ghost" Command="{Binding OpenControlsCommand}" ToolTip.Tip="Keys, pedals and jump timing" AutomationProperties.Name="Controls" Padding="6,0">
             <c:Icon Glyph="pedal" IconSize="16" />
           </Button>
+          <Button Classes="ghost" Command="{Binding QuickCheckCommand}" ToolTip.Tip="Run check: the quick service check. Playback keeps going." AutomationProperties.Name="Run check">
+            <TextBlock Classes="label" Text="CHECK" VerticalAlignment="Center" />
+          </Button>
           <Button Classes="ghost" Command="{Binding OpenSettingsCommand}" ToolTip.Tip="Audio device. Click to change it." AutomationProperties.Name="Audio">
             <StackPanel Orientation="Horizontal" Spacing="8">
               <Ellipse Classes="led" Classes.ok="{Binding AudioOk}" VerticalAlignment="Center" />

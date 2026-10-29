@@ -62,12 +62,6 @@ public sealed class DataStore(string root)
         Write(SongPath(song.Id), song, RecomposeJsonContext.Default.Song);
     }
 
-    public void DeleteSong(string id)
-    {
-        if (File.Exists(SongPath(id)))
-            File.Delete(SongPath(id));
-    }
-
     /// <summary>Every service in the data folder; damaged files are skipped.</summary>
     public List<Service> LoadServices()
     {
@@ -213,7 +207,16 @@ public sealed class DataStore(string root)
             }
             catch (JsonException)
             {
-                return null; // a damaged file reads as missing rather than crashing the app
+                // A damaged file reads as missing rather than crashing the app; it is moved aside so the next save cannot replace it.
+                try
+                {
+                    File.Move(path, $"{path}.damaged-{DateTime.Now.ToString("yyyyMMdd'T'HHmmss", System.Globalization.CultureInfo.InvariantCulture)}", overwrite: true);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                }
+
+                return null;
             }
             catch (FileNotFoundException)
             {

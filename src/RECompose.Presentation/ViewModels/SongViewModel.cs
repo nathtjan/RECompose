@@ -350,8 +350,6 @@ public sealed class SongViewModel : ObservableObject
     public string MeterText { get => _meterText; set => Set(ref _meterText, value); }
     public string DownbeatText { get => _downbeatText; set => Set(ref _downbeatText, value); }
 
-    public void RefreshLanes() => WaveformVersion++;
-
     /// <summary>Puts the SONG tab fields back to the model (after an analysis changed it).</summary>
     public void ResetFields()
     {

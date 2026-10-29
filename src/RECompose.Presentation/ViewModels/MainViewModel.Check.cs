@@ -81,7 +81,7 @@ public sealed class ServiceCheckViewModel : ObservableObject
 
 public sealed partial class MainViewModel
 {
-    private RelayCommand? _openCheck;
+    private RelayCommand? _openCheck, _quickCheck;
     private ServiceCheckViewModel? _openCheckViewModel;
 
     public string CheckServiceName => _service?.Name ?? string.Empty;
@@ -175,10 +175,16 @@ public sealed partial class MainViewModel
     }
 
     /// <summary>The quick check of Perform (REL-3): items 1, 5, 7, 8, 9 in a moment, shown as a line.</summary>
+    public RelayCommand QuickCheckCommand => _quickCheck ??= new RelayCommand(RunQuickCheck);
+
     public void RunQuickCheck()
     {
         if (RunServiceCheck(quick: true) is not { } result)
+        {
+            ShowToast("Load a service to check it.");
             return;
+        }
+
         var problems = result.Items.Where(i => i.Status is CheckStatus.Warning or CheckStatus.Error).ToList();
         ShowToast(problems.Count == 0 ? $"{result.Text}" : $"{result.Text} · {problems[0].Title}: {problems[0].Detail}");
     }

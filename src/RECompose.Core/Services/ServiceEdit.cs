@@ -106,10 +106,6 @@ public static class ServiceEdit
         return entry with { Arrangement = ArrangementChoice.OfCustom(copy) };
     }
 
-    /// <summary>A custom arrangement that starts empty or as written, for an entry that had none to copy.</summary>
-    public static ServiceEntry WithCustom(ServiceEntry entry, Arrangement arrangement) =>
-        entry with { Arrangement = ArrangementChoice.OfCustom(arrangement with { Origin = ArrangementOrigin.Copy }) };
-
     /// <summary>The variant a custom arrangement was copied from, if it still exists.</summary>
     public static Arrangement? RevertTarget(ServiceEntry entry, Song song) =>
         entry.Arrangement is { Type: ArrangementChoiceType.Custom, Arrangement.CopiedFromId: { } from }

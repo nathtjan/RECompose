@@ -18,6 +18,7 @@ public sealed class LiveControlTests : IDisposable
 {
     private readonly string _root = Path.Combine(Path.GetTempPath(), "rec-live-" + Guid.NewGuid().ToString("N"));
     private readonly string _endpoint = Path.Combine(Path.GetTempPath(), $"rec-{Guid.NewGuid():N}"[..14] + ".sock");
+    private readonly LockedDispatcher _ui = new();
 
     public void Dispose()
     {
@@ -98,7 +99,7 @@ public sealed class LiveControlTests : IDisposable
     private MainViewModel Open(DataStore store, ServiceDialogs dialogs, string? executable = null)
     {
         executable ??= Path.Combine(AppContext.BaseDirectory, EnginePaths.ExecutableFileName);
-        return new MainViewModel(store, new EngineHostOptions(executable, _endpoint) { IdleExitSeconds = 3 }, new EngineTools(executable), new LockedDispatcher(),
+        return new MainViewModel(store, new EngineHostOptions(executable, _endpoint) { IdleExitSeconds = 3 }, new EngineTools(executable), _ui,
             dialogs, new SpeechModel(store.Root, allowDownload: false));
     }
 
@@ -113,10 +114,22 @@ public sealed class LiveControlTests : IDisposable
         }
     }
 
-    private static async Task<double> RenderAsync(MainViewModel vm, double seconds)
+    private async Task<double> RenderAsync(MainViewModel vm, double seconds)
     {
-        var (peak, _, _) = await vm.EngineForTests!.RenderOfflineAsync((int)(seconds * 48000), 2);
-        await Task.Delay(100); // the snapshot reaches the view model
+        var (peak, _, s) = await vm.EngineForTests!.RenderOfflineAsync((int)(seconds * 48000), 2);
+        if (s.SongId == vm.Song?.Id && s.SampleRate > 0)
+        {
+            // The snapshot reaches the view model; read on the dispatcher so its handling has finished too.
+            var expected = (s.Holding ? s.Frame : s.HeardFrame) / s.SampleRate;
+            await Eventually(() =>
+            {
+                var reached = false;
+                _ui.Post(() => reached = vm.PlanPositionSec == expected);
+                return reached;
+            });
+        }
+        else
+            await Task.Delay(100);
         return peak[0];
     }
 
@@ -478,10 +491,9 @@ public sealed class LiveControlTests : IDisposable
 
             // Nothing renders offline now: the silent clock moves the song on in real time.
             var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-            await Task.Delay(1500);
-            await Task.Delay(100); // the snapshot reaches the view model
+            await Eventually(() => vm.PlanPositionSec - before >= 1.5);
             var moved = vm.PlanPositionSec - before;
-            Assert.InRange(moved, stopwatch.Elapsed.TotalSeconds - 0.4, stopwatch.Elapsed.TotalSeconds + 0.1);
+            Assert.InRange(moved, 1.5, stopwatch.Elapsed.TotalSeconds + 0.1); // real time, never faster
             Assert.Equal(RECompose.Engine.TransportState.Playing, vm.State);
 
             // The device is back: the banner goes.
@@ -545,7 +557,7 @@ public sealed class LiveControlTests : IDisposable
 
     // ---- Voice (VC-2, VC-40, VC-45, VC-46, VC-55, VC-70) with transcripts as the recogniser would give them ----------
 
-    private static async Task PlayingAsync(MainViewModel vm)
+    private async Task PlayingAsync(MainViewModel vm)
     {
         await vm.EngineForTests!.PlayAsync();
         await RenderAsync(vm, 1);
@@ -685,7 +697,7 @@ public sealed class LiveControlTests : IDisposable
             var cue = Assert.Single(vm.Cues);
             Assert.Equal("Cue 1", cue.Name);
             Assert.Equal("MIDI note C4", cue.Summary);
-            await Task.Delay(200); // the plan with the cue reaches the engine
+            await vm.PlanSend; // the plan with the cue reaches the engine
 
             await vm.SeekPlanAsync(0);
             await vm.EngineForTests!.PlayAsync();

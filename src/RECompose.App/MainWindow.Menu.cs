@@ -18,7 +18,7 @@ public partial class MainWindow
         ("Edit", [("Undo", vm.UndoCommand), ("Redo", vm.RedoCommand)]),
         ("Song", [("Load", vm.LoadSelectedCommand), ("Mark section", vm.MarkCommand), ("Add cue", vm.AddCueCommand), ("-", null),
             ("Key up", vm.KeyUpCommand), ("Key down", vm.KeyDownCommand), ("Tempo up", vm.TempoUpCommand), ("Tempo down", vm.TempoDownCommand), ("-", null),
-            ("Re-analyse click", vm.ReanalyseClickCommand), ("Transcribe guide again", vm.RetranscribeCommand)]),
+            ("Re-analyse click", vm.ReanalyseClickCommand), ("Transcribe guide again", vm.RetranscribeCommand), ("Restore earlier version…", vm.RestoreSongVersionCommand)]),
         ("Service", [("New service…", vm.Setlist.NewServiceCommand), ("Duplicate service…", vm.Setlist.DuplicateServiceCommand), ("Rename…", vm.Setlist.RenameServiceCommand), ("-", null),
             ("Service check", vm.OpenCheckCommand), ("Restore earlier version…", vm.Setlist.RestoreVersionCommand), ("-", null),
             ("Export service…", vm.Setlist.ExportServiceCommand), ("Import service…", vm.Setlist.ImportServiceCommand), ("Export report", vm.ExportReportCommand)]),

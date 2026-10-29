@@ -157,14 +157,6 @@ public sealed class TrackViewModel : ObservableObject
             Set(ref _solo, s, nameof(Solo));
     }
 
-    public void Retrack(Track track)
-    {
-        Track = track;
-        OnPropertyChanged(nameof(Name));
-        OnPropertyChanged(nameof(Group));
-        OnPropertyChanged(nameof(RoleLabel));
-    }
-
     /// <summary>Takes a new peak (linear) and lets the meter fall back by <paramref name="decay"/>.</summary>
     public void FeedMeter(float peak, double decay)
     {
