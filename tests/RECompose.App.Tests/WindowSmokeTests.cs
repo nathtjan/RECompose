@@ -251,10 +251,13 @@ public sealed class WindowSmokeTests : IDisposable
                     [new DeviceTypeInfo("Windows Audio", ["Speakers", "Focusrite USB"]), new DeviceTypeInfo("ASIO", ["Focusrite USB ASIO"])],
                     new DeviceInfo("ASIO", "Focusrite USB ASIO", 48000, 256, ["Out 1", "Out 2", "Out 3", "Out 4"], [44100, 48000], [128, 256, 512], 312),
                     new Core.Settings.AudioSettings()),
+                MaxHeight = 480, // a short screen: the settings scroll, Apply stays in view
             };
             audio.Show();
             Dispatcher.UIThread.RunJobs();
             Assert.NotNull(audio.CaptureRenderedFrame());
+            var apply = audio.FindControl<Button>("ApplyButton")!;
+            Assert.True(apply.TranslatePoint(new Avalonia.Point(0, apply.Bounds.Height), audio)!.Value.Y <= audio.Bounds.Height);
             audio.Close();
         }, TestContext.Current.CancellationToken);
 

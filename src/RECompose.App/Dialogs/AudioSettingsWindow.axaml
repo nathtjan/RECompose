@@ -11,77 +11,81 @@
         WindowStartupLocation="CenterOwner"
         CanResize="False"
         ShowInTaskbar="False">
-  <StackPanel Margin="20" Spacing="12">
-    <TextBlock Classes="title" Text="Audio" />
-    <TextBlock Classes="mono" Foreground="{DynamicResource text-secondary}" Text="{Binding CurrentDevice}" TextWrapping="Wrap" />
-
-    <Grid ColumnDefinitions="140,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="10">
-      <TextBlock Grid.Row="0" Classes="label" Text="DRIVER" VerticalAlignment="Center" />
-      <ComboBox Grid.Row="0" Grid.Column="1" ItemsSource="{Binding DeviceTypes}" SelectedItem="{Binding SelectedType}" HorizontalAlignment="Stretch" />
-
-      <TextBlock Grid.Row="1" Classes="label" Text="DEVICE" VerticalAlignment="Center" />
-      <ComboBox Grid.Row="1" Grid.Column="1" ItemsSource="{Binding Devices}" SelectedItem="{Binding SelectedDevice}" HorizontalAlignment="Stretch" />
-
-      <TextBlock Grid.Row="2" Classes="label" Text="SAMPLE RATE" VerticalAlignment="Center" />
-      <ComboBox Grid.Row="2" Grid.Column="1" ItemsSource="{Binding SampleRates}" SelectedItem="{Binding SelectedRate}" HorizontalAlignment="Stretch" />
-
-      <TextBlock Grid.Row="3" Classes="label" Text="BUFFER" VerticalAlignment="Center" />
-      <ComboBox Grid.Row="3" Grid.Column="1" ItemsSource="{Binding BufferSizes}" SelectedItem="{Binding SelectedBuffer}" HorizontalAlignment="Stretch" />
-
-      <TextBlock Grid.Row="4" Classes="label" Text="MAIN" VerticalAlignment="Center" ToolTip.Tip="Music tracks" />
-      <ComboBox Grid.Row="4" Grid.Column="1" ItemsSource="{Binding OutputOptions}" SelectedItem="{Binding MainOutput}" HorizontalAlignment="Stretch" />
-
-      <TextBlock Grid.Row="5" Classes="label" Text="CUE" VerticalAlignment="Center" ToolTip.Tip="Click and guide, for in-ears" />
-      <ComboBox Grid.Row="5" Grid.Column="1" ItemsSource="{Binding OutputOptions}" SelectedItem="{Binding CueOutput}" HorizontalAlignment="Stretch" />
-
-      <TextBlock Grid.Row="6" Grid.Column="1" Classes="meta" TextWrapping="Wrap"
-                 Text="Channels listed are the open device's outputs. Choose the device first and apply, then pick outputs if it has more than two." />
-
-      <TextBlock Grid.Row="7" Classes="label" Text="FALLBACK" VerticalAlignment="Center" ToolTip.Tip="Takes over within a second if the main device is lost" />
-      <ComboBox Grid.Row="7" Grid.Column="1" ItemsSource="{Binding FallbackOptions}" SelectedItem="{Binding SelectedFallback}" HorizontalAlignment="Stretch"
-                AutomationProperties.Name="Fallback device" />
-
-      <CheckBox Grid.Row="8" Grid.Column="1" IsChecked="{Binding AutoSwitchBack}" Content="Switch back to the main device by itself" />
-      <TextBlock Grid.Row="9" Grid.Column="1" Classes="meta" TextWrapping="Wrap"
-                 Text="If the main device is lost, playback moves to the fallback at the same position. Without one, the song keeps time silently for a minute. When the main device returns, RECompose switches back at the next section boundary." />
-
-      <TextBlock Grid.Row="10" Classes="label" Text="RENDER CACHE" VerticalAlignment="Center" ToolTip.Tip="Stems rendered in other keys and tempos" />
-      <ComboBox Grid.Row="10" Grid.Column="1" ItemsSource="{Binding CacheBudgets}" SelectedItem="{Binding SelectedCacheBudget}" HorizontalAlignment="Stretch"
-                AutomationProperties.Name="Render cache size" />
-      <DockPanel Grid.Row="11" Grid.Column="1">
-        <Button DockPanel.Dock="Right" Content="Clean cache" Command="{Binding CleanCacheCommand}" />
-        <TextBlock Classes="meta" Text="{Binding CacheText}" VerticalAlignment="Center" TextWrapping="Wrap" />
-      </DockPanel>
-
-      <TextBlock Grid.Row="12" Classes="label" Text="VOICE" VerticalAlignment="Center" ToolTip.Tip="The talkback mic for voice control" />
-      <ComboBox Grid.Row="12" Grid.Column="1" ItemsSource="{Binding VoiceInputs}" SelectedItem="{Binding VoiceInput}" HorizontalAlignment="Stretch"
-                AutomationProperties.Name="Voice input" />
-      <StackPanel Grid.Row="13" Grid.Column="1" Spacing="6">
-        <CheckBox IsChecked="{Binding VoicePushToTalk}" Content="Push to talk (hold the Talk control, Settings › Controls)" />
-        <CheckBox IsChecked="{Binding VoiceConfirm}" Content="Ask before acting" />
-        <CheckBox IsChecked="{Binding VoiceGate}" Content="Ignore speech while the guide is talking" />
-        <CheckBox IsChecked="{Binding VoiceBareNames}" Content="Accept bare section names" />
-      </StackPanel>
-      <Border Grid.Row="14" Grid.Column="1" Classes="inset" Padding="10">
-        <StackPanel Spacing="6">
-          <ProgressBar Minimum="0" Maximum="1" Value="{Binding VoiceLevel}" Height="4" MinHeight="4" AutomationProperties.Name="Voice input level" />
-          <TextBlock Classes="mono" Text="{Binding VoiceHeard}" TextWrapping="Wrap" />
-          <TextBlock Classes="meta" Text="{Binding VoiceWouldDo}" TextWrapping="Wrap" />
-        </StackPanel>
-      </Border>
-      <TextBlock Grid.Row="15" Grid.Column="1" Classes="meta" TextWrapping="Wrap"
-                 Text="The input is a channel of the audio device. Apply, then open this again to test: while it is open nothing you say changes playback." />
-
-      <TextBlock Grid.Row="16" Classes="label" Text="MD CONFIRM" VerticalAlignment="Center" ToolTip.Tip="Spoken confirmations of live actions, for the MD's in-ear" />
-      <ComboBox Grid.Row="16" Grid.Column="1" ItemsSource="{Binding MdOptions}" SelectedItem="{Binding MdOutput}" HorizontalAlignment="Stretch"
-                AutomationProperties.Name="MD confirm output" />
-      <TextBlock Grid.Row="17" Grid.Column="1" Classes="meta" Foreground="{DynamicResource state-warning}" Text="{Binding MdWarning}"
-                 IsVisible="{Binding MdWarning, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-    </Grid>
-
-    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8" Margin="0,8,0,0">
+  <DockPanel Margin="20">
+    <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8" Margin="0,20,0,0">
       <Button x:Name="CancelButton" Content="Cancel" IsCancel="True" />
       <Button x:Name="ApplyButton" Classes="primary" Content="Apply" IsDefault="True" />
     </StackPanel>
-  </StackPanel>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+      <StackPanel Spacing="12" Margin="0,0,16,0">
+        <TextBlock Classes="title" Text="Audio" />
+        <TextBlock Classes="mono" Foreground="{DynamicResource text-secondary}" Text="{Binding CurrentDevice}" TextWrapping="Wrap" />
+
+        <Grid ColumnDefinitions="140,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="10">
+          <TextBlock Grid.Row="0" Classes="label" Text="DRIVER" VerticalAlignment="Center" />
+          <ComboBox Grid.Row="0" Grid.Column="1" ItemsSource="{Binding DeviceTypes}" SelectedItem="{Binding SelectedType}" HorizontalAlignment="Stretch" />
+
+          <TextBlock Grid.Row="1" Classes="label" Text="DEVICE" VerticalAlignment="Center" />
+          <ComboBox Grid.Row="1" Grid.Column="1" ItemsSource="{Binding Devices}" SelectedItem="{Binding SelectedDevice}" HorizontalAlignment="Stretch" />
+
+          <TextBlock Grid.Row="2" Classes="label" Text="SAMPLE RATE" VerticalAlignment="Center" />
+          <ComboBox Grid.Row="2" Grid.Column="1" ItemsSource="{Binding SampleRates}" SelectedItem="{Binding SelectedRate}" HorizontalAlignment="Stretch" />
+
+          <TextBlock Grid.Row="3" Classes="label" Text="BUFFER" VerticalAlignment="Center" />
+          <ComboBox Grid.Row="3" Grid.Column="1" ItemsSource="{Binding BufferSizes}" SelectedItem="{Binding SelectedBuffer}" HorizontalAlignment="Stretch" />
+
+          <TextBlock Grid.Row="4" Classes="label" Text="MAIN" VerticalAlignment="Center" ToolTip.Tip="Music tracks" />
+          <ComboBox Grid.Row="4" Grid.Column="1" ItemsSource="{Binding OutputOptions}" SelectedItem="{Binding MainOutput}" HorizontalAlignment="Stretch" />
+
+          <TextBlock Grid.Row="5" Classes="label" Text="CUE" VerticalAlignment="Center" ToolTip.Tip="Click and guide, for in-ears" />
+          <ComboBox Grid.Row="5" Grid.Column="1" ItemsSource="{Binding OutputOptions}" SelectedItem="{Binding CueOutput}" HorizontalAlignment="Stretch" />
+
+          <TextBlock Grid.Row="6" Grid.Column="1" Classes="meta" TextWrapping="Wrap"
+                     Text="Channels listed are the open device's outputs. Choose the device first and apply, then pick outputs if it has more than two." />
+
+          <TextBlock Grid.Row="7" Classes="label" Text="FALLBACK" VerticalAlignment="Center" ToolTip.Tip="Takes over within a second if the main device is lost" />
+          <ComboBox Grid.Row="7" Grid.Column="1" ItemsSource="{Binding FallbackOptions}" SelectedItem="{Binding SelectedFallback}" HorizontalAlignment="Stretch"
+                    AutomationProperties.Name="Fallback device" />
+
+          <CheckBox Grid.Row="8" Grid.Column="1" IsChecked="{Binding AutoSwitchBack}" Content="Switch back to the main device by itself" />
+          <TextBlock Grid.Row="9" Grid.Column="1" Classes="meta" TextWrapping="Wrap"
+                     Text="If the main device is lost, playback moves to the fallback at the same position. Without one, the song keeps time silently for a minute. When the main device returns, RECompose switches back at the next section boundary." />
+
+          <TextBlock Grid.Row="10" Classes="label" Text="RENDER CACHE" VerticalAlignment="Center" ToolTip.Tip="Stems rendered in other keys and tempos" />
+          <ComboBox Grid.Row="10" Grid.Column="1" ItemsSource="{Binding CacheBudgets}" SelectedItem="{Binding SelectedCacheBudget}" HorizontalAlignment="Stretch"
+                    AutomationProperties.Name="Render cache size" />
+          <DockPanel Grid.Row="11" Grid.Column="1">
+            <Button DockPanel.Dock="Right" Content="Clean cache" Command="{Binding CleanCacheCommand}" />
+            <TextBlock Classes="meta" Text="{Binding CacheText}" VerticalAlignment="Center" TextWrapping="Wrap" />
+          </DockPanel>
+
+          <TextBlock Grid.Row="12" Classes="label" Text="VOICE" VerticalAlignment="Center" ToolTip.Tip="The talkback mic for voice control" />
+          <ComboBox Grid.Row="12" Grid.Column="1" ItemsSource="{Binding VoiceInputs}" SelectedItem="{Binding VoiceInput}" HorizontalAlignment="Stretch"
+                    AutomationProperties.Name="Voice input" />
+          <StackPanel Grid.Row="13" Grid.Column="1" Spacing="6">
+            <CheckBox IsChecked="{Binding VoicePushToTalk}" Content="Push to talk (hold the Talk control, Settings › Controls)" />
+            <CheckBox IsChecked="{Binding VoiceConfirm}" Content="Ask before acting" />
+            <CheckBox IsChecked="{Binding VoiceGate}" Content="Ignore speech while the guide is talking" />
+            <CheckBox IsChecked="{Binding VoiceBareNames}" Content="Accept bare section names" />
+          </StackPanel>
+          <Border Grid.Row="14" Grid.Column="1" Classes="inset" Padding="10">
+            <StackPanel Spacing="6">
+              <ProgressBar Minimum="0" Maximum="1" Value="{Binding VoiceLevel}" Height="4" MinHeight="4" AutomationProperties.Name="Voice input level" />
+              <TextBlock Classes="mono" Text="{Binding VoiceHeard}" TextWrapping="Wrap" />
+              <TextBlock Classes="meta" Text="{Binding VoiceWouldDo}" TextWrapping="Wrap" />
+            </StackPanel>
+          </Border>
+          <TextBlock Grid.Row="15" Grid.Column="1" Classes="meta" TextWrapping="Wrap"
+                     Text="The input is a channel of the audio device. Apply, then open this again to test: while it is open nothing you say changes playback." />
+
+          <TextBlock Grid.Row="16" Classes="label" Text="MD CONFIRM" VerticalAlignment="Center" ToolTip.Tip="Spoken confirmations of live actions, for the MD's in-ear" />
+          <ComboBox Grid.Row="16" Grid.Column="1" ItemsSource="{Binding MdOptions}" SelectedItem="{Binding MdOutput}" HorizontalAlignment="Stretch"
+                    AutomationProperties.Name="MD confirm output" />
+          <TextBlock Grid.Row="17" Grid.Column="1" Classes="meta" Foreground="{DynamicResource state-warning}" Text="{Binding MdWarning}"
+                     IsVisible="{Binding MdWarning, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+        </Grid>
+      </StackPanel>
+    </ScrollViewer>
+  </DockPanel>
 </Window>

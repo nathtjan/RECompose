@@ -220,6 +220,9 @@ public sealed class AvaloniaDialogs(Window owner) : IDialogs
     public async Task<bool> EditAudioSettingsAsync(AudioSettingsViewModel settings)
     {
         var window = new AudioSettingsWindow { DataContext = settings };
+        // Taller than a small screen: cap it there and scroll the settings, with Apply always in view.
+        if (owner.Screens.ScreenFromTopLevel(owner) is { } screen)
+            window.MaxHeight = screen.WorkingArea.Height / screen.Scaling - 48;
         return await window.ShowDialog<bool>(owner);
     }
 
