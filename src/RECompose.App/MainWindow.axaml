@@ -575,7 +575,12 @@
                           <StackPanel Orientation="Horizontal" Spacing="8">
                             <TextBlock Classes="meta" Text="{Binding RoleLabel}" />
                             <TextBlock Classes="meta" Text="{Binding OutputLabel}" />
-                            <TextBlock Classes="meta error" Text="{Binding Problem}" IsVisible="{Binding Missing}" />
+                            <!-- The row is too narrow for the problem and a button, so the problem is the button's tooltip -->
+                            <Button Classes="ghost" Padding="0" MinHeight="0" Height="16" IsVisible="{Binding Missing}"
+                                    Command="{Binding $parent[Window].((vm:MainViewModel)DataContext).RelinkLoadedSongCommand}"
+                                    ToolTip.Tip="{Binding Problem, StringFormat='{}{0}. Choose the folder the stems moved to; stems are found by file name.'}">
+                              <TextBlock Classes="meta error" Text="Relink…" />
+                            </Button>
                           </StackPanel>
                         </StackPanel>
                       </DockPanel>

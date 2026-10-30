@@ -81,7 +81,7 @@ public sealed class ServiceCheckViewModel : ObservableObject
 
 public sealed partial class MainViewModel
 {
-    private RelayCommand? _openCheck, _quickCheck;
+    private RelayCommand? _openCheck, _quickCheck, _relinkLoadedSong;
     private ServiceCheckViewModel? _openCheckViewModel;
 
     public string CheckServiceName => _service?.Name ?? string.Empty;
@@ -101,6 +101,9 @@ public sealed partial class MainViewModel
     }
 
     public bool HasCheckBadge => _service is not null;
+
+    /// <summary>Relink… on a missing stem of the loaded song, for songs outside the loaded service (REL-1 item 1).</summary>
+    public RelayCommand RelinkLoadedSongCommand => _relinkLoadedSong ??= new RelayCommand(() => RelinkSongAsync(_song!.Id), () => _song is not null);
 
     public RelayCommand OpenCheckCommand => _openCheck ??= new RelayCommand(OpenCheckAsync, () => _service is not null);
 

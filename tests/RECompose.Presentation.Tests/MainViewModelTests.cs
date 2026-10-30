@@ -249,6 +249,26 @@ public sealed class MainViewModelTests : IDisposable
         Assert.Contains("File missing: Bass", vm.Toast);
         Assert.Equal(1, vm.Song.MissingCount);
     }
+
+    [Fact]
+    public async Task Relink_on_the_loaded_song_finds_a_moved_stem_by_file_name() // REL-1
+    {
+        await using var vm = NewViewModel();
+        await vm.InitializeAsync();
+        var folder = StemsFolder();
+        await vm.ImportFolderAsync(folder);
+        var moved = Path.Combine(_root, "moved");
+        Directory.CreateDirectory(moved);
+        File.Move(Path.Combine(folder, "Bass.wav"), Path.Combine(moved, "Bass.wav"));
+        await vm.LoadSongAsync(vm.Songs[0].Id);
+        Assert.Equal(1, vm.Song!.MissingCount);
+
+        _dialogs.Folder = moved;
+        vm.RelinkLoadedSongCommand.Execute(null);
+
+        await Eventually(() => vm.Song!.MissingCount == 0);
+        Assert.Contains("Relinked 1 stem", vm.Toast);
+    }
 }
 
 /// <summary>Runs posted work inline, one at a time (engine events arrive on another thread).</summary>
