@@ -561,10 +561,12 @@
                   <TextBlock Classes="label" Text="{Binding TimelineLaneLabel}" VerticalAlignment="Center" />
                 </DockPanel>
               </Border>
-              <ItemsControl ItemsSource="{Binding Song.Tracks}">
+              <ItemsControl x:Name="TrackLanes" ItemsSource="{Binding Song.Tracks}">
                 <ItemsControl.ItemTemplate>
                   <DataTemplate x:DataType="vm:TrackViewModel">
-                    <Border Height="56" Classes="panel" BorderThickness="0,0,1,1" Padding="12,0" ContextRequested="OpenTrackMenu">
+                    <Border Height="56" Classes="panel" BorderThickness="0,0,1,1" Padding="12,0" ContextRequested="OpenTrackMenu"
+                            PointerPressed="OnTrackPressed" PointerMoved="OnTrackMoved" PointerReleased="OnTrackReleased"
+                            ToolTip.Tip="Drag to move the track. Shift-drag its waveform to offset it.">
                       <DockPanel>
                         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
                           <ToggleButton Classes="ms mute" Content="M" IsChecked="{Binding Mute}" ToolTip.Tip="Mute" />
@@ -1059,7 +1061,8 @@
                   </ItemsControl.ItemsPanel>
                   <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="vm:TrackViewModel">
-                      <Border Classes="strip" Width="112">
+                      <Border Classes="strip" Width="112" Tag="strip" ContextRequested="OpenTrackMenu"
+                              PointerPressed="OnTrackPressed" PointerMoved="OnTrackMoved" PointerReleased="OnTrackReleased">
                         <DockPanel>
                           <TextBlock DockPanel.Dock="Top" Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Name}" />
                           <TextBlock DockPanel.Dock="Top" Classes="meta" Text="{Binding RoleLabel}" TextTrimming="CharacterEllipsis" />

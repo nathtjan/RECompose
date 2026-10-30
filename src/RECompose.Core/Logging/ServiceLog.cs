@@ -18,7 +18,7 @@ public static class LogChips
     public const string Errors = "Errors";
 
     public static IReadOnlyList<string> Chips { get; } =
-        [All, "Voice", "Pedal", "Jumps", "Sections", "Cues", "Guide", "Transport", "Assistant", Errors];
+        [All, "Voice", "Pedal", "Jumps", "Sections", "Cues", "Guide", "Tracks", "Transport", "Assistant", Errors];
 
     /// <summary>The chip of a category the app logs under; other categories show under All only.</summary>
     public static string Of(string category) => category switch
@@ -29,6 +29,7 @@ public static class LogChips
         "Sections" => "Sections",
         "Cues" => "Cues",
         "Guide" => "Guide",
+        "Tracks" => "Tracks",
         "Transport" or "Perform" or "Recovery" or "Audio" => "Transport",
         "Assistant" => "Assistant",
         "Errors" => Errors,

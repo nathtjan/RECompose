@@ -1257,17 +1257,18 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         {
             Name = string.IsNullOrWhiteSpace(edit.Name) ? track.Name : edit.Name.Trim(),
             Role = role,
-            Group = role switch { TrackRole.Click => TrackGroups.Click, TrackRole.Guide or TrackRole.SpokenGuide => TrackGroups.Guide, _ => edit.Group },
+            Group = TrackGroups.For(role, edit.Group),
             Output = OutputChoices.ToOutput(edit.Output),
         };
         if (changed == track)
             return;
 
-        var model = loaded.Model;
-        _store.SaveSong(model with { Tracks = ImportRules.InLaneOrder(model.Tracks.Select(t => t.Id == trackId ? changed : t)), UpdatedAt = DateTimeOffset.UtcNow });
-        AppLog.Write("Library", $"{model.Title}: edited track {changed.Name}");
-        ShowToast($"Saved {changed.Name}");
-        await LoadSongAsync(model.Id, force: true, entry: loaded.Entry, serviceId: _loadedServiceId);
+        // A track that changes group joins the end of its new group; otherwise it keeps its place.
+        var regrouped = changed.Role != track.Role || changed.Group != track.Group;
+        var tracks = regrouped
+            ? TrackLayout.Add(TrackLayout.Remove(loaded.Model.Tracks, trackId), changed)
+            : loaded.Model.Tracks.Select(t => t.Id == trackId ? changed : t).ToList();
+        await SaveTracksAsync(loaded.Model with { Tracks = tracks }, $"edited track {changed.Name}", $"Saved {changed.Name}");
     }
 
     private void ApplySongEdits()

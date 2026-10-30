@@ -68,6 +68,7 @@ public sealed partial class MainViewModel
             return new EngineTrack(t.Id, t.File, channel, width, m.GainDb <= TrackViewModel.MinimumDb ? -100 : m.GainDb, m.Mute, m.Solo, t.IsClickOrGuide)
             {
                 Transposes = mix.Transposes(t),
+                OffsetSec = t.OffsetSec,
                 Renders = RendersFor(t), // REL-10: rendered keys and tempos instead of live processing
             };
         }).ToList();

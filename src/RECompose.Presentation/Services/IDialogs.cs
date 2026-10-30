@@ -39,6 +39,9 @@ public interface IDialogs
     /// <summary>A file to read with that extension; null when cancelled.</summary>
     Task<string?> PickOpenFileAsync(string title, string extension);
 
+    /// <summary>An audio file (WAV, AIFF, FLAC, Ogg, MP3) for a track; null when cancelled.</summary>
+    Task<string?> PickAudioFileAsync(string title);
+
     /// <summary>Shows the import review (SL-51). True = Import.</summary>
     Task<bool> ReviewImportAsync(ImportReviewViewModel review);
 
@@ -72,8 +75,8 @@ public interface IDialogs
     /// <summary>One of several choices (the replacement for a deleted variant, ARR-11). Null = Cancel.</summary>
     Task<int?> ChooseAsync(string title, string message, IReadOnlyList<string> choices, string confirmLabel);
 
-    /// <summary>Edit track…: name, role, group and output of one stem, with the outputs to choose from. Null = Cancel.</summary>
-    Task<TrackEdit?> EditTrackAsync(TrackEdit initial, IReadOnlyList<string> outputs);
+    /// <summary>Edit track… and Add track…: name, role, group and output of one stem, with the outputs to choose from. Null = Cancel.</summary>
+    Task<TrackEdit?> EditTrackAsync(TrackEdit initial, IReadOnlyList<string> outputs, string title = "Edit track", string confirmLabel = "Save");
 
     /// <summary>The transition popover (SL-21). True = Save.</summary>
     Task<bool> EditTransitionAsync(TransitionViewModel transition);

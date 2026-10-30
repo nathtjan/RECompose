@@ -64,6 +64,10 @@ public sealed class ImportService(DataStore store, EngineTools tools)
         return new ImportScan(folder, folderName, bpm, key?.ToString(), meter, candidates, hash, duplicate);
     }
 
+    /// <summary>One audio file picked for Add track… or Swap audio…: probed, with the role and group its name suggests.</summary>
+    public async Task<ImportCandidate> ProbeFileAsync(string file, CancellationToken ct = default) =>
+        new(file, ImportRules.TrackName(file), ImportRules.Detect(file), await tools.ProbeAsync(file, ct).ConfigureAwait(false));
+
     /// <summary>Builds and saves the song from the reviewed choices.</summary>
     public Song CreateSong(ImportScan scan, string title, double? bpm, string? key, int beatsPerBar, int beatUnit, IEnumerable<(ImportCandidate File, TrackRole Role, string Group, string Output)> choices)
     {
@@ -75,7 +79,7 @@ public sealed class ImportService(DataStore store, EngineTools tools)
                 Name = c.File.Name,
                 File = c.File.File,
                 Role = c.Role,
-                Group = c.Role switch { TrackRole.Click => TrackGroups.Click, TrackRole.Guide or TrackRole.SpokenGuide => TrackGroups.Guide, _ => c.Group },
+                Group = TrackGroups.For(c.Role, c.Group),
                 Channels = c.File.Info.Channels,
                 SampleRate = c.File.Info.SampleRate,
                 Frames = c.File.Info.Frames,

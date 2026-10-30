@@ -1,7 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Presenters;
+using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Layout;
+using Avalonia.Media;
+using Avalonia.Media.Imaging;
 using Avalonia.Platform.Storage;
 using Avalonia.VisualTree;
 using RECompose.App.Dialogs;
@@ -118,6 +124,12 @@ public partial class MainWindow : Window
         {
             if (ViewModel is { } vm)
                 _ = vm.TimelineAsHeard ? vm.SeekPlanAsync(seconds) : vm.SeekAsync(seconds);
+        };
+
+        Timeline.TrackOffsetDragged += (id, seconds) =>
+        {
+            if (ViewModel is { } vm)
+                _ = vm.SetTrackOffsetAsync(id, seconds);
         };
 
         // Arrangement lane (as heard): select, open, reorder, copy, trim (ARR-24, AT-30).
@@ -418,15 +430,240 @@ public partial class MainWindow : Window
         menu.Open(Library);
     }
 
-    /// <summary>Right-click on a track's lane header: Edit track… (name, role, group, output).</summary>
+    /// <summary>Right-click on a track's lane header or mixer strip: change the track, move it, add one, delete it.</summary>
     private void OpenTrackMenu(object? sender, ContextRequestedEventArgs e)
     {
-        if (ViewModel is not { } vm || sender is not Control { DataContext: TrackViewModel track } row)
+        if (ViewModel is not { Song: { } song } vm || sender is not Control { DataContext: TrackViewModel track } row)
             return;
         e.Handled = true;
+        var id = track.Id;
+        var strip = row.Tag as string == "strip"; // strips run left to right, lanes top to bottom
+        var index = song.Tracks.IndexOf(track);
         var menu = new ContextMenu();
-        menu.Items.Add(Item("Edit track…", () => _ = vm.EditTrackAsync(track.Id)));
+        menu.Items.Add(Item("Edit track…", () => _ = vm.EditTrackAsync(id)));
+        menu.Items.Add(Item("Set offset… (Shift-drag the waveform)", () => _ = vm.SetTrackOffsetAsync(id)));
+        menu.Items.Add(Item("Swap audio…", () => _ = vm.SwapTrackAudioAsync(id)));
+        menu.Items.Add(new Separator());
+        menu.Items.Add(Item(strip ? "Move left" : "Move up", () => vm.MoveTrack(id, -1), index > 0));
+        menu.Items.Add(Item(strip ? "Move right" : "Move down", () => vm.MoveTrack(id, 1), index < song.Tracks.Count - 1));
+        menu.Items.Add(new Separator());
+        menu.Items.Add(Item("Add track…", () => _ = vm.AddTrackAsync()));
+        menu.Items.Add(Item("Delete track…", () => _ = vm.DeleteTrackAsync(id)));
         menu.Open(row);
+    }
+
+    // ---- Dragging a track to move it ---------------------------------------------------------------------------
+
+    // The drag is made of pointer events, not the drag and drop framework: the row under the pointer becomes a ghost that
+    // follows it, its place is left blank, and one line shows where it will land.
+
+    private sealed class TrackDrag(Control root, ItemsControl list, bool strip, string id, Avalonia.Point pressedAt, Avalonia.Point grab)
+    {
+        public Control Root { get; } = root;
+        public ItemsControl List { get; } = list;
+        public bool Strip { get; } = strip;
+        public string Id { get; } = id;
+        public Avalonia.Point PressedAt { get; } = pressedAt; // in the window
+        public Avalonia.Point Grab { get; } = grab;           // where in the row it was taken
+        public bool Started { get; set; }
+        public Image? Ghost { get; set; }
+        public AdornerLayer? GhostLayer { get; set; }
+        public IPointer? Pointer { get; set; }
+        public Avalonia.Point WindowAt { get; set; }          // the pointer, in the window, as of the last move
+        public ScrollViewer? Scroller { get; set; }
+        public Avalonia.Threading.DispatcherTimer? Timer { get; set; }
+        public int Place { get; set; }                        // the gap it will land in, 0 = before the first
+    }
+
+    private TrackDrag? _trackDrag;
+    private Border? _dropLine;
+    private AdornerLayer? _dropLayer;
+
+    private void OnTrackPressed(object? sender, PointerPressedEventArgs e)
+    {
+        _trackDrag = null;
+        if (sender is not Control { DataContext: TrackViewModel track } root || !e.GetCurrentPoint(root).Properties.IsLeftButtonPressed)
+            return;
+        // A button or a fader in the row is not a drag.
+        if ((e.Source as Control)?.FindAncestorOfType<Button>(includeSelf: true) is not null || (e.Source as Control)?.FindAncestorOfType<Slider>(includeSelf: true) is not null)
+            return;
+        var strip = root.Tag as string == "strip";
+        _trackDrag = new TrackDrag(root, strip ? Mixer : TrackLanes, strip, track.Id, e.GetPosition(this), e.GetPosition(root));
+    }
+
+    private void OnTrackMoved(object? sender, PointerEventArgs e)
+    {
+        if (_trackDrag is not { } drag || ViewModel is null || Content is not Control surface)
+            return;
+        if (!drag.Started)
+        {
+            var delta = e.GetPosition(this) - drag.PressedAt;
+            if (Math.Abs(delta.X) + Math.Abs(delta.Y) < 6)
+                return;
+            StartTrackDrag(drag, surface, e);
+        }
+
+        drag.WindowAt = e.GetPosition(this);
+        if (drag.Ghost is { } ghost)
+            ghost.Margin = ThicknessAt(e.GetPosition(surface) - drag.Grab);
+        UpdateDropPlace(drag);
+    }
+
+    private const double ScrollEdge = 28; // pixels from the edge of the list's scroll area where dragging scrolls it
+    private const double ScrollStep = 14;
+
+    /// <summary>Scrolls the list while the pointer is held near its edge, even when the pointer is still.</summary>
+    private void AutoScroll(TrackDrag drag)
+    {
+        if (drag.Scroller is not { } scroller || this.TranslatePoint(drag.WindowAt, scroller) is not { } at)
+            return;
+        var (pos, size) = drag.Strip ? (at.X, scroller.Bounds.Width) : (at.Y, scroller.Bounds.Height);
+        var push = pos < ScrollEdge ? -(ScrollEdge - pos) / ScrollEdge : pos > size - ScrollEdge ? (pos - (size - ScrollEdge)) / ScrollEdge : 0;
+        if (push == 0)
+            return;
+        var step = Math.Clamp(push, -1, 1) * ScrollStep;
+        scroller.Offset = scroller.Offset + (drag.Strip ? new Vector(step, 0) : new Vector(0, step));
+    }
+
+    /// <summary>The list moved under a still pointer: the line is put again at the gap now under it.</summary>
+    private void OnTrackListScrolled(object? sender, ScrollChangedEventArgs e)
+    {
+        if (_trackDrag is { Started: true } drag)
+            UpdateDropPlace(drag, recreate: true);
+    }
+
+    private static Thickness ThicknessAt(Vector p) => new(p.X, p.Y, 0, 0);
+
+    private void StartTrackDrag(TrackDrag drag, Control surface, PointerEventArgs e)
+    {
+        drag.Started = true;
+        var scale = TopLevel.GetTopLevel(drag.Root)?.RenderScaling ?? 1;
+        var size = new PixelSize((int)Math.Ceiling(drag.Root.Bounds.Width * scale), (int)Math.Ceiling(drag.Root.Bounds.Height * scale));
+        if (size.Width > 0 && size.Height > 0 && AdornerLayer.GetAdornerLayer(surface) is { } layer)
+        {
+            var picture = new RenderTargetBitmap(size, new Vector(96 * scale, 96 * scale));
+            picture.Render(drag.Root);
+            drag.Ghost = new Image { Source = picture, Width = drag.Root.Bounds.Width, Height = drag.Root.Bounds.Height, Opacity = 0.75, IsHitTestVisible = false, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
+            AdornerLayer.SetAdornedElement(drag.Ghost, surface);
+            layer.Children.Add(drag.Ghost);
+            drag.GhostLayer = layer;
+        }
+
+        drag.Root.Opacity = 0; // its place stays, blank
+        ToolTip.SetIsOpen(drag.Root, false); // the hint about dragging is not shown while dragging
+        ToolTip.SetServiceEnabled(drag.Root, false);
+        drag.Pointer = e.Pointer;
+        e.Pointer.Capture(drag.Root);
+        drag.Root.PointerCaptureLost += OnTrackCaptureLost;
+
+        drag.Scroller = drag.List.FindAncestorOfType<ScrollViewer>();
+        if (drag.Scroller is { } scroller)
+        {
+            scroller.ScrollChanged += OnTrackListScrolled;
+            drag.Timer = new Avalonia.Threading.DispatcherTimer(TimeSpan.FromMilliseconds(30), Avalonia.Threading.DispatcherPriority.Input, (_, _) => AutoScroll(drag));
+            drag.Timer.Start();
+        }
+    }
+
+    /// <summary>Finds the gap between two rows the pointer is nearest and moves the line there.</summary>
+    private void UpdateDropPlace(TrackDrag drag, bool recreate = false)
+    {
+        if (drag.List.ItemsPanelRoot is not { } panel || this.TranslatePoint(drag.WindowAt, panel) is not { } at)
+            return;
+        var rows = panel.Children.Where(c => c.IsVisible).ToList();
+        var place = rows.Count(c => (drag.Strip ? c.Bounds.Center.X : c.Bounds.Center.Y) < (drag.Strip ? at.X : at.Y));
+        drag.Place = place;
+        if (rows.Count == 0)
+            return;
+
+        var edge = place < rows.Count ? (drag.Strip ? rows[place].Bounds.Left : rows[place].Bounds.Top) : (drag.Strip ? rows[^1].Bounds.Right : rows[^1].Bounds.Bottom);
+        // A gap scrolled out of the list's visible area (the pointer is below or beside it) has no line.
+        if (drag.Scroller is { } scroller && panel.TranslatePoint(drag.Strip ? new Avalonia.Point(edge, 0) : new Avalonia.Point(0, edge), scroller) is { } inView
+            && (drag.Strip ? inView.X < 0 || inView.X > scroller.Viewport.Width : inView.Y < 0 || inView.Y > scroller.Viewport.Height))
+        {
+            HideDropLine();
+            return;
+        }
+
+        if (recreate)
+            HideDropLine(); // an adorner does not follow a list that scrolled: make it again where the list is now
+        ShowDropLine(panel, edge, drag.Strip);
+    }
+
+    /// <summary>One line on the whole list, moved to the boundary: the bottom of one row and the top of the next are the same place.</summary>
+    private void ShowDropLine(Panel panel, double edge, bool strip)
+    {
+        // Like the ghost, the line is placed on the whole window content: an adorner of the list itself is cut to the
+        // list's visible part and showed only the gaps near its top.
+        if (Content is not Control surface || AdornerLayer.GetAdornerLayer(surface) is not { } layer
+            || panel.TranslatePoint(strip ? new Avalonia.Point(edge, 0) : new Avalonia.Point(0, edge), surface) is not { } start)
+            return;
+        if (_dropLine is null || _dropLayer != layer)
+        {
+            HideDropLine();
+            _dropLine = new Border
+            {
+                IsHitTestVisible = false,
+                Background = this.TryFindResource("accent", ActualThemeVariant, out var accent) && accent is IBrush brush ? brush : Brushes.Gray,
+                HorizontalAlignment = HorizontalAlignment.Left,
+                VerticalAlignment = VerticalAlignment.Top,
+            };
+            AdornerLayer.SetAdornedElement(_dropLine, surface);
+            layer.Children.Add(_dropLine);
+            _dropLayer = layer;
+        }
+
+        var width = strip ? 2 : panel.Bounds.Width;
+        var height = strip ? panel.Bounds.Height : 2;
+        var margin = strip ? new Thickness(start.X - 1, start.Y, 0, 0) : new Thickness(start.X, start.Y - 1, 0, 0);
+        if (_dropLine.Margin != margin || _dropLine.Width != width || _dropLine.Height != height)
+        {
+            _dropLine.Width = width; // only when it moves, so it does not flicker
+            _dropLine.Height = height;
+            _dropLine.Margin = margin;
+        }
+    }
+
+    private void HideDropLine()
+    {
+        if (_dropLine is not null)
+            _dropLayer?.Children.Remove(_dropLine);
+        _dropLine = null;
+        _dropLayer = null;
+    }
+
+    private void OnTrackReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        if (_trackDrag is not { } drag)
+            return;
+        var dropped = drag.Started;
+        EndTrackDrag(drag);
+        if (!dropped || ViewModel is not { Song: { } song } vm)
+            return;
+
+        var from = song.Tracks.ToList().FindIndex(t => t.Id == drag.Id);
+        vm.MoveTrackTo(drag.Id, from >= 0 && drag.Place > from ? drag.Place - 1 : drag.Place);
+    }
+
+    private void OnTrackCaptureLost(object? sender, PointerCaptureLostEventArgs e)
+    {
+        if (_trackDrag is { } drag)
+            EndTrackDrag(drag);
+    }
+
+    private void EndTrackDrag(TrackDrag drag)
+    {
+        _trackDrag = null;
+        drag.Root.PointerCaptureLost -= OnTrackCaptureLost;
+        drag.Root.Opacity = 1;
+        ToolTip.SetServiceEnabled(drag.Root, true);
+        drag.Pointer?.Capture(null);
+        drag.Timer?.Stop();
+        if (drag.Scroller is { } scroller)
+            scroller.ScrollChanged -= OnTrackListScrolled;
+        if (drag.Ghost is { } ghost)
+            drag.GhostLayer?.Children.Remove(ghost);
+        HideDropLine();
     }
 
     // ---- Drag and drop between the library and the service (SL-4, SL-5) -----------------------------------------
@@ -511,6 +748,13 @@ public partial class MainWindow : Window
 
     private void OnKeyDownTunnel(object? sender, KeyEventArgs e)
     {
+        if (e.Key == Key.Escape && _trackDrag is { Started: true } dragging)
+        {
+            EndTrackDrag(dragging); // Esc cancels a track drag: nothing moves
+            e.Handled = true;
+            return;
+        }
+
         if (ViewModel is not { } vm)
             return;
 

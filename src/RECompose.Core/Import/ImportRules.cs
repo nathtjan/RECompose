@@ -60,17 +60,18 @@ public static partial class ImportRules
     /// </summary>
     public static List<Track> InLaneOrder(IEnumerable<Track> tracks)
     {
-        static int GroupRank(Track t)
-        {
-            if (t.Role == TrackRole.Click) return 0;
-            if (t.Role == TrackRole.SpokenGuide) return 1;
-            if (t.Role == TrackRole.Guide) return 2;
-            var index = TrackGroups.LaneOrder.ToList().IndexOf(t.Group);
-            return 10 + (index < 0 ? TrackGroups.LaneOrder.Count : index);
-        }
-
-        var ordered = tracks.OrderBy(GroupRank).ThenBy(t => t.Name, NaturalComparer.Instance).ToList();
+        var ordered = tracks.OrderBy(LaneRank).ThenBy(t => t.Name, NaturalComparer.Instance).ToList();
         return ordered.Select((t, i) => t with { Order = i }).ToList();
+    }
+
+    /// <summary>Where a track's lane group comes in the default lane order: click, spoken guide, guide, then the groups.</summary>
+    public static int LaneRank(Track t)
+    {
+        if (t.Role == TrackRole.Click) return 0;
+        if (t.Role == TrackRole.SpokenGuide) return 1;
+        if (t.Role == TrackRole.Guide) return 2;
+        var index = TrackGroups.LaneOrder.ToList().IndexOf(t.Group);
+        return 10 + (index < 0 ? TrackGroups.LaneOrder.Count : index);
     }
 
     /// <summary>SL-53: "72 BPM", "72bpm", "120.5 - bpm". Returns null if there is none.</summary>

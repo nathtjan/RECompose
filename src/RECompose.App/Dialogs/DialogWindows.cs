@@ -6,6 +6,7 @@ using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Markup.Xaml;
 using Avalonia.Platform.Storage;
+using RECompose.Core.Import;
 using RECompose.Presentation.Services;
 using RECompose.Presentation.ViewModels;
 
@@ -108,6 +109,17 @@ public sealed class AvaloniaDialogs(Window owner) : IDialogs
             Title = title,
             AllowMultiple = false,
             FileTypeFilter = [new FilePickerFileType("RECompose service") { Patterns = ["*" + extension] }],
+        });
+        return files.Count > 0 ? files[0].TryGetLocalPath() : null;
+    }
+
+    public async Task<string?> PickAudioFileAsync(string title)
+    {
+        var files = await owner.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = title,
+            AllowMultiple = false,
+            FileTypeFilter = [new FilePickerFileType("Audio") { Patterns = [.. ImportRules.AudioExtensions.Select(e => "*" + e)] }],
         });
         return files.Count > 0 ? files[0].TryGetLocalPath() : null;
     }
@@ -400,10 +412,10 @@ public sealed class AvaloniaDialogs(Window owner) : IDialogs
         return result;
     }
 
-    /// <summary>Edit track…: the same role, group and output choices as the import review.</summary>
-    public async Task<TrackEdit?> EditTrackAsync(TrackEdit initial, IReadOnlyList<string> outputs)
+    /// <summary>Edit track… and Add track…: the same role, group and output choices as the import review.</summary>
+    public async Task<TrackEdit?> EditTrackAsync(TrackEdit initial, IReadOnlyList<string> outputs, string title = "Edit track", string confirmLabel = "Save")
     {
-        var window = Dialog("Edit track");
+        var window = Dialog(title);
         var name = new TextBox { Text = initial.Name };
         AutomationProperties.SetName(name, "Name");
         var role = new ComboBox { ItemsSource = ImportRowViewModel.Roles, SelectedItem = initial.Role, HorizontalAlignment = HorizontalAlignment.Stretch };
@@ -419,7 +431,7 @@ public sealed class AvaloniaDialogs(Window owner) : IDialogs
             output.SelectedItem = music ? "Main" : "Cue"; // click and guide go to Cue, music to Main (PB-85), as at import
         };
 
-        var ok = new Button { Content = "Save", Classes = { "primary" }, IsDefault = true };
+        var ok = new Button { Content = confirmLabel, Classes = { "primary" }, IsDefault = true };
         var cancel = new Button { Content = "Cancel", IsCancel = true };
         TrackEdit? result = null;
         ok.Click += (_, _) =>
@@ -445,7 +457,7 @@ public sealed class AvaloniaDialogs(Window owner) : IDialogs
         grid.Children.Add(Label("OUTPUT", 3));
         grid.Children.Add(Cell(output, 3));
 
-        window.Content = Body("Edit track", null, [grid], cancel, ok);
+        window.Content = Body(title, null, [grid], cancel, ok);
         window.Opened += (_, _) =>
         {
             name.Focus();

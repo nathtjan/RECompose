@@ -298,6 +298,207 @@ public sealed class MainViewModelTests : IDisposable
         Assert.Equal((TrackRole.Guide, TrackGroups.Guide), (vm.Song.Tracks.Single(t => t.Id == id).Role, vm.Song.Tracks.Single(t => t.Id == id).Group));
     }
 
+    private async Task<(MainViewModel Vm, DataStore Store)> LoadedSongAsync()
+    {
+        var vm = NewViewModel();
+        await vm.InitializeAsync();
+        await vm.ImportFolderAsync(StemsFolder());
+        await vm.LoadSongAsync(vm.Songs[0].Id);
+        return (vm, new DataStore(Path.Combine(_root, "data")));
+    }
+
+    private string ExtraWav(string name, int seconds = 100)
+    {
+        var path = Path.Combine(_root, "extra", name);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        Wav(path, 48000, 2, 48000 * seconds);
+        return path;
+    }
+
+    [Fact]
+    public async Task Adding_a_track_puts_it_after_its_group_and_reloads_the_song()
+    {
+        var (vm, store) = await LoadedSongAsync();
+        await using var _ = vm;
+        _dialogs.AudioFile = ExtraWav("Keys 3.wav");
+        _dialogs.Track = new TrackEdit("Keys 3", "Music", "Keys", "Main");
+
+        await vm.AddTrackAsync();
+
+        Assert.Equal(("Keys 3", "Keys"), (_dialogs.Initial!.Name, _dialogs.Initial.Group)); // read from the file name
+        Assert.Equal(["Click Track", "Guide", "Drums", "Bass", "Keys 2", "Keys 10", "Keys 3"], vm.Song!.Tracks.Select(t => t.Name));
+        Assert.Equal(7, store.LoadSong(vm.Song.Id)!.Tracks.Count);
+        Assert.Equal("B♭ · 72 BPM · 3/4 · 7 tracks", vm.Songs[0].MetaLine);
+    }
+
+    [Fact]
+    public async Task Track_changes_show_under_the_Tracks_chip_of_the_log()
+    {
+        var (vm, _) = await LoadedSongAsync();
+        await using var _ = vm;
+        var bass = vm.Song!.Tracks.Single(t => t.Name == "Bass");
+
+        await vm.SetTrackOffsetAsync(bass.Id, 0.25);
+        vm.MoveTrack(vm.Song!.Tracks.Single(t => t.Name == "Bass").Id, -1);
+        vm.UndoCommand.Execute(null); // undoes the move
+
+        vm.LogChip = "Tracks";
+        bool Shown(string text) => vm.ShownLog.Any(e => e.Text.Contains(text, StringComparison.Ordinal)); // the log reaches the tab a moment later
+        await Eventually(() => Shown("Bass offset 250 ms") && Shown("moved Bass to place 3 of 6") && Shown("undid moving Bass"));
+        Assert.All(vm.ShownLog, e => Assert.Equal("Tracks", e.Chip));
+    }
+
+    [Fact]
+    public async Task Changing_a_track_keeps_the_playhead_where_it_was()
+    {
+        var (vm, _) = await LoadedSongAsync();
+        await using var _ = vm;
+        await vm.SeekAsync(12);
+        var bass = vm.Song!.Tracks.Single(t => t.Name == "Bass");
+
+        await vm.SetTrackOffsetAsync(bass.Id, 0.5);
+
+        Assert.InRange(vm.PlanPositionSec, 11.9, 12.1);
+        vm.UndoCommand.Execute(null);
+        // The undo reloads in the background: the song is replaced first and the playhead set a moment later.
+        await Eventually(() => vm.Song!.Tracks.Single(t => t.Name == "Bass").Track.OffsetSec == 0 && Math.Abs(vm.PlanPositionSec - 12) < 0.1);
+    }
+
+    [Fact]
+    public async Task Track_changes_can_be_undone_and_redone()
+    {
+        var (vm, store) = await LoadedSongAsync();
+        await using var _ = vm;
+        var original = vm.Song!.Tracks.Select(t => t.Name).ToList();
+        var bass = vm.Song.Tracks.Single(t => t.Name == "Bass");
+        var bassFile = bass.Track.File;
+        List<string> Saved() => store.LoadSong(vm.Song!.Id)!.Tracks.Select(t => t.Name).ToList();
+
+        // Delete, then undo and redo.
+        await vm.DeleteTrackAsync(bass.Id);
+        Assert.Equal(5, Saved().Count);
+        vm.UndoCommand.Execute(null);
+        await Eventually(() => vm.Song!.Tracks.Count == 6);
+        Assert.Equal(original, Saved());
+        vm.RedoCommand.Execute(null);
+        await Eventually(() => vm.Song!.Tracks.Count == 5);
+
+        vm.UndoCommand.Execute(null);
+        await Eventually(() => vm.Song!.Tracks.Count == 6);
+
+        // Swap, then undo: the old file plays again.
+        _dialogs.AudioFile = ExtraWav("Bass long.wav", seconds: 120);
+        await vm.SwapTrackAudioAsync(bass.Id);
+        Assert.NotEqual(bassFile, store.LoadSong(vm.Song!.Id)!.Tracks.Single(t => t.Id == bass.Id).File);
+        vm.UndoCommand.Execute(null);
+        await Eventually(() => vm.Song!.Tracks.Single(t => t.Id == bass.Id).Track.File == bassFile); // the reloaded song, not just the file
+
+        // Move in place, then undo: no reload, same order back.
+        vm.MoveTrack(bass.Id, -1);
+        Assert.NotEqual(original, vm.Song!.Tracks.Select(t => t.Name));
+        vm.UndoCommand.Execute(null);
+        Assert.Equal(original, vm.Song.Tracks.Select(t => t.Name));
+        Assert.Equal(original, Saved());
+    }
+
+    [Fact]
+    public async Task Deleting_a_track_removes_it_but_keeps_the_audio_file()
+    {
+        var (vm, store) = await LoadedSongAsync();
+        await using var _ = vm;
+        var bass = vm.Song!.Tracks.Single(t => t.Name == "Bass");
+
+        _dialogs.Confirm = false;
+        await vm.DeleteTrackAsync(bass.Id);
+        Assert.Equal(6, store.LoadSong(vm.Song!.Id)!.Tracks.Count);
+
+        _dialogs.Confirm = true;
+        await vm.DeleteTrackAsync(bass.Id);
+
+        Assert.DoesNotContain(vm.Song!.Tracks, t => t.Id == bass.Id);
+        Assert.Equal(5, store.LoadSong(vm.Song.Id)!.Tracks.Count);
+        Assert.True(File.Exists(bass.Track.File)); // stems are never deleted
+        Assert.Equal("B♭ · 72 BPM · 3/4 · 5 tracks", vm.Songs[0].MetaLine);
+    }
+
+    [Fact]
+    public async Task Swapping_the_audio_keeps_the_track_and_takes_the_length_of_the_new_file()
+    {
+        var (vm, store) = await LoadedSongAsync();
+        await using var _ = vm;
+        var bass = vm.Song!.Tracks.Single(t => t.Name == "Bass");
+        var longer = ExtraWav("Bass long.wav", seconds: 120);
+        _dialogs.AudioFile = longer;
+
+        await vm.SwapTrackAudioAsync(bass.Id);
+
+        var saved = store.LoadSong(vm.Song!.Id)!.Tracks.Single(t => t.Id == bass.Id);
+        Assert.Equal(("Bass", longer, 48000 * 120L), (saved.Name, saved.File, saved.Frames));
+        Assert.Equal(120, store.LoadSong(vm.Song.Id)!.DurationSec, 3);
+        Assert.Equal(120, vm.Song.DurationSec, 1);
+    }
+
+    [Fact]
+    public async Task Moving_a_track_is_saved_and_stops_at_the_ends()
+    {
+        var (vm, store) = await LoadedSongAsync();
+        await using var _ = vm;
+        var bass = vm.Song!.Tracks.Single(t => t.Name == "Bass");
+
+        vm.MoveTrack(bass.Id, -1);
+
+        Assert.Equal(["Click Track", "Guide", "Bass", "Drums", "Keys 2", "Keys 10"], vm.Song.Tracks.Select(t => t.Name));
+        Assert.Equal(["Click Track", "Guide", "Bass", "Drums", "Keys 2", "Keys 10"], store.LoadSong(vm.Song.Id)!.Tracks.Select(t => t.Name));
+
+        var first = vm.Song.Tracks[0];
+        vm.MoveTrack(first.Id, -1);
+        Assert.Equal(first.Id, vm.Song.Tracks[0].Id);
+
+        await vm.LoadSongAsync(vm.Song.Id, force: true); // the order survives a reload
+        Assert.Equal("Bass", vm.Song!.Tracks[2].Name);
+
+        vm.MoveTrackTo(bass.Id, 5); // a drop at the far end
+        Assert.Equal(["Click Track", "Guide", "Drums", "Keys 2", "Keys 10", "Bass"], vm.Song.Tracks.Select(t => t.Name));
+        Assert.Equal("Bass", store.LoadSong(vm.Song.Id)!.Tracks[^1].Name);
+    }
+
+    [Fact]
+    public async Task Dragging_a_waveform_sets_the_offset_in_whole_milliseconds_within_the_limit()
+    {
+        var (vm, store) = await LoadedSongAsync();
+        await using var _ = vm;
+        var bass = vm.Song!.Tracks.Single(t => t.Name == "Bass");
+
+        await vm.SetTrackOffsetAsync(bass.Id, 0.12349);
+        Assert.Equal(0.123, store.LoadSong(vm.Song!.Id)!.Tracks.Single(t => t.Id == bass.Id).OffsetSec);
+
+        await vm.SetTrackOffsetAsync(bass.Id, -500);
+        Assert.Equal(-MainViewModel.MaxTrackOffsetSec, store.LoadSong(vm.Song.Id)!.Tracks.Single(t => t.Id == bass.Id).OffsetSec);
+    }
+
+    [Fact]
+    public async Task A_track_offset_is_saved_moves_the_song_length_and_rejects_nonsense()
+    {
+        var (vm, store) = await LoadedSongAsync();
+        await using var _ = vm;
+        var bass = vm.Song!.Tracks.Single(t => t.Name == "Bass");
+
+        _dialogs.NameAnswer = "2500";
+        await vm.SetTrackOffsetAsync(bass.Id);
+
+        Assert.Equal(2.5, store.LoadSong(vm.Song!.Id)!.Tracks.Single(t => t.Id == bass.Id).OffsetSec);
+        Assert.Equal(102.5, vm.Song.DurationSec, 1); // the engine counts the offset in the length
+
+        _dialogs.NameAnswer = "soon";
+        await vm.SetTrackOffsetAsync(bass.Id);
+        Assert.Equal(2.5, store.LoadSong(vm.Song.Id)!.Tracks.Single(t => t.Id == bass.Id).OffsetSec);
+        Assert.Contains("milliseconds", vm.Toast);
+
+        _dialogs.NameAnswer = "−250"; // a real minus sign: 0.25 s earlier
+        await vm.SetTrackOffsetAsync(bass.Id);
+        Assert.Equal(-0.25, store.LoadSong(vm.Song.Id)!.Tracks.Single(t => t.Id == bass.Id).OffsetSec);
+    }
+
     [Fact]
     public async Task The_loaded_song_is_not_deleted()
     {
@@ -372,6 +573,13 @@ internal sealed class ScriptedDialogs : IDialogs
     public Task<string?> PickSaveFileAsync(string title, string suggestedName, string extension) => Task.FromResult<string?>(null);
     public Task<string?> PickOpenFileAsync(string title, string extension) => Task.FromResult<string?>(null);
 
+    /// <summary>The audio file Add track… and Swap audio… pick; null cancels.</summary>
+    public string? AudioFile { get; set; }
+    public Task<string?> PickAudioFileAsync(string title) => Task.FromResult(AudioFile);
+
+    /// <summary>What the offset prompt answers; null keeps the current text.</summary>
+    public string? NameAnswer { get; set; }
+
     public Task<bool> ReviewImportAsync(ImportReviewViewModel review)
     {
         LastReview = review;
@@ -405,11 +613,16 @@ internal sealed class ScriptedDialogs : IDialogs
     public Task<ResumeChoice> AskResumeAsync(ResumeQuestion question) => Task.FromResult(ResumeChoice.DontResume);
     public Task<ServiceDetails?> AskServiceDetailsAsync(string title, string confirmLabel, ServiceDetails initial) => Task.FromResult<ServiceDetails?>(initial);
     public Task<VariantScopeAnswer?> AskVariantScopeAsync(string variantName, int otherEntries) => Task.FromResult<VariantScopeAnswer?>(new VariantScopeAnswer(VariantScope.ThisService, false));
-    public Task<string?> AskNameAsync(string title, string label, string initial, string confirmLabel) => Task.FromResult<string?>(initial);
+    public Task<string?> AskNameAsync(string title, string label, string initial, string confirmLabel) => Task.FromResult<string?>(NameAnswer ?? initial);
     public Task<int?> ChooseAsync(string title, string message, IReadOnlyList<string> choices, string confirmLabel) => Task.FromResult<int?>(0);
     public Task<bool> EditTransitionAsync(TransitionViewModel transition) => Task.FromResult(false);
 
     /// <summary>What the Edit track dialog returns; null cancels it.</summary>
     public TrackEdit? Track { get; set; }
-    public Task<TrackEdit?> EditTrackAsync(TrackEdit initial, IReadOnlyList<string> outputs) => Task.FromResult(Track);
+    public TrackEdit? Initial { get; private set; }
+    public Task<TrackEdit?> EditTrackAsync(TrackEdit initial, IReadOnlyList<string> outputs, string title = "Edit track", string confirmLabel = "Save")
+    {
+        Initial = initial;
+        return Task.FromResult(Track);
+    }
 }

@@ -4,6 +4,8 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
+using Avalonia.Media.Imaging;
+using Avalonia.VisualTree;
 using RECompose.Core.Planning;
 using RECompose.Core.Sections;
 using RECompose.Core.Timing;
@@ -75,6 +77,10 @@ public sealed class TimelineView : Control
     private double _entryX;
     private bool _entryMoved;
     private bool _entryCopy;
+    private string? _offsetTrack;    // the track whose waveform is being dragged sideways (Shift-drag)
+    private double _offsetDownX;
+    private double _offsetBase;      // its offset when the drag began
+    private double _offsetShift;     // seconds dragged so far
 
     public TimelineView()
     {
@@ -110,6 +116,9 @@ public sealed class TimelineView : Control
     public event Action<string, int, int>? EntryTrimmed;
 
     public event Action<string>? EntryMenuRequested;
+
+    /// <summary>A waveform was Shift-dragged sideways (as written): (track id, new offset in seconds).</summary>
+    public event Action<string, double>? TrackOffsetDragged;
 
     public bool AsHeard { get => GetValue(AsHeardProperty); set => SetValue(AsHeardProperty, value); }
     public string? SelectedEntry { get => GetValue(SelectedEntryProperty); set => SetValue(SelectedEntryProperty, value); }
@@ -202,8 +211,18 @@ public sealed class TimelineView : Control
 
         if (change.Property == SongProperty)
         {
-            _pixelsPerSecond = null;
-            _offsetSec = 0;
+            // The same song loaded again (a track was changed) keeps its zoom and scroll; another song starts fitted.
+            var same = change.OldValue is SongViewModel before && change.NewValue is SongViewModel after && before.Id == after.Id;
+            if (!same || _pixelsPerSecond is not { } pps || pps <= Math.Max(1, Bounds.Width) / Duration * 1.0001)
+            {
+                _pixelsPerSecond = null;
+                _offsetSec = 0;
+            }
+            else
+            {
+                _offsetSec = ClampOffset(_offsetSec);
+            }
+
             InvalidateMeasure();
             Redraw();
         }
@@ -339,6 +358,18 @@ public sealed class TimelineView : Control
 
         if (!point.Properties.IsLeftButtonPressed)
             return;
+        if (e.KeyModifiers.HasFlag(KeyModifiers.Shift) && !Heard && p.Y >= TracksTop
+            && (int)((p.Y - TracksTop) / LaneHeight) is var lane && lane < Song.Tracks.Count && !Song.Tracks[lane].Missing)
+        {
+            _offsetTrack = Song.Tracks[lane].Id;
+            _offsetBase = Song.Tracks[lane].Track.OffsetSec;
+            _offsetDownX = p.X;
+            _offsetShift = 0;
+            e.Pointer.Capture(this);
+            e.Handled = true;
+            return;
+        }
+
         _dragging = true;
         e.Pointer.Capture(this);
         SeekRequested?.Invoke(SeekTime(p.X));
@@ -349,6 +380,7 @@ public sealed class TimelineView : Control
     {
         base.OnPointerMoved(e);
         var p = e.GetPosition(this);
+        _pointer = p;
         if (_entryMode != EntryDragMode.None)
         {
             _entryX = Math.Clamp(p.X, 0, Bounds.Width);
@@ -359,10 +391,30 @@ public sealed class TimelineView : Control
             return;
         }
 
+        if (_offsetTrack is not null)
+        {
+            var limit = MainViewModel.MaxTrackOffsetSec;
+            var wanted = _offsetBase + (p.X - _offsetDownX) / PixelsPerSecond;
+            if (e.KeyModifiers.HasFlag(KeyModifiers.Alt))
+                wanted = _offsetBase + Math.Round((wanted - _offsetBase) / Song!.Grid.BeatLength) * Song.Grid.BeatLength; // whole beats, as with sections
+            else if (Math.Abs(wanted) * PixelsPerSecond < 4)
+                wanted = 0; // close to the song start: lands exactly on it
+            _offsetShift = Math.Clamp(wanted, -limit, limit) - _offsetBase;
+            _waves.InvalidateVisual();
+            UpdateOffsetCursor(e.KeyModifiers);
+            return;
+        }
+
         if (_boundaryDrag is not null)
         {
             _boundaryX = Math.Clamp(p.X, 0, Bounds.Width);
             _playhead.InvalidateVisual();
+            return;
+        }
+
+        if (e.KeyModifiers.HasFlag(KeyModifiers.Shift) && OverLane(p))
+        {
+            UpdateOffsetCursor(e.KeyModifiers);
             return;
         }
 
@@ -383,6 +435,89 @@ public sealed class TimelineView : Control
             return;
         _lastScrub = DateTime.UtcNow;
         SeekRequested?.Invoke(SeekTime(p.X)); // scrub
+    }
+
+    // ---- The offset cursor: Shift over a lane, with a variant for Alt (whole beats) ----------------------------
+
+    private Point? _pointer;
+    private TopLevel? _top;
+    private static Cursor? _beatCursor;
+
+    private bool OverLane(Point p) => !Heard && Song is not null && p.Y >= TracksTop && (int)((p.Y - TracksTop) / LaneHeight) < Song.Tracks.Count;
+
+    /// <summary>Left-right arrows; with Alt the arrows have a bar at each end, for the snap to beats.</summary>
+    private void UpdateOffsetCursor(KeyModifiers modifiers) =>
+        Cursor = modifiers.HasFlag(KeyModifiers.Alt) ? BeatCursor : new Cursor(StandardCursorType.SizeWestEast);
+
+    // Black arrows on a white outline, as the system cursors are; a cursor has no theme.
+    private static Cursor BeatCursor => _beatCursor ??= MakeBeatCursor();
+
+    private static Cursor MakeBeatCursor()
+    {
+        var bitmap = new RenderTargetBitmap(new PixelSize(32, 32), new Vector(96, 96));
+        using (var context = bitmap.CreateDrawingContext())
+        {
+            void Draw(IBrush brush, double width)
+            {
+                var pen = new Pen(brush, width, lineCap: PenLineCap.Round, lineJoin: PenLineJoin.Round);
+                context.DrawLine(pen, new Point(8, 16), new Point(24, 16));
+                context.DrawLine(pen, new Point(8, 16), new Point(13, 11));
+                context.DrawLine(pen, new Point(8, 16), new Point(13, 21));
+                context.DrawLine(pen, new Point(24, 16), new Point(19, 11));
+                context.DrawLine(pen, new Point(24, 16), new Point(19, 21));
+                context.DrawLine(pen, new Point(4, 9), new Point(4, 23));
+                context.DrawLine(pen, new Point(28, 9), new Point(28, 23));
+            }
+
+            Draw(Brushes.White, 4.5);
+            Draw(Brushes.Black, 2);
+        }
+
+        return new Cursor(bitmap, new PixelPoint(16, 16));
+    }
+
+    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnAttachedToVisualTree(e);
+        _top = TopLevel.GetTopLevel(this);
+        _top?.AddHandler(KeyDownEvent, OnModifierKey, Avalonia.Interactivity.RoutingStrategies.Tunnel, handledEventsToo: true);
+        _top?.AddHandler(KeyUpEvent, OnModifierKey, Avalonia.Interactivity.RoutingStrategies.Tunnel, handledEventsToo: true);
+    }
+
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        _top?.RemoveHandler(KeyDownEvent, OnModifierKey);
+        _top?.RemoveHandler(KeyUpEvent, OnModifierKey);
+        _top = null;
+        base.OnDetachedFromVisualTree(e);
+    }
+
+    protected override void OnPointerExited(PointerEventArgs e)
+    {
+        base.OnPointerExited(e);
+        _pointer = null;
+    }
+
+    /// <summary>Shift or Alt pressed or released with the pointer already still over a lane: the cursor follows at once.</summary>
+    private void OnModifierKey(object? sender, KeyEventArgs e)
+    {
+        var down = e.RoutedEvent == KeyDownEvent;
+        var modifiers = e.KeyModifiers;
+        // The modifiers of the key event may not yet include the key itself.
+        modifiers = e.Key switch
+        {
+            Key.LeftShift or Key.RightShift => down ? modifiers | KeyModifiers.Shift : modifiers & ~KeyModifiers.Shift,
+            Key.LeftAlt or Key.RightAlt => down ? modifiers | KeyModifiers.Alt : modifiers & ~KeyModifiers.Alt,
+            _ => modifiers,
+        };
+        if (e.Key is not (Key.LeftShift or Key.RightShift or Key.LeftAlt or Key.RightAlt))
+            return;
+
+        var shift = modifiers.HasFlag(KeyModifiers.Shift);
+        if (_offsetTrack is not null || (shift && _pointer is { } p && OverLane(p)))
+            UpdateOffsetCursor(modifiers);
+        else if (!shift && _pointer is not null)
+            Cursor = Cursor.Default;
     }
 
     protected override void OnPointerReleased(PointerReleasedEventArgs e)
@@ -422,6 +557,21 @@ public sealed class TimelineView : Control
                 }
             }
 
+            return;
+        }
+
+        if (_offsetTrack is { } offsetTrack)
+        {
+            var offset = _offsetBase + _offsetShift;
+            _offsetTrack = null;
+            e.Pointer.Capture(null);
+            _waves.InvalidateVisual();
+            if (e.KeyModifiers.HasFlag(KeyModifiers.Shift) && OverLane(e.GetPosition(this)))
+                UpdateOffsetCursor(e.KeyModifiers);
+            else
+                Cursor = Cursor.Default;
+            if (Math.Abs(_offsetShift) >= 0.0005)
+                TrackOffsetDragged?.Invoke(offsetTrack, offset);
             return;
         }
 
@@ -746,6 +896,8 @@ public sealed class TimelineView : Control
                 var tops = new double[columns];
                 var bottoms = new double[columns];
                 var kind = new byte[columns]; // 0 nothing to play, 1 audio, 2 audio muted by the arrangement
+                var lag = track.Track.OffsetSec + (track.Id == owner._offsetTrack ? owner._offsetShift : 0); // the file starts this long after the song start
+                var fileEnd = peaks.Count * peaks.SecondsPerBucket;
                 for (var x = 0; x < columns; x++)
                 {
                     var t0 = offset + x / pps;
@@ -761,14 +913,26 @@ public sealed class TimelineView : Control
 
                         var s0 = item.SrcStart + (t0 - item.PlanStart);
                         var s1 = item.SrcStart + (Math.Min(t1, item.PlanEnd) - item.PlanStart);
-                        var (lo, hi) = peaks.Range(s0, Math.Max(s1, s0 + 1e-4));
+                        if (s1 - lag <= 0 || s0 - lag >= fileEnd)
+                        {
+                            tops[x] = bottoms[x] = mid;
+                            continue;
+                        }
+
+                        var (lo, hi) = peaks.Range(s0 - lag, Math.Max(s1, s0 + 1e-4) - lag);
                         tops[x] = mid - Math.Clamp(hi, 0, 1) * half - 0.5;
                         bottoms[x] = mid - Math.Clamp(lo, -1, 0) * half + 0.5;
                         kind[x] = item.MutedTrackIds.Contains(track.Id) ? (byte)2 : (byte)1;
                     }
                     else
                     {
-                        var (lo, hi) = peaks.Range(t0, t1);
+                        if (t1 - lag <= 0 || t0 - lag >= fileEnd)
+                        {
+                            tops[x] = bottoms[x] = mid;
+                            continue;
+                        }
+
+                        var (lo, hi) = peaks.Range(t0 - lag, t1 - lag);
                         tops[x] = mid - Math.Clamp(hi, 0, 1) * half - 0.5;
                         bottoms[x] = mid - Math.Clamp(lo, -1, 0) * half + 0.5;
                         kind[x] = 1;

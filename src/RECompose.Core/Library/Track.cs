@@ -85,6 +85,11 @@ public sealed record Track
     public bool TransposesByDefault => !IsClickOrGuide;
 
     public double DurationSec => SampleRate > 0 ? Frames / SampleRate : 0;
+
+    /// <summary>Where the file starts on the song's timeline: later when positive, and the first seconds are skipped when negative.</summary>
+    public double OffsetSec { get; init; }
+
+    public double EndSec => Math.Max(0, OffsetSec + DurationSec);
 }
 
 /// <summary>The group names and their lane order (SL-52).</summary>
@@ -104,6 +109,14 @@ public static class TrackGroups
 
     public static IReadOnlyList<string> LaneOrder { get; } =
         [Click, Guide, Drums, Percussion, Bass, Keys, ElectricGuitar, AcousticGuitar, Vocals, Strings, Other];
+
+    /// <summary>Click and guide tracks always sit in their own groups; a music track keeps the group chosen for it.</summary>
+    public static string For(TrackRole role, string chosen) => role switch
+    {
+        TrackRole.Click => Click,
+        TrackRole.Guide or TrackRole.SpokenGuide => Guide,
+        _ => chosen,
+    };
 
     public static IReadOnlyList<string> Music { get; } =
         [Drums, Percussion, Bass, Keys, ElectricGuitar, AcousticGuitar, Vocals, Strings, Other];
