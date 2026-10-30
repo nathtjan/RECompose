@@ -564,7 +564,7 @@
               <ItemsControl ItemsSource="{Binding Song.Tracks}">
                 <ItemsControl.ItemTemplate>
                   <DataTemplate x:DataType="vm:TrackViewModel">
-                    <Border Height="56" Classes="panel" BorderThickness="0,0,1,1" Padding="12,0">
+                    <Border Height="56" Classes="panel" BorderThickness="0,0,1,1" Padding="12,0" ContextRequested="OpenTrackMenu">
                       <DockPanel>
                         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
                           <ToggleButton Classes="ms mute" Content="M" IsChecked="{Binding Mute}" ToolTip.Tip="Mute" />

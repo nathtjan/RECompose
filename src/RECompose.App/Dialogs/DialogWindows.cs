@@ -400,6 +400,61 @@ public sealed class AvaloniaDialogs(Window owner) : IDialogs
         return result;
     }
 
+    /// <summary>Edit track…: the same role, group and output choices as the import review.</summary>
+    public async Task<TrackEdit?> EditTrackAsync(TrackEdit initial, IReadOnlyList<string> outputs)
+    {
+        var window = Dialog("Edit track");
+        var name = new TextBox { Text = initial.Name };
+        AutomationProperties.SetName(name, "Name");
+        var role = new ComboBox { ItemsSource = ImportRowViewModel.Roles, SelectedItem = initial.Role, HorizontalAlignment = HorizontalAlignment.Stretch };
+        AutomationProperties.SetName(role, "Role");
+        var group = new ComboBox { ItemsSource = ImportRowViewModel.Groups, SelectedItem = initial.Group, HorizontalAlignment = HorizontalAlignment.Stretch, IsEnabled = initial.Role == "Music" };
+        AutomationProperties.SetName(group, "Group");
+        var output = new ComboBox { ItemsSource = outputs, SelectedItem = initial.Output, HorizontalAlignment = HorizontalAlignment.Stretch };
+        AutomationProperties.SetName(output, "Output");
+        role.SelectionChanged += (_, _) =>
+        {
+            var music = role.SelectedItem as string == "Music";
+            group.IsEnabled = music;
+            output.SelectedItem = music ? "Main" : "Cue"; // click and guide go to Cue, music to Main (PB-85), as at import
+        };
+
+        var ok = new Button { Content = "Save", Classes = { "primary" }, IsDefault = true };
+        var cancel = new Button { Content = "Cancel", IsCancel = true };
+        TrackEdit? result = null;
+        ok.Click += (_, _) =>
+        {
+            if (string.IsNullOrWhiteSpace(name.Text))
+            {
+                name.Focus();
+                return;
+            }
+
+            result = new TrackEdit(name.Text.Trim(), role.SelectedItem as string ?? initial.Role, group.SelectedItem as string ?? initial.Group, output.SelectedItem as string ?? initial.Output);
+            window.Close();
+        };
+        cancel.Click += (_, _) => window.Close();
+
+        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("100,*"), RowDefinitions = new RowDefinitions("Auto,Auto,Auto,Auto"), RowSpacing = 10 };
+        grid.Children.Add(Label("NAME", 0));
+        grid.Children.Add(Cell(name, 0));
+        grid.Children.Add(Label("ROLE", 1));
+        grid.Children.Add(Cell(role, 1));
+        grid.Children.Add(Label("GROUP", 2));
+        grid.Children.Add(Cell(group, 2));
+        grid.Children.Add(Label("OUTPUT", 3));
+        grid.Children.Add(Cell(output, 3));
+
+        window.Content = Body("Edit track", null, [grid], cancel, ok);
+        window.Opened += (_, _) =>
+        {
+            name.Focus();
+            name.SelectAll();
+        };
+        await window.ShowDialog(owner);
+        return result;
+    }
+
     public async Task<int?> ChooseAsync(string title, string message, IReadOnlyList<string> choices, string confirmLabel)
     {
         var window = Dialog(title);

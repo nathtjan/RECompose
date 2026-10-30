@@ -418,6 +418,17 @@ public partial class MainWindow : Window
         menu.Open(Library);
     }
 
+    /// <summary>Right-click on a track's lane header: Edit track… (name, role, group, output).</summary>
+    private void OpenTrackMenu(object? sender, ContextRequestedEventArgs e)
+    {
+        if (ViewModel is not { } vm || sender is not Control { DataContext: TrackViewModel track } row)
+            return;
+        e.Handled = true;
+        var menu = new ContextMenu();
+        menu.Items.Add(Item("Edit track…", () => _ = vm.EditTrackAsync(track.Id)));
+        menu.Open(row);
+    }
+
     // ---- Drag and drop between the library and the service (SL-4, SL-5) -----------------------------------------
 
     /// <summary>Starts a drag of the item under the pointer once it has moved a few pixels.</summary>

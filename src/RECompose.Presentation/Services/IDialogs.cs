@@ -25,6 +25,9 @@ public enum VariantScope
 
 public sealed record VariantScopeAnswer(VariantScope Scope, bool Remember);
 
+/// <summary>What a track's edit dialog shows and returns: the role, group and output as their labels.</summary>
+public sealed record TrackEdit(string Name, string Role, string Group, string Output);
+
 /// <summary>Windows and pickers the view models need; the app implements them with Avalonia.</summary>
 public interface IDialogs
 {
@@ -68,6 +71,9 @@ public interface IDialogs
 
     /// <summary>One of several choices (the replacement for a deleted variant, ARR-11). Null = Cancel.</summary>
     Task<int?> ChooseAsync(string title, string message, IReadOnlyList<string> choices, string confirmLabel);
+
+    /// <summary>Edit track…: name, role, group and output of one stem, with the outputs to choose from. Null = Cancel.</summary>
+    Task<TrackEdit?> EditTrackAsync(TrackEdit initial, IReadOnlyList<string> outputs);
 
     /// <summary>The transition popover (SL-21). True = Save.</summary>
     Task<bool> EditTransitionAsync(TransitionViewModel transition);

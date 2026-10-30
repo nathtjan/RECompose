@@ -275,6 +275,30 @@ public sealed class MainViewModelTests : IDisposable
     }
 
     [Fact]
+    public async Task Editing_a_track_saves_its_name_role_group_and_output_and_reloads_the_song()
+    {
+        await using var vm = NewViewModel();
+        await vm.InitializeAsync();
+        await vm.ImportFolderAsync(StemsFolder());
+        await vm.LoadSongAsync(vm.Songs[0].Id);
+        var id = vm.Song!.Tracks.Single(t => t.Name == "Bass").Id;
+        var store = new DataStore(Path.Combine(_root, "data"));
+
+        _dialogs.Track = new TrackEdit("Bass DI", "Music", "Keys", "Cue");
+        await vm.EditTrackAsync(id);
+
+        var saved = store.LoadSong(vm.Song!.Id)!.Tracks.Single(t => t.Id == id);
+        Assert.Equal(("Bass DI", TrackRole.Music, "Keys", "cue"), (saved.Name, saved.Role, saved.Group, saved.Output));
+        var shown = vm.Song.Tracks.Single(t => t.Id == id);
+        Assert.Equal(("Bass DI", "Cue 1–2"), (shown.Name, shown.OutputLabel)); // Bass moved from Main to Cue
+
+        _dialogs.Track = new TrackEdit("Bass DI", "Guide", "Keys", "Cue");
+        await vm.EditTrackAsync(id);
+
+        Assert.Equal((TrackRole.Guide, TrackGroups.Guide), (vm.Song.Tracks.Single(t => t.Id == id).Role, vm.Song.Tracks.Single(t => t.Id == id).Group));
+    }
+
+    [Fact]
     public async Task The_loaded_song_is_not_deleted()
     {
         await using var vm = NewViewModel();
@@ -384,4 +408,8 @@ internal sealed class ScriptedDialogs : IDialogs
     public Task<string?> AskNameAsync(string title, string label, string initial, string confirmLabel) => Task.FromResult<string?>(initial);
     public Task<int?> ChooseAsync(string title, string message, IReadOnlyList<string> choices, string confirmLabel) => Task.FromResult<int?>(0);
     public Task<bool> EditTransitionAsync(TransitionViewModel transition) => Task.FromResult(false);
+
+    /// <summary>What the Edit track dialog returns; null cancels it.</summary>
+    public TrackEdit? Track { get; set; }
+    public Task<TrackEdit?> EditTrackAsync(TrackEdit initial, IReadOnlyList<string> outputs) => Task.FromResult(Track);
 }

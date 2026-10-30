@@ -309,5 +309,6 @@ internal sealed class AcceptingDialogs : IDialogs
     public Task<VariantScopeAnswer?> AskVariantScopeAsync(string variantName, int otherEntries) => Task.FromResult<VariantScopeAnswer?>(new VariantScopeAnswer(VariantScope.ThisService, false));
     public Task<string?> AskNameAsync(string title, string label, string initial, string confirmLabel) => Task.FromResult<string?>(initial);
     public Task<int?> ChooseAsync(string title, string message, IReadOnlyList<string> choices, string confirmLabel) => Task.FromResult<int?>(0);
+    public Task<TrackEdit?> EditTrackAsync(TrackEdit initial, IReadOnlyList<string> outputs) => Task.FromResult<TrackEdit?>(null);
     public Task<bool> EditTransitionAsync(TransitionViewModel transition) => Task.FromResult(false);
 }

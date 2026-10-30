@@ -566,6 +566,7 @@ internal sealed class ServiceDialogs : IDialogs
     }
 
     public Task<bool> EditTransitionAsync(TransitionViewModel transition) => Task.FromResult(EditTransition?.Invoke(transition) ?? false);
+    public Task<TrackEdit?> EditTrackAsync(TrackEdit initial, IReadOnlyList<string> outputs) => Task.FromResult<TrackEdit?>(null);
 }
 
 // SL-47, AT-34 in the app: a pad folder imports as a pad set under Library › Pads, not as a song.

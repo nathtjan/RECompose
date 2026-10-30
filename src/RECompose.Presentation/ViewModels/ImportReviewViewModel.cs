@@ -94,7 +94,9 @@ public sealed class ImportRowViewModel : ObservableObject
         set => Set(ref _output, value);
     }
 
-    public TrackRole RoleValue => _role switch
+    public TrackRole RoleValue => RoleOf(_role);
+
+    public static TrackRole RoleOf(string name) => name switch
     {
         "Click" => TrackRole.Click,
         "Guide" => TrackRole.Guide,
@@ -102,7 +104,7 @@ public sealed class ImportRowViewModel : ObservableObject
         _ => TrackRole.Music,
     };
 
-    private static string RoleName(TrackRole role) => role switch
+    public static string RoleName(TrackRole role) => role switch
     {
         TrackRole.Click => "Click",
         TrackRole.Guide => "Guide",

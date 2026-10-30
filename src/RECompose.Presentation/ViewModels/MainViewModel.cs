@@ -1237,6 +1237,39 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     // ---- SONG tab (SL-60 subset) ----------------------------------------------------
 
+    /// <summary>Edit track…: name, role, group and output of one stem. The song reloads so the engine plays it as set.</summary>
+    public async Task EditTrackAsync(string trackId)
+    {
+        if (_song is not { } loaded || loaded.Model.Tracks.FirstOrDefault(t => t.Id == trackId) is not { } track)
+            return;
+        if (IsPlaying)
+        {
+            ShowToast("Stop the song before editing a track.");
+            return;
+        }
+
+        var initial = new TrackEdit(track.Name, ImportRowViewModel.RoleName(track.Role), track.Group, OutputChoices.ToLabel(track.Output));
+        if (await _dialogs.EditTrackAsync(initial, OutputChoices.For(_device?.OutputChannels.Count ?? 2)) is not { } edit)
+            return;
+
+        var role = ImportRowViewModel.RoleOf(edit.Role);
+        var changed = track with
+        {
+            Name = string.IsNullOrWhiteSpace(edit.Name) ? track.Name : edit.Name.Trim(),
+            Role = role,
+            Group = role switch { TrackRole.Click => TrackGroups.Click, TrackRole.Guide or TrackRole.SpokenGuide => TrackGroups.Guide, _ => edit.Group },
+            Output = OutputChoices.ToOutput(edit.Output),
+        };
+        if (changed == track)
+            return;
+
+        var model = loaded.Model;
+        _store.SaveSong(model with { Tracks = ImportRules.InLaneOrder(model.Tracks.Select(t => t.Id == trackId ? changed : t)), UpdatedAt = DateTimeOffset.UtcNow });
+        AppLog.Write("Library", $"{model.Title}: edited track {changed.Name}");
+        ShowToast($"Saved {changed.Name}");
+        await LoadSongAsync(model.Id, force: true, entry: loaded.Entry, serviceId: _loadedServiceId);
+    }
+
     private void ApplySongEdits()
     {
         if (_song is null)
