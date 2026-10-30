@@ -15,16 +15,26 @@ namespace RECompose.App.Controls;
 /// </summary>
 public sealed class CaptionButtons : StackPanel
 {
-    private readonly Button _maximize;
+    private readonly Button? _maximize;
     private Window? _window;
 
     public CaptionButtons()
+        : this(closeOnly: false)
+    {
+    }
+
+    /// <summary>Dialogs have only the close key.</summary>
+    public CaptionButtons(bool closeOnly)
     {
         Orientation = Orientation.Horizontal;
         IsVisible = !OperatingSystem.IsMacOS();
-        Children.Add(Key("Minimise", "minus", WindowDecorationsElementRole.MinimizeButton, w => w.WindowState = WindowState.Minimized));
-        Children.Add(_maximize = Key("Maximise", "maximize", WindowDecorationsElementRole.MaximizeButton,
-            w => w.WindowState = w.WindowState == WindowState.Normal ? WindowState.Maximized : WindowState.Normal));
+        if (!closeOnly)
+        {
+            Children.Add(Key("Minimise", "minus", WindowDecorationsElementRole.MinimizeButton, w => w.WindowState = WindowState.Minimized));
+            Children.Add(_maximize = Key("Maximise", "maximize", WindowDecorationsElementRole.MaximizeButton,
+                w => w.WindowState = w.WindowState == WindowState.Normal ? WindowState.Maximized : WindowState.Normal));
+        }
+
         var close = Key("Close", "close", WindowDecorationsElementRole.CloseButton, w => w.Close());
         close.Classes.Add("close");
         Children.Add(close);
@@ -42,8 +52,10 @@ public sealed class CaptionButtons : StackPanel
 
     private void ShowState(WindowState state)
     {
+        if (_maximize is null)
+            return;
         var restore = state != WindowState.Normal;
-        ((Icon)_maximize.Content!).Glyph = restore ? "restore" : "maximize";
+        ((Icon)_maximize!.Content!).Glyph = restore ? "restore" : "maximize";
         AutomationProperties.SetName(_maximize, restore ? "Restore" : "Maximise");
         ToolTip.SetTip(_maximize, restore ? "Restore" : "Maximise");
     }

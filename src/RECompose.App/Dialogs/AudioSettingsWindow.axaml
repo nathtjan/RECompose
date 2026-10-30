@@ -1,7 +1,8 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 <!-- Settings › Audio (SET-10): driver, device, rate and buffer, and the logical outputs
      Main (music) and Cue (click and guide) mapped to device channels (PB-85). -->
-<Window xmlns="https://github.com/avaloniaui"
+<d:DialogWindow xmlns="https://github.com/avaloniaui"
+        xmlns:d="using:RECompose.App.Dialogs"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:RECompose.Presentation.ViewModels"
         x:Class="RECompose.App.Dialogs.AudioSettingsWindow"
@@ -88,4 +89,4 @@
       </StackPanel>
     </ScrollViewer>
   </DockPanel>
-</Window>
+</d:DialogWindow>

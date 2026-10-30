@@ -11,7 +11,7 @@ using RECompose.Presentation.ViewModels;
 
 namespace RECompose.App.Dialogs;
 
-public partial class ImportReviewWindow : Window
+public partial class ImportReviewWindow : DialogWindow
 {
     public ImportReviewWindow()
     {
@@ -21,7 +21,7 @@ public partial class ImportReviewWindow : Window
     }
 }
 
-public partial class TransitionWindow : Window
+public partial class TransitionWindow : DialogWindow
 {
     public TransitionWindow()
     {
@@ -32,7 +32,7 @@ public partial class TransitionWindow : Window
     }
 }
 
-public partial class AudioSettingsWindow : Window
+public partial class AudioSettingsWindow : DialogWindow
 {
     public AudioSettingsWindow()
     {
@@ -42,7 +42,7 @@ public partial class AudioSettingsWindow : Window
     }
 }
 
-public partial class ControlsWindow : Window
+public partial class ControlsWindow : DialogWindow
 {
     public ControlsWindow()
     {
@@ -121,7 +121,7 @@ public sealed class AvaloniaDialogs(Window owner) : IDialogs
     /// <summary>REL-31: what happened, and four ways on.</summary>
     public async Task<ResumeChoice> AskResumeAsync(ResumeQuestion question)
     {
-        var window = new Window
+        var window = new DialogWindow
         {
             Title = "RECompose closed unexpectedly",
             Width = 560,
@@ -161,7 +161,7 @@ public sealed class AvaloniaDialogs(Window owner) : IDialogs
     /// <summary>REL-1: the service check as a list of marks, details and Fix buttons.</summary>
     public async Task ShowServiceCheckAsync(ServiceCheckViewModel check)
     {
-        var window = new Window
+        var window = new DialogWindow
         {
             Title = "Service check",
             Width = 720,
@@ -240,7 +240,7 @@ public sealed class AvaloniaDialogs(Window owner) : IDialogs
     /// <summary>UI-60: a confirmation with Cancel and the action named on its button.</summary>
     public async Task<bool> ConfirmAsync(string title, string message, string confirmLabel)
     {
-        var window = new Window
+        var window = new DialogWindow
         {
             Title = title,
             Width = 460,
@@ -416,7 +416,7 @@ public sealed class AvaloniaDialogs(Window owner) : IDialogs
         return result;
     }
 
-    private static Window Dialog(string title) => new()
+    private static DialogWindow Dialog(string title) => new()
     {
         Title = title,
         Width = 460,
@@ -461,7 +461,7 @@ public sealed class AvaloniaDialogs(Window owner) : IDialogs
     /// <summary>SL-55: "Already in the library as {title}." Open it · Import anyway · Cancel.</summary>
     public async Task<DuplicateChoice> AskDuplicateAsync(string existingTitle)
     {
-        var window = new Window
+        var window = new DialogWindow
         {
             Title = "Already in the library",
             Width = 460,

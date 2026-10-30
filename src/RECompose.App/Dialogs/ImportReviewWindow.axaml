@@ -1,7 +1,8 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 <!-- Import review (SL-51): title, key, BPM and meter parsed from the names, and every file
      with its detected role, group and output, all editable before importing. -->
-<Window xmlns="https://github.com/avaloniaui"
+<d:DialogWindow xmlns="https://github.com/avaloniaui"
+        xmlns:d="using:RECompose.App.Dialogs"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:RECompose.Presentation.ViewModels"
         x:Class="RECompose.App.Dialogs.ImportReviewWindow"
@@ -77,4 +78,4 @@
       </ScrollViewer>
     </Border>
   </DockPanel>
-</Window>
+</d:DialogWindow>

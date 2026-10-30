@@ -251,6 +251,44 @@ public sealed class MainViewModelTests : IDisposable
     }
 
     [Fact]
+    public async Task Deleting_a_song_removes_it_from_the_library_keeps_its_stems_and_can_be_undone()
+    {
+        await using var vm = NewViewModel();
+        await vm.InitializeAsync();
+        var folder = StemsFolder();
+        await vm.ImportFolderAsync(folder);
+        var id = vm.Songs[0].Id;
+        var store = new DataStore(Path.Combine(_root, "data"));
+
+        await vm.DeleteSongAsync(vm.Songs[0]);
+
+        Assert.Empty(vm.Songs);
+        Assert.Null(store.LoadSong(id));
+        Assert.Empty(store.LoadLibrary().Songs);
+        Assert.True(File.Exists(Path.Combine(folder, "Bass.wav"))); // stems are never deleted
+
+        vm.UndoCommand.Execute(null);
+
+        Assert.Equal(id, Assert.Single(vm.Songs).Id);
+        Assert.NotNull(store.LoadSong(id));
+        Assert.Single(store.LoadLibrary().Songs);
+    }
+
+    [Fact]
+    public async Task The_loaded_song_is_not_deleted()
+    {
+        await using var vm = NewViewModel();
+        await vm.InitializeAsync();
+        await vm.ImportFolderAsync(StemsFolder());
+        await vm.LoadSongAsync(vm.Songs[0].Id);
+
+        await vm.DeleteSongAsync(vm.Songs[0]);
+
+        Assert.Single(vm.Songs);
+        Assert.Contains("Load another song", vm.Toast);
+    }
+
+    [Fact]
     public async Task Relink_on_the_loaded_song_finds_a_moved_stem_by_file_name() // REL-1
     {
         await using var vm = NewViewModel();

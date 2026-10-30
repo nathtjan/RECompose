@@ -366,8 +366,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     public AppSettings Settings => _settings;
 
-    public RelayCommand ImportCommand { get; }
-    public RelayCommand PlayPauseCommand { get; }
+    public RelayCommand ImportCommand { get; }    public RelayCommand PlayPauseCommand { get; }
     public RelayCommand StopCommand { get; }
     public RelayCommand ToStartCommand { get; }
     public RelayCommand OpenSettingsCommand { get; }
@@ -628,6 +627,53 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         foreach (var song in _allSongs.Where(s => s.Matches(_search)))
             Songs.Add(song);
         OnPropertyChanged(nameof(LibraryEmpty));
+    }
+
+    /// <summary>Deletes a song from the library (its stem files stay on disk); undo puts it back. Service entries of it show as missing.</summary>
+    public async Task DeleteSongAsync(SongItemViewModel? item)
+    {
+        if (item is null || _store.LoadSong(item.Id) is not { } song)
+            return;
+        if (_song?.Id == song.Id)
+        {
+            ShowToast($"Load another song before deleting {song.Title}.");
+            return;
+        }
+
+        var uses = _services.Count(s => s.Entries.Any(e => e.SongId == song.Id));
+        var inServices = uses == 0 ? string.Empty : $" It is in {(uses == 1 ? "1 service" : $"{uses} services")}; those entries will show as missing.";
+        if (!await _dialogs.ConfirmAsync("Delete song", $"Delete {song.Title} from the library? Its stem files stay where they are.{inServices}", "Delete"))
+            return;
+
+        var summary = item.Summary;
+        void Apply(bool remove)
+        {
+            var library = _store.LoadLibrary();
+            library.Songs.RemoveAll(s => s.Id == song.Id);
+            _allSongs.RemoveAll(s => s.Id == song.Id);
+            if (remove)
+            {
+                _store.DeleteSong(song.Id);
+                if (SelectedSong?.Id == song.Id)
+                    SelectedSong = null;
+            }
+            else
+            {
+                _store.SaveSong(song);
+                library.Songs.Add(summary);
+                _allSongs.Add(new SongItemViewModel(summary));
+                _allSongs.Sort((a, b) => NaturalComparer.Instance.Compare(a.Title, b.Title));
+            }
+
+            _store.SaveLibrary(library);
+            RefreshLibrary();
+            Setlist.Refresh();
+        }
+
+        Apply(remove: true);
+        _undo.Push(new UndoableChange($"Deleted {song.Title}", () => Apply(remove: false), () => Apply(remove: true)));
+        AppLog.Write("Library", $"Deleted {song.Title}");
+        ShowToast($"Deleted {song.Title}", canUndo: true);
     }
 
     private async Task ImportAsync()

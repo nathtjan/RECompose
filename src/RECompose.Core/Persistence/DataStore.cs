@@ -143,6 +143,15 @@ public sealed class DataStore(string root)
 
     public Song? LoadSongVersion(DocumentVersion version) => Read(version.Path, RecomposeJsonContext.Default.Song)?.Normalized();
 
+    /// <summary>Removes a song's file; a version is kept first, and the stem files are never touched.</summary>
+    public void DeleteSong(string id)
+    {
+        if (!File.Exists(SongPath(id)))
+            return;
+        KeepVersionNow(id, isSong: true);
+        File.Delete(SongPath(id));
+    }
+
     public void DeleteService(string id)
     {
         if (File.Exists(ServicePath(id)))

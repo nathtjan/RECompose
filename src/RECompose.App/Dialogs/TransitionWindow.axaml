@@ -1,6 +1,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 <!-- The transition popover (SL-21): After {This} / Into {Next}, the type, its fields, the explanation, Clear and Save. -->
-<Window xmlns="https://github.com/avaloniaui"
+<d:DialogWindow xmlns="https://github.com/avaloniaui"
+        xmlns:d="using:RECompose.App.Dialogs"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:RECompose.Presentation.ViewModels"
         x:Class="RECompose.App.Dialogs.TransitionWindow"
@@ -75,4 +76,4 @@
       </StackPanel>
     </DockPanel>
   </StackPanel>
-</Window>
+</d:DialogWindow>

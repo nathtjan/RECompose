@@ -402,7 +402,7 @@ public partial class MainWindow : Window
         menu.Open(ServiceRows);
     }
 
-    /// <summary>Right-click on a library song: Load, Add to {service} (SL-5, SL-56).</summary>
+    /// <summary>Right-click on a library song: Load, Add to {service}, Delete (SL-5, SL-56).</summary>
     private void OpenLibraryMenu(object? sender, ContextRequestedEventArgs e)
     {
         if (ViewModel is not { } vm || (e.Source as Control)?.FindAncestorOfType<ListBoxItem>()?.DataContext is not SongItemViewModel song)
@@ -413,6 +413,8 @@ public partial class MainWindow : Window
         menu.Items.Add(Item("Load", () => _ = vm.LoadSongAsync(song.Id)));
         var service = vm.CurrentService;
         menu.Items.Add(Item(service is null ? "Add to a service" : $"Add to {service.Name}", () => vm.AddSongToService(song.Id), service is not null));
+        menu.Items.Add(new Separator());
+        menu.Items.Add(Item("Delete…", () => _ = vm.DeleteSongAsync(song)));
         menu.Open(Library);
     }
 

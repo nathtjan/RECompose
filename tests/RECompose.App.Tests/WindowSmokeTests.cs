@@ -263,6 +263,31 @@ public sealed class WindowSmokeTests : IDisposable
         var problems = Problems(sink);
         Assert.True(problems.Count == 0, "Avalonia reported:\n" + string.Join("\n", problems.Take(30)));
     }
+
+    [Fact]
+    public async Task A_dialog_has_our_title_bar_with_its_title_and_a_close_key()
+    {
+        if (OperatingSystem.IsMacOS())
+            Assert.Skip("macOS keeps the system title bar.");
+
+        await HeadlessApp.RunAsync(() =>
+        {
+            var dialog = new DialogWindow { Title = "Delete song", Width = 460, Content = new TextBlock { Text = "Body" } };
+            var closed = false;
+            dialog.Closed += (_, _) => closed = true;
+            dialog.Show();
+            Dispatcher.UIThread.RunJobs();
+
+            var parts = Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(dialog).ToList();
+            Assert.Contains(parts.OfType<TextBlock>(), t => t.Text == "Delete song");
+            Assert.Contains(parts.OfType<TextBlock>(), t => t.Text == "Body");
+            var close = parts.OfType<Button>().Single(b => b.Name == "CloseButton");
+            Assert.DoesNotContain(parts.OfType<Button>(), b => b.Name is "MinimiseButton" or "MaximiseButton");
+            close.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+            Assert.True(closed);
+            return Task.CompletedTask;
+        }, TestContext.Current.CancellationToken);
+    }
 }
 
 internal sealed class AcceptingDialogs : IDialogs

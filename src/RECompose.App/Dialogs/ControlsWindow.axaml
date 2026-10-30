@@ -1,6 +1,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 <!-- Settings › Playback and › Controls (SET-20, SET-28, LIVE-50…55): jump timing, the bindings with MIDI Learn. -->
-<Window xmlns="https://github.com/avaloniaui"
+<d:DialogWindow xmlns="https://github.com/avaloniaui"
+        xmlns:d="using:RECompose.App.Dialogs"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:RECompose.Presentation.ViewModels"
         x:Class="RECompose.App.Dialogs.ControlsWindow"
@@ -62,4 +63,4 @@
       </ItemsControl>
     </ScrollViewer>
   </DockPanel>
-</Window>
+</d:DialogWindow>
