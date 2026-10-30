@@ -59,6 +59,9 @@ public sealed record EngineTrack(string Id, string File, int Channel, int Width,
     /// <summary>The track follows each segment's key (protocol 5, DM-12): music yes, click and guide no.</summary>
     public bool Transposes { get; init; }
 
+    /// <summary>The file starts this long after the song start; negative skips its first seconds (protocol 14).</summary>
+    public double OffsetSec { get; init; }
+
     /// <summary>Renders of this stem at other keys and tempos (protocol 11, REL-10); the engine plays the matching one.</summary>
     public IReadOnlyList<EngineRender> Renders { get; init; } = [];
 
@@ -434,6 +437,8 @@ public sealed class EngineClient : IAsyncDisposable
                 track["generated"] = generated;
             if (t.Transposes)
                 track["transposes"] = true;
+            if (t.OffsetSec != 0)
+                track["offsetSec"] = t.OffsetSec;
             if (t.Renders.Count > 0)
             {
                 track["renders"] = new JsonArray(t.Renders

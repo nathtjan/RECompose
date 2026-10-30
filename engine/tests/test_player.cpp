@@ -380,6 +380,41 @@ TEST ("player: a missing file is silent and the rest plays (REL-50)")
     CHECK (near (out[0][4000], 0.25f));
 }
 
+TEST ("player: a track offset starts the file later, or skips its first seconds, and counts in the song length (protocol 14)")
+{
+    const auto file = writeWav ("offset.wav", kRate, 1, 96000, [] (int i, int) { return ramp (i); });
+
+    auto late = spec (file, "late", 0, 1);
+    late.offsetSec = 0.5; // 24000 frames
+    {
+        Rig rig ({ late }, 1);
+        CHECK (rig.song->lengthFrames == 120000);
+        rig.send (Command::Type::play);
+        const auto out = rig.render (40000);
+        bool silent = true;
+        for (int i = 0; i < 24000; ++i)
+            silent = silent && out[0][static_cast<std::size_t> (i)] == 0.0f;
+        bool exact = true;
+        for (int i = 24600; i < 40000; ++i)
+            exact = exact && near (out[0][static_cast<std::size_t> (i)], ramp (i - 24000));
+        CHECK (silent);
+        CHECK (exact);
+    }
+
+    auto early = spec (file, "early", 0, 1);
+    early.offsetSec = -0.25; // skips 12000 frames
+    {
+        Rig rig ({ early }, 1);
+        CHECK (rig.song->lengthFrames == 84000);
+        rig.send (Command::Type::play);
+        const auto out = rig.render (20000);
+        bool exact = true;
+        for (int i = 600; i < 20000; ++i)
+            exact = exact && near (out[0][static_cast<std::size_t> (i)], ramp (i + 12000));
+        CHECK (exact);
+    }
+}
+
 // ---- Plans (PB-40, PB-55, AT-3, AT-12) ------------------------------------------------
 
 TEST ("plan: sections play in the order of the plan, repeats included (PB-40)")

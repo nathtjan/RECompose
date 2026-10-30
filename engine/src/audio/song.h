@@ -68,6 +68,7 @@ struct TrackSpec
     std::string generated; // "click" (PB-70) or "speech" (the plan's calls, protocol 13): no file, the engine renders it
     bool transposes = false; // follows the segment's key (DM-12: music yes, click and guide no)
     std::vector<RenderSpec> renders; // protocol 11: played instead of live key and tempo where they match
+    double offsetSec = 0.0;  // protocol 14: the file starts this long after the song start (negative: its first seconds are skipped)
 };
 
 // The arrangement as the engine executes it (PB-40): contiguous segments in plan frames, each
@@ -173,7 +174,8 @@ struct Track
     int channels = 0;           // 1 or 2 (extra source channels are ignored)
     double sourceRate = 0.0;
     std::int64_t sourceFrames = 0;
-    bool missing = false;       // the file could not be opened (REL-50): the track is silent
+    std::int64_t offsetFrames = 0; // spec.offsetSec at the engine rate: source frame f of the song is file frame f - offsetFrames
+    bool missing = false;      // the file could not be opened (REL-50): the track is silent
     bool generatedClick = false; // synthesized from the plan's grid instead of read from a file
     bool generatedSpeech = false; // the plan's spoken calls (protocol 13)
     juce::String problem;

@@ -142,7 +142,9 @@ std::int64_t openTrackFile (Track& track, double engineRate, juce::AudioFormatMa
         track.renders.push_back ({ std::move (rendered), r.semitones, r.tempo });
     }
 
-    return static_cast<std::int64_t> (std::ceil (static_cast<double> (reader->lengthInSamples) * engineRate / reader->sampleRate));
+    track.offsetFrames = static_cast<std::int64_t> (std::llround (track.spec.offsetSec * engineRate));
+    const auto end = static_cast<std::int64_t> (std::ceil (static_cast<double> (reader->lengthInSamples) * engineRate / reader->sampleRate));
+    return std::max<std::int64_t> (0, end + track.offsetFrames);
 }
 
 std::unique_ptr<Song> loadSong (std::string id, std::vector<TrackSpec> specs, double engineRate,

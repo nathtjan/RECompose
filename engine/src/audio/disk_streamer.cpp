@@ -71,6 +71,22 @@ void DiskStreamer::run()
     }
 }
 
+namespace
+{
+    // Reads from a file position that may be before its start (a track offset, protocol 14): that part is silence.
+    void readFrom (juce::AudioFormatReader& reader, float* (&dest)[kMaxTrackChannels], int channels, std::int64_t pos, int frames)
+    {
+        const int lead = static_cast<int> (std::min<std::int64_t> (frames, std::max<std::int64_t> (0, -pos)));
+        for (int c = 0; c < channels; ++c)
+            std::fill_n (dest[c], lead, 0.0f);
+        if (lead == frames)
+            return;
+
+        float* rest[kMaxTrackChannels] { dest[0] + lead, channels > 1 ? dest[1] + lead : nullptr };
+        reader.read (rest, channels, std::max<std::int64_t> (0, pos), frames - lead);
+    }
+} // namespace
+
 // Reads `frames` engine-rate frames from a stream into `out`, resampling when the file's
 // rate differs (PB-2). Past the end of the file the reader returns silence.
 void readStream (Track& track, SourceStream& stream, float* const* out, int frames, double engineRate)
@@ -81,7 +97,7 @@ void readStream (Track& track, SourceStream& stream, float* const* out, int fram
     if (! track.resampling)
     {
         float* dest[kMaxTrackChannels] { out[0], channels > 1 ? out[1] : nullptr };
-        reader->read (dest, channels, stream.pos, frames);
+        readFrom (*reader, dest, channels, stream.pos, frames);
         stream.pos += frames;
         stream.nextEngine += frames;
         return;
@@ -91,7 +107,7 @@ void readStream (Track& track, SourceStream& stream, float* const* out, int fram
     while (static_cast<int> (stream.pending[0].size()) < frames)
     {
         float* dest[kMaxTrackChannels] { track.readBuffer[0].data(), channels > 1 ? track.readBuffer[1].data() : nullptr };
-        reader->read (dest, channels, stream.pos, kBlockFrames);
+        readFrom (*reader, dest, channels, stream.pos, kBlockFrames);
         stream.pos += kBlockFrames;
         for (int c = 0; c < channels; ++c)
         {
@@ -162,7 +178,8 @@ namespace
                      Source source, double tempo)
     {
         stream.render = source.render;
-        startStream (track, stream, static_cast<std::int64_t> (std::floor (source.render >= 0 ? want / tempo : want)), ratio);
+        const double fileWant = want - static_cast<double> (track.offsetFrames); // the track's offset (protocol 14); `want` stays the song's
+        startStream (track, stream, static_cast<std::int64_t> (std::floor (source.render >= 0 ? fileWant / tempo : fileWant)), ratio);
         stream.render = source.render;
         stream.nextSource = want;
         stream.stretched = source.stretched;

@@ -981,6 +981,7 @@ juce::var Engine::loadSong (const juce::var& message, Slot& s)
         spec.soloSafe = flag (t, "soloSafe", false);
         spec.generated = text (t, "generated").toStdString();
         spec.transposes = flag (t, "transposes", false);
+        spec.offsetSec = number (t, "offsetSec", 0.0);
         if (const auto* renders = t.getProperty ("renders", {}).getArray())
             for (const auto& r : *renders)
                 if (const auto file = text (r, "file"); file.isNotEmpty())
