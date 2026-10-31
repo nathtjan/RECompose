@@ -84,6 +84,7 @@ public partial class MainWindow : Window
 
         Library.DoubleTapped += (_, _) => ViewModel?.LoadSelectedCommand.Execute(null);
         Library.ContextRequested += OpenLibraryMenu;
+        PadSetList.ContextRequested += OpenPadSetMenu;
         WatchDragStart(Library, SongFormat, item => (item as SongItemViewModel)?.Id);
 
         // The service (SL-4): double-click or Enter loads, right-click for the menu, drag to reorder, drop songs in.
@@ -393,6 +394,20 @@ public partial class MainWindow : Window
         menu.Items.Add(new Separator());
         menu.Items.Add(Item("Delete…", () => _ = vm.DeleteSongAsync(song)));
         menu.Open(Library);
+    }
+
+    /// <summary>Right-click on a pad set in Library › Pads: Rename, Delete.</summary>
+    private void OpenPadSetMenu(object? sender, ContextRequestedEventArgs e)
+    {
+        if (ViewModel is not { } vm || (e.Source as Control)?.FindAncestorOfType<ListBoxItem>()?.DataContext is not PadSetItem set)
+            return;
+        e.Handled = true;
+        PadSetList.SelectedItem = set;
+        var menu = new ContextMenu();
+        menu.Items.Add(Item("Rename…", () => _ = vm.RenamePadSetAsync(set.Id)));
+        menu.Items.Add(new Separator());
+        menu.Items.Add(Item("Delete…", () => _ = vm.DeletePadSetAsync(set.Id)));
+        menu.Open(PadSetList);
     }
 
     /// <summary>Right-click on a track's lane header or mixer strip: change the track, move it, add one, delete it.</summary>

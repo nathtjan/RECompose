@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 using System.Collections.ObjectModel;
+using RECompose.Core.Commands;
 using RECompose.Core.Library;
 using RECompose.Core.Settings;
 using RECompose.Engine;
@@ -90,6 +91,49 @@ public sealed partial class MainViewModel
                     _ui.Post(() => ShowToast($"{set.Name}: {missing.Count} pad files are missing"));
             }
         });
+    }
+
+    /// <summary>Renames a pad set in Library › Pads; undo puts the old name back.</summary>
+    public async Task RenamePadSetAsync(string id)
+    {
+        if (_pads.PadSets.FirstOrDefault(p => p.Id == id) is not { } set
+            || await _dialogs.AskNameAsync("Rename pad set", "Name", set.Name, "Rename") is not { } name
+            || string.IsNullOrWhiteSpace(name) || name.Trim() == set.Name)
+            return;
+
+        var before = _pads;
+        var after = _pads with { PadSets = _pads.PadSets.Select(p => p.Id == id ? p with { Name = name.Trim() } : p).ToList() };
+        await ApplyPadsAsync(after);
+        _undo.Push(new UndoableChange($"Renamed {set.Name}", () => _ = ApplyPadsAsync(before), () => _ = ApplyPadsAsync(after)));
+        AppLog.Write("Library", $"Renamed pad set {set.Name} to {name.Trim()}");
+    }
+
+    /// <summary>Deletes a pad set from the library (its files stay on disk); undo puts it back.</summary>
+    public async Task DeletePadSetAsync(string id)
+    {
+        if (_pads.PadSets.FirstOrDefault(p => p.Id == id) is not { } set
+            || !await _dialogs.ConfirmAsync("Delete pad set", $"Delete {set.Name} from the library? Its files stay where they are.", "Delete"))
+            return;
+
+        var before = _pads;
+        var after = _pads with { PadSets = _pads.PadSets.Where(p => p.Id != id).ToList(), CurrentId = _pads.CurrentId == id ? null : _pads.CurrentId };
+        await ApplyPadsAsync(after);
+        _undo.Push(new UndoableChange($"Deleted {set.Name}", () => _ = ApplyPadsAsync(before), () => _ = ApplyPadsAsync(after)));
+        AppLog.Write("Library", $"Deleted pad set {set.Name}");
+    }
+
+    /// <summary>Saves and shows <paramref name="pads"/>; when the current set changes the engine opens the new one, and with none left the pad stops.</summary>
+    private async Task ApplyPadsAsync(PadLibrary pads)
+    {
+        var current = _pads.Current?.Id;
+        _pads = pads;
+        _store.SavePads(_pads);
+        RefreshPads();
+        Pads.Refresh();
+        if (_pads.Current is null)
+            await Pads.StopAsync();
+        else if (_pads.Current.Id != current)
+            await SendPadSetAsync();
     }
 
     private void ShowEnginePad(int? key) => Pads.ShowPlaying(key);

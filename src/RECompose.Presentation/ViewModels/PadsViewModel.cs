@@ -158,7 +158,7 @@ public sealed class PadsViewModel : ObservableObject
         return _main.SendToEngineAsync(e => e.PlayPadAsync(pitchClass));
     }
 
-    private Task StopAsync()
+    internal Task StopAsync()
     {
         ShowPlaying(null);
         return _main.SendToEngineAsync(e => e.PlayPadAsync(null));

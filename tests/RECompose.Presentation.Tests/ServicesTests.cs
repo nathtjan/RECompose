@@ -689,4 +689,38 @@ public sealed class PadImportTests : IDisposable
         vm.SongsKey = false;
         Assert.True(vm.ShowSongs);
     }
+
+    [Fact]
+    public async Task A_pad_set_can_be_renamed_and_deleted_and_undo_puts_it_back()
+    {
+        var folder = Path.Combine(_root, "OB Pads");
+        Directory.CreateDirectory(folder);
+        foreach (var key in new[] { "C", "Db", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B" })
+            File.WriteAllBytes(Path.Combine(folder, $"OB Pad {key}.wav"), [0]);
+
+        var store = new DataStore(Path.Combine(_root, "data"));
+        var missing = Path.Combine(_root, "no-engine", EnginePaths.ExecutableFileName);
+        var dialogs = new ServiceDialogs { Name = "Warm" };
+        await using var vm = new MainViewModel(store, new EngineHostOptions(missing, Path.Combine(_root, "e.sock")), new EngineTools(missing), new LockedDispatcher(),
+            dialogs, new SpeechModel(store.Root, allowDownload: false));
+        await vm.InitializeAsync();
+        await vm.ImportFolderAsync(folder);
+        var id = vm.PadSets[0].Id;
+
+        await vm.RenamePadSetAsync(id);
+        Assert.Equal(["Warm"], vm.PadSets.Select(p => p.Name));
+        Assert.Equal("Warm", store.LoadPads().PadSets[0].Name);
+        Assert.Equal("Warm", vm.Pads.CurrentSet?.Name);
+
+        await vm.DeletePadSetAsync(id);
+        Assert.True(vm.PadsEmpty);
+        Assert.False(vm.Pads.HasSet);
+        Assert.Empty(store.LoadPads().PadSets);
+
+        vm.UndoCommand.Execute(null);
+        Assert.Equal(["Warm"], vm.PadSets.Select(p => p.Name));
+        Assert.Equal(id, vm.CurrentPadSetId);
+        vm.UndoCommand.Execute(null);
+        Assert.Equal(["OB Pad"], store.LoadPads().PadSets.Select(p => p.Name));
+    }
 }
