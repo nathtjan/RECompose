@@ -30,6 +30,10 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
 
+        // Open nearly as tall as the screen's free area (above the taskbar or dock), never below the minimum.
+        if ((Screens.ScreenFromWindow(this) ?? Screens.Primary) is { } screen)
+            Height = Math.Max(MinHeight, screen.WorkingArea.Height / screen.Scaling - 48);
+
         // The top bars are the title bar; macOS keeps its traffic lights over their left end.
         if (OperatingSystem.IsMacOS())
         {
