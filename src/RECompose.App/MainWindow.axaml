@@ -317,7 +317,7 @@
                   <Button Classes="chip" Tag="{Binding Id}" Click="OnTransitionChipClick" IsVisible="{Binding HasChip}" Margin="22,0,0,0"
                           ToolTip.Tip="Transition into the next song" AutomationProperties.Name="{Binding ChipText}">
                     <StackPanel Orientation="Horizontal" Spacing="6">
-                      <c:Icon Glyph="transition" IconSize="12" VerticalAlignment="Center" />
+                      <c:Icon Glyph="transition" IconSize="16" VerticalAlignment="Center" /> <!-- smaller, its lines blur -->
                       <TextBlock Text="{Binding ChipText}" VerticalAlignment="Center" />
                     </StackPanel>
                   </Button>
