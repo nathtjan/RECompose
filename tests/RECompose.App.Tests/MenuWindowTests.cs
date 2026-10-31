@@ -8,11 +8,11 @@ using RECompose.Presentation.ViewModels;
 
 namespace RECompose.App.Tests;
 
-// PLAT-20: the menu's structure, behind the Menu button on Windows and Linux (the macOS menu bar has the same groups).
+// The menu's structure, as a menu bar on Windows and Linux (the macOS menu bar has the same groups).
 public sealed class MenuWindowTests
 {
     [Fact]
-    public async Task The_menu_button_holds_the_PLAT20_groups_and_every_item_has_a_command()
+    public async Task The_menu_bar_holds_the_groups_and_every_item_has_a_command()
     {
         var root = Path.Combine(Path.GetTempPath(), "rec-app-menu-" + Guid.NewGuid().ToString("N"));
         await HeadlessApp.RunAsync(async () =>
@@ -29,15 +29,15 @@ public sealed class MenuWindowTests
             List<(string Header, List<System.Windows.Input.ICommand?> Commands)> groups;
             if (OperatingSystem.IsMacOS())
             {
-                Assert.False(window.FindControl<Button>("AppMenuButton")!.IsVisible);
+                Assert.False(window.FindControl<Menu>("AppMenu")!.IsVisible);
                 groups = NativeMenu.GetMenu(window)!.Items.OfType<NativeMenuItem>()
                     .Select(g => (g.Header!, g.Menu!.Items.OfType<NativeMenuItem>().Where(i => i is not NativeMenuItemSeparator).Select(i => i.Command).ToList())).ToList();
             }
             else
             {
-                var button = window.FindControl<Button>("AppMenuButton")!;
-                Assert.True(button.IsVisible);
-                groups = ((MenuFlyout)button.Flyout!).ItemsSource!.Cast<MenuItem>()
+                var menu = window.FindControl<Menu>("AppMenu")!;
+                Assert.True(menu.IsVisible);
+                groups = menu.ItemsSource!.Cast<MenuItem>()
                     .Select(g => ((string)g.Header!, g.ItemsSource!.OfType<MenuItem>().Select(i => i.Command).ToList())).ToList();
             }
 

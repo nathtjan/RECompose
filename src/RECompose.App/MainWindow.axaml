@@ -14,7 +14,7 @@
         Width="1440" Height="900"
         MinWidth="1280" MinHeight="760"
         WindowStartupLocation="CenterScreen"
-        ExtendClientAreaToDecorationsHint="True" WindowDecorations="BorderOnly" ExtendClientAreaTitleBarHeightHint="48">
+        ExtendClientAreaToDecorationsHint="True" WindowDecorations="BorderOnly" ExtendClientAreaTitleBarHeightHint="80">
 
   <Window.Styles>
     <Style Selector="Ellipse.led">
@@ -99,27 +99,33 @@
       <Setter Property="MinHeight" Value="28" />
       <Setter Property="Padding" Value="8,0" />
     </Style>
-    <!-- The drawer leaves the top bar, and the window keys in it, uncovered (Prepare 48, Perform 60) -->
+    <!-- The drawer leaves the top bar, and the window keys in it, uncovered (Prepare 80, Perform 60) -->
     <Style Selector="Border.drawer">
-      <Setter Property="Margin" Value="0,48,0,0" />
+      <Setter Property="Margin" Value="0,80,0,0" />
     </Style>
     <Style Selector="Border.drawer.perform">
       <Setter Property="Margin" Value="0,60,0,0" />
     </Style>
   </Window.Styles>
 
-  <Grid RowDefinitions="48,Auto,*">
+  <Grid RowDefinitions="80,Auto,*">
 
-    <!-- Top bar (UI-11) -->
-    <Border Grid.Row="0" Classes="topbar" Padding="16,0,0,0" IsVisible="{Binding IsPrepare}">
-      <DockPanel>
-        <c:CaptionButtons DockPanel.Dock="Right" Margin="12,0,0,0" />
-        <Panel DockPanel.Dock="Left" Classes="traffic-lights" />
-        <Button x:Name="AppMenuButton" DockPanel.Dock="Left" Classes="ghost" Content="Menu" IsVisible="False" VerticalAlignment="Center" Margin="0,0,12,0"
-                AutomationProperties.Name="Menu" />
-        <TextBlock DockPanel.Dock="Left" VerticalAlignment="Center" FontSize="18" Margin="0,0,24,0">
+    <!-- Top bar (UI-11): the title row (menu, name, window keys) above the toolbar row -->
+    <Grid Grid.Row="0" RowDefinitions="32,48" IsVisible="{Binding IsPrepare}">
+    <Border Grid.Row="0" Classes="topbar" Padding="0">
+      <Grid ColumnDefinitions="*,Auto,*">
+        <StackPanel Grid.Column="0" Orientation="Horizontal">
+          <Panel Classes="traffic-lights" />
+          <Menu x:Name="AppMenu" IsVisible="False" VerticalAlignment="Center" AutomationProperties.Name="Menu" />
+        </StackPanel>
+        <TextBlock Grid.Column="1" VerticalAlignment="Center" FontSize="14" IsHitTestVisible="False">
           <Run Text="REC" FontWeight="ExtraBold" /><Run Text="ompose" FontWeight="Medium" />
         </TextBlock>
+        <c:CaptionButtons Grid.Column="2" HorizontalAlignment="Right" />
+      </Grid>
+    </Border>
+    <Border Grid.Row="1" Classes="topbar" Padding="16,0,16,0">
+      <DockPanel>
         <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center" Spacing="2">
           <ToggleButton Content="Prepare" IsChecked="{Binding IsPrepare, Mode=OneWay}" IsHitTestVisible="False" />
           <ToggleButton x:Name="PerformToggle" Content="Perform" IsChecked="{Binding IsPerform, Mode=TwoWay}" ToolTip.Tip="Perform (Ctrl+P). Playback keeps going." AutomationProperties.Name="Perform" />
@@ -188,6 +194,7 @@
         <Panel />
       </DockPanel>
     </Border>
+    </Grid>
 
     <!-- Banner (UI-70): stays until dismissed or resolved -->
     <Border Grid.Row="1" Classes="banner" Classes.error="{Binding AudioLost}">

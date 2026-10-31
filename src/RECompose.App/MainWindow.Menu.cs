@@ -7,7 +7,7 @@ using RECompose.Presentation.ViewModels;
 namespace RECompose.App;
 
 /// <summary>
-/// The menu (PLAT-20): the macOS menu bar, and on Windows the same structure behind the Menu button in the top bar. The
+/// The menu (PLAT-20): the macOS menu bar, and on Windows the same structure as a menu bar at the left of the title row. The
 /// items run the commands the window already has; the shortcuts stay with the window's key handling.
 /// </summary>
 public partial class MainWindow
@@ -47,14 +47,11 @@ public partial class MainWindow
             return;
         }
 
-        AppMenuButton.Flyout = new MenuFlyout
+        AppMenu.ItemsSource = groups.Select(g => new MenuItem
         {
-            ItemsSource = groups.Select(g => new MenuItem
-            {
-                Header = g.Header,
-                ItemsSource = g.Items.Select(i => i.Header == "-" ? (Control)new Separator() : new MenuItem { Header = i.Header, Command = i.Command }).ToList(),
-            }).ToList(),
-        };
-        AppMenuButton.IsVisible = true;
+            Header = g.Header,
+            ItemsSource = g.Items.Select(i => i.Header == "-" ? (Control)new Separator() : new MenuItem { Header = i.Header, Command = i.Command }).ToList(),
+        }).ToList();
+        AppMenu.IsVisible = true;
     }
 }
