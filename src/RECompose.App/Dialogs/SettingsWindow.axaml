@@ -69,12 +69,17 @@
             <TextBlock Classes="title" Text="Voice" />
             <TextBlock Classes="meta" TextWrapping="Wrap"
                        Text="Talk to RECompose on a mic during a song: &quot;go to the bridge&quot;, &quot;one more time&quot;, &quot;stop&quot;. It acts as if you had pressed the key." />
+            <Grid ColumnDefinitions="140,*">
+              <TextBlock Classes="label" Text="MIC DEVICE" VerticalAlignment="Center" ToolTip.Tip="The device the talkback mic is plugged into" />
+              <ComboBox Grid.Column="1" ItemsSource="{Binding VoiceDevices}" SelectedItem="{Binding VoiceDevice}" HorizontalAlignment="Stretch"
+                        AutomationProperties.Name="Voice device" />
+            </Grid>
             <Grid ColumnDefinitions="140,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="10">
               <TextBlock Grid.Row="0" Classes="label" Text="MIC INPUT" VerticalAlignment="Center" ToolTip.Tip="The talkback mic for voice control" />
               <ComboBox Grid.Row="0" Grid.Column="1" ItemsSource="{Binding VoiceInputs}" SelectedItem="{Binding VoiceInput}" HorizontalAlignment="Stretch"
                         AutomationProperties.Name="Voice input" />
               <TextBlock Grid.Row="1" Grid.Column="1" Classes="meta" TextWrapping="Wrap"
-                         Text="The input channel of the audio device your talkback mic is plugged into. Off turns voice control off." />
+                         Text="The channel your talkback mic is on. Off turns voice control off. The mic can be on another device, such as a USB mic, where the driver allows it (Windows Audio, Core Audio; not ASIO)." />
 
               <StackPanel Grid.Row="2" Grid.Column="1" Spacing="10">
                 <StackPanel Spacing="2">

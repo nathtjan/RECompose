@@ -297,7 +297,18 @@ juce::var Engine::listDevices()
     for (auto* type : devices_.getAvailableDeviceTypes())
     {
         type->scanForDevices();
-        types.add (Obj().set ("name", type->getTypeName()).set ("devices", toArray (type->getDeviceNames (false))).set ("inputs", toArray (type->getDeviceNames (true))));
+        auto entry = Obj().set ("name", type->getTypeName()).set ("devices", toArray (type->getDeviceNames (false))).set ("inputs", toArray (type->getDeviceNames (true)));
+        // Protocol 15: where the driver takes the mic from another device, each input device's channel names. Creating a
+        // device only queries it; nothing is opened.
+        if (type->hasSeparateInputsAndOutputs())
+        {
+            auto channels = Obj();
+            for (const auto& name : type->getDeviceNames (true))
+                if (std::unique_ptr<juce::AudioIODevice> device { type->createDevice ({}, name) })
+                    channels.p->setProperty (name, toArray (device->getInputChannelNames()));
+            entry.set ("separateInputs", true).set ("inputChannels", channels);
+        }
+        types.add (entry);
     }
 
     juce::Array<juce::var> midi;

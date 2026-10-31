@@ -48,7 +48,13 @@ public sealed record DeviceInfo(
 }
 
 /// <summary>A driver type and its output devices.</summary>
-public sealed record DeviceTypeInfo(string Name, IReadOnlyList<string> Devices, IReadOnlyList<string>? Inputs = null);
+/// <summary>A driver type's devices; with <see cref="SeparateInputs"/> the mic can be another device, whose channels are in <see cref="InputChannels"/> (protocol 15).</summary>
+public sealed record DeviceTypeInfo(
+    string Name,
+    IReadOnlyList<string> Devices,
+    IReadOnlyList<string>? Inputs = null,
+    bool SeparateInputs = false,
+    IReadOnlyDictionary<string, IReadOnlyList<string>>? InputChannels = null);
 
 /// <summary>A track to load: file, device channels and mixer state.</summary>
 public sealed record EngineTrack(string Id, string File, int Channel, int Width, double GainDb, bool Mute, bool Solo, bool SoloSafe)
@@ -342,7 +348,9 @@ public sealed class EngineClient : IAsyncDisposable
     {
         var reply = await Session.Connection.RequestAsync("listDevices", cancellationToken: ct).ConfigureAwait(false);
         var types = (reply["types"] as JsonArray ?? []).OfType<JsonObject>()
-            .Select(t => new DeviceTypeInfo((string?)t["name"] ?? string.Empty, DeviceInfo.Strings(t["devices"]), DeviceInfo.Strings(t["inputs"])))
+            .Select(t => new DeviceTypeInfo((string?)t["name"] ?? string.Empty, DeviceInfo.Strings(t["devices"]), DeviceInfo.Strings(t["inputs"]),
+                (bool?)t["separateInputs"] ?? false,
+                (t["inputChannels"] as JsonObject)?.ToDictionary(p => p.Key, p => (IReadOnlyList<string>)DeviceInfo.Strings(p.Value))))
             .ToList();
         return (types, DeviceInfo.From(reply["current"]));
     }

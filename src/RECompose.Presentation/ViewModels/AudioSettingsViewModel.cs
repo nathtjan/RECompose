@@ -65,13 +65,10 @@ public sealed class AudioSettingsViewModel : ObservableObject
 
         _autoSwitchBack = settings.AutoSwitchBack;
 
-        VoiceInputs = [VoiceOff, .. (current?.InputChannels ?? []).Select((name, i) => VoiceLabel(i, name))];
-        _voiceInput = settings.VoiceChannel >= 0 && settings.VoiceChannel + 1 < VoiceInputs.Count ? VoiceInputs[settings.VoiceChannel + 1]
-            : settings.VoiceChannel >= 0 ? VoiceLabel(settings.VoiceChannel, null)
-            : VoiceOff;
-        if (!VoiceInputs.Contains(_voiceInput))
-            VoiceInputs = [.. VoiceInputs, _voiceInput]; // not on this device now: still the choice
-        _voiceChannels = VoiceInputs.Skip(1).Select((label, i) => (label, i)).ToDictionary(x => x.label, x => x.label == _voiceInput ? settings.VoiceChannel : x.i);
+        _openVoiceDevice = settings.VoiceDevice;
+        _voiceDevice = settings.VoiceDevice ?? SameDevice;
+        UpdateVoiceDevices();
+        UpdateVoiceInputs(settings.VoiceChannel, keepMissing: true);
         VoicePushToTalk = settings.VoicePushToTalk;
         VoiceConfirm = settings.VoiceConfirm;
         VoiceGate = settings.VoiceGate;
@@ -85,14 +82,33 @@ public sealed class AudioSettingsViewModel : ObservableObject
     private static string VoiceLabel(int channel, string? name) =>
         $"Input {(channel + 1).ToString(CultureInfo.InvariantCulture)}{(string.IsNullOrWhiteSpace(name) ? string.Empty : $" · {name.Trim()}")}";
 
-    private readonly Dictionary<string, int> _voiceChannels;
-    private string _voiceInput;
+    public const string SameDevice = "Same as audio device";
+
+    private readonly Dictionary<string, int> _voiceChannels = [];
+    private readonly string? _openVoiceDevice;
+    private string _voiceDevice;
+    private IReadOnlyList<string> _voiceDevices = [];
+    private IReadOnlyList<string> _voiceInputs = [];
+    private string _voiceInput = VoiceOff;
     private string _voiceHeard = "Say \"let's go to the bridge\" to try it.";
     private string _voiceWouldDo = string.Empty;
     private double _voiceLevel;
 
-    /// <summary>"Off", then the open device's inputs ("Input 1 · Mic 1").</summary>
-    public IReadOnlyList<string> VoiceInputs { get; }
+    /// <summary>"Same as audio device", then the driver's input devices where it can take the mic from another one.</summary>
+    public IReadOnlyList<string> VoiceDevices { get => _voiceDevices; private set => Set(ref _voiceDevices, value); }
+
+    public string VoiceDevice
+    {
+        get => _voiceDevice;
+        set
+        {
+            if (Set(ref _voiceDevice, value ?? SameDevice))
+                UpdateVoiceInputs(VoiceChannel, keepMissing: false);
+        }
+    }
+
+    /// <summary>"Off", then the mic device's inputs ("Input 1 · Mic 1").</summary>
+    public IReadOnlyList<string> VoiceInputs { get => _voiceInputs; private set => Set(ref _voiceInputs, value); }
 
     public string VoiceInput { get => _voiceInput; set => Set(ref _voiceInput, value ?? VoiceOff); }
 
@@ -137,6 +153,9 @@ public sealed class AudioSettingsViewModel : ObservableObject
             {
                 UpdateDevices();
                 SelectedDevice = Devices.FirstOrDefault();
+                UpdateVoiceDevices();
+                VoiceDevice = VoiceDevices.Contains(_voiceDevice) ? _voiceDevice : SameDevice;
+                UpdateVoiceInputs(VoiceChannel, keepMissing: false);
             }
         }
     }
@@ -147,7 +166,15 @@ public sealed class AudioSettingsViewModel : ObservableObject
         private set => Set(ref _devices, value);
     }
 
-    public string? SelectedDevice { get => _selectedDevice; set => Set(ref _selectedDevice, value); }
+    public string? SelectedDevice
+    {
+        get => _selectedDevice;
+        set
+        {
+            if (Set(ref _selectedDevice, value) && _voiceDevice == SameDevice)
+                UpdateVoiceInputs(VoiceChannel, keepMissing: false);
+        }
+    }
     public string SelectedRate { get => _selectedRate; set => Set(ref _selectedRate, value); }
     public string SelectedBuffer { get => _selectedBuffer; set => Set(ref _selectedBuffer, value); }
 
@@ -219,6 +246,7 @@ public sealed class AudioSettingsViewModel : ObservableObject
             FallbackDeviceName = _fallbacks.TryGetValue(SelectedFallback, out var g) ? g.Name : null,
             AutoSwitchBack = AutoSwitchBack,
             VoiceChannel = VoiceChannel,
+            VoiceDevice = _voiceDevice == SameDevice ? null : _voiceDevice,
             MdChannel = MdOutput == VoiceOff ? null : OutputRef.Parse(OutputChoices.ToOutput(MdOutput)).Channel,
             MdWidth = MdOutput == VoiceOff ? 2 : OutputRef.Parse(OutputChoices.ToOutput(MdOutput)).Width,
             VoicePushToTalk = VoicePushToTalk,
@@ -242,4 +270,41 @@ public sealed class AudioSettingsViewModel : ObservableObject
 
     private void UpdateDevices() =>
         Devices = _types.FirstOrDefault(t => t.Name == _selectedType)?.Devices ?? [];
+
+    private void UpdateVoiceDevices()
+    {
+        var type = _types.FirstOrDefault(t => t.Name == _selectedType);
+        IReadOnlyList<string> devices = [SameDevice, .. type is { SeparateInputs: true } ? type.Inputs ?? [] : []];
+        if (!devices.Contains(_voiceDevice))
+            devices = [.. devices, _voiceDevice]; // not connected now: still the choice
+        VoiceDevices = devices;
+    }
+
+    /// <summary>Lists the mic device's inputs and selects <paramref name="channel"/>; one the device lacks stays only with <paramref name="keepMissing"/>.</summary>
+    private void UpdateVoiceInputs(int channel, bool keepMissing)
+    {
+        var device = _voiceDevice == SameDevice ? _selectedDevice : _voiceDevice;
+        var names = (device is null ? null : _types.FirstOrDefault(t => t.Name == _selectedType)?.InputChannels?.GetValueOrDefault(device))
+            ?? (device == (_openVoiceDevice ?? _current?.Name) ? _current?.InputChannels : null)
+            ?? [];
+
+        _voiceChannels.Clear();
+        var inputs = new List<string> { VoiceOff };
+        for (var i = 0; i < names.Count; i++)
+        {
+            inputs.Add(VoiceLabel(i, names[i]));
+            _voiceChannels[inputs[^1]] = i;
+        }
+
+        var selected = channel >= 0 && channel < names.Count ? inputs[channel + 1] : VoiceOff;
+        if (channel >= names.Count && keepMissing)
+        {
+            selected = VoiceLabel(channel, null); // not on this device now: still the choice
+            inputs.Add(selected);
+            _voiceChannels[selected] = channel;
+        }
+
+        VoiceInputs = inputs;
+        VoiceInput = selected;
+    }
 }

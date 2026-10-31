@@ -567,6 +567,38 @@ public sealed class MainViewModelTests : IDisposable
         await Eventually(() => vm.Song!.MissingCount == 0);
         Assert.Contains("Relinked 1 stem", vm.Toast);
     }
+
+    [Fact]
+    public void The_talkback_mic_can_be_on_another_device_than_the_music()
+    {
+        var types = new List<DeviceTypeInfo>
+        {
+            new("Windows Audio", ["Speakers", "Focusrite USB"], ["USB Mic", "Focusrite USB"], SeparateInputs: true,
+                InputChannels: new Dictionary<string, IReadOnlyList<string>> { ["USB Mic"] = ["Mono"], ["Focusrite USB"] = ["Mic 1", "Mic 2"] }),
+            new("ASIO", ["Focusrite USB ASIO"], ["Focusrite USB ASIO"]),
+        };
+        var current = new DeviceInfo("Windows Audio", "Speakers", 48000, 256, ["L", "R"], [48000], [256], 0, []);
+        var audio = new AudioSettingsViewModel(types, current, new Core.Settings.AudioSettings { DeviceType = "Windows Audio", DeviceName = "Speakers" });
+
+        Assert.Equal([AudioSettingsViewModel.SameDevice, "USB Mic", "Focusrite USB"], audio.VoiceDevices);
+        Assert.Equal([AudioSettingsViewModel.VoiceOff], audio.VoiceInputs);
+
+        audio.VoiceDevice = "Focusrite USB";
+        Assert.Equal([AudioSettingsViewModel.VoiceOff, "Input 1 · Mic 1", "Input 2 · Mic 2"], audio.VoiceInputs);
+        audio.VoiceInput = "Input 2 · Mic 2";
+        var saved = audio.ToSettings(new Core.Settings.AudioSettings());
+        Assert.Equal(("Focusrite USB", 1), (saved.VoiceDevice, saved.VoiceChannel));
+
+        // A device without channel 2 drops the choice; the same device as the music saves no device.
+        audio.VoiceDevice = "USB Mic";
+        Assert.Equal(AudioSettingsViewModel.VoiceOff, audio.VoiceInput);
+        audio.VoiceDevice = AudioSettingsViewModel.SameDevice;
+        Assert.Null(audio.ToSettings(new Core.Settings.AudioSettings()).VoiceDevice);
+
+        // ASIO takes the mic from the device it plays through only.
+        audio.SelectedType = "ASIO";
+        Assert.Equal([AudioSettingsViewModel.SameDevice], audio.VoiceDevices);
+    }
 }
 
 /// <summary>Runs posted work inline, one at a time (engine events arrive on another thread).</summary>
