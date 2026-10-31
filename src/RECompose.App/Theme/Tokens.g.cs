@@ -100,7 +100,7 @@ public static class Tokens
         ("size-key-compact", 32.0),
         ("size-row", 56.0),
         ("size-tile", 76.0),
-        ("size-status-bar", 60.0),
+        ("size-status-bar", 48.0),
         ("motion-fast", 120.0),
         ("motion-normal", 200.0),
         ("motion-hold", 600.0),
