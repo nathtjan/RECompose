@@ -193,12 +193,18 @@
             <TextBlock Text="Assistant" VerticalAlignment="Center" />
           </StackPanel>
         </Button>
-        <Button DockPanel.Dock="Right" Classes="ghost" Command="{Binding OpenSettingsCommand}" VerticalAlignment="Center"
-                ToolTip.Tip="Audio device. Click to change it.">
+        <Button DockPanel.Dock="Right" Classes="ghost" Command="{Binding OpenSettingsCommand}" VerticalAlignment="Center" AutomationProperties.Name="Audio">
+          <ToolTip.Tip>
+            <StackPanel Spacing="4">
+              <TextBlock Text="{Binding AudioStatus}" TextWrapping="Wrap" />
+              <TextBlock Text="Audio device. Click to change it." />
+            </StackPanel>
+          </ToolTip.Tip>
           <StackPanel Orientation="Horizontal" Spacing="8">
             <Ellipse Classes="led" Classes.ok="{Binding AudioOk}" VerticalAlignment="Center" />
             <TextBlock Classes="label" Text="AUDIO" VerticalAlignment="Center" />
-            <TextBlock Classes="mono" Text="{Binding AudioStatus}" VerticalAlignment="Center" />
+            <!-- Long device names would push the Voice and MIDI indicators out; the full text is in the tooltip. -->
+            <TextBlock Classes="mono" Text="{Binding AudioStatus}" VerticalAlignment="Center" MaxWidth="320" TextTrimming="CharacterEllipsis" />
           </StackPanel>
         </Button>
         <Button DockPanel.Dock="Right" Classes="ghost" Command="{Binding OpenCheckCommand}" VerticalAlignment="Center" IsVisible="{Binding HasMidiStatus}"

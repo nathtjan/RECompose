@@ -631,7 +631,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         if (previous?.StatusLabel != device.StatusLabel)
             AppLog.Write("Audio", $"Device {device.StatusLabel}, buffer {device.BufferSize}, latency {device.OutputLatency} frames");
         AudioOk = true;
-        AudioStatus = device.StatusLabel + (_dropouts > 0 ? $" · {_dropouts} dropouts" : string.Empty);
+        AudioStatus = (_dropouts > 0 ? $"{_dropouts} dropouts · " : string.Empty) + device.StatusLabel; // first: the device name may be cut off
     }
 
     // ---- Library and import (SL-50…56) -------------------------------------------

@@ -341,7 +341,7 @@ public sealed class PerformWindowTests : IDisposable
             Dispatcher.UIThread.RunJobs();
 
             // KEY-1: a button keeps focus after its dialog closes; Space on it is play, not a second click (press and release).
-            var settings = window.GetVisualDescendants().OfType<Button>().First(b => ToolTip.GetTip(b) as string == "Audio device. Click to change it." && b.IsEffectivelyVisible);
+            var settings = window.GetVisualDescendants().OfType<Button>().First(b => Avalonia.Automation.AutomationProperties.GetName(b) == "Audio" && b.IsEffectivelyVisible);
             Assert.Equal(0, Clicks(settings));
 
             // PB-60: double-click KEY to type it; Enter applies.
