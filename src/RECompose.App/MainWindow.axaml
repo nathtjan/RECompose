@@ -1294,7 +1294,7 @@
         <!-- UI-80: no key yet -->
         <Border DockPanel.Dock="Top" Classes="inset" Padding="12" IsVisible="{Binding NeedsKey}">
           <StackPanel Spacing="8">
-            <TextBlock Text="Add your Anthropic API key to use the assistant" TextWrapping="Wrap" />
+            <TextBlock Text="{Binding NeedsKeyText}" TextWrapping="Wrap" />
             <Button Content="Open settings" Command="{Binding SettingsCommand}" HorizontalAlignment="Left" />
           </StackPanel>
         </Border>

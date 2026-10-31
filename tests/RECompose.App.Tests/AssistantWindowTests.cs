@@ -58,7 +58,7 @@ public sealed class AssistantWindowTests : IDisposable
                 new AvaloniaDispatcher(), new AcceptingDialogs(), new SpeechModel(store.Root, allowDownload: false));
             vm.Assistant.Secrets = new MemorySecretStore();
             var replies = new Queue<string>();
-            vm.Assistant.ClientFactory = (key, workspace) => new AssistantClient(key, workspace, new HttpClient(new FakeApi(replies)));
+            vm.Assistant.ClientFactory = (_, key, workspace) => new AnthropicAssistantClient(key, workspace, new HttpClient(new FakeApi(replies)));
 
             var window = new MainWindow { DataContext = vm, Width = 1440, Height = 900 };
             window.Show();

@@ -2,7 +2,6 @@
 using System.Collections.ObjectModel;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using Anthropic.Models.Messages;
 using RECompose.Core.Assistant;
 using RECompose.Core.Commands;
 using RECompose.Core.Settings;
@@ -73,9 +72,10 @@ public sealed class AssistantRow : ObservableObject
 public sealed class AssistantViewModel : ObservableObject
 {
     public const string KeyName = "anthropic-api-key";
+    public const string OpenAIKeyName = "openai-api-key";
 
     private readonly MainViewModel _main;
-    private readonly List<MessageParam> _history = [];
+    private readonly List<AssistantTurn> _history = [];
     private readonly List<(UndoableChange Group, string Text)> _groups = [];
     private readonly List<string> _cardNotes = [];
     private string _conversationId = NewConversationId();
@@ -85,7 +85,7 @@ public sealed class AssistantViewModel : ObservableObject
     private string _draft = string.Empty;
     private string _keyText = string.Empty;
     private string _testResult = string.Empty;
-    private AssistantClient? _client;
+    private IAssistantBackend? _client;
 
     public AssistantViewModel(MainViewModel main)
     {
@@ -114,8 +114,14 @@ public sealed class AssistantViewModel : ObservableObject
         set => _secrets = value;
     }
 
-    /// <summary>Tests send the requests to a fake API.</summary>
-    internal Func<string, string?, AssistantClient> ClientFactory { get; set; } = (key, workspace) => new AssistantClient(key, workspace);
+    /// <summary>The backend for a provider, its key and the Anthropic workspace; tests send the requests to a fake API.</summary>
+    internal Func<string, string, string?, IAssistantBackend> ClientFactory { get; set; } = (provider, key, workspace) =>
+        provider == AssistantSettings.OpenAI ? new OpenAIAssistantClient(key) : new AnthropicAssistantClient(key, workspace);
+
+    private bool IsOpenAI => _main.AssistantSettings.Provider == AssistantSettings.OpenAI;
+
+    /// <summary>Where the current provider's key is kept in the credential store.</summary>
+    private string ActiveKeyName => IsOpenAI ? OpenAIKeyName : KeyName;
 
     public bool IsOpen
     {
@@ -127,7 +133,10 @@ public sealed class AssistantViewModel : ObservableObject
         }
     }
 
-    public bool HasKey => !string.IsNullOrEmpty(Secrets.Get(KeyName));
+    public bool HasKey => !string.IsNullOrEmpty(Secrets.Get(ActiveKeyName));
+
+    /// <summary>The setup card: "Add your OpenAI API key to use the assistant".</summary>
+    public string NeedsKeyText => $"Add your {ProviderName} API key to use the assistant";
 
     /// <summary>The setup card (UI-80): no key yet.</summary>
     public bool NeedsKey => !HasKey;
@@ -165,19 +174,37 @@ public sealed class AssistantViewModel : ObservableObject
 
     public string KeyStatus => HasKey ? "A key is stored in the system's credential store." : "No key yet.";
 
+    public IReadOnlyList<string> Providers { get; } = ["Anthropic", "OpenAI"];
+
+    /// <summary>Who answers: "Anthropic" or "OpenAI". The conversation carries on with the other one.</summary>
+    public string ProviderName
+    {
+        get => IsOpenAI ? "OpenAI" : "Anthropic";
+        set => Save(s => s with { Provider = value == "OpenAI" ? AssistantSettings.OpenAI : AssistantSettings.Anthropic });
+    }
+
+    /// <summary>The workspace id is Anthropic's only.</summary>
+    public bool IsAnthropic => !IsOpenAI;
+
+    public string KeyLabel => $"{ProviderName.ToUpperInvariant()} API KEY";
+    public string KeyPlaceholder => IsOpenAI ? "sk-…" : "sk-ant-…";
+
     public string WorkspaceId
     {
         get => _main.AssistantSettings.WorkspaceId ?? string.Empty;
         set => Save(s => s with { WorkspaceId = string.IsNullOrWhiteSpace(value) ? null : value.Trim() });
     }
 
+    /// <summary>The current provider's model.</summary>
     public string Model
     {
-        get => _main.AssistantSettings.Model;
-        set => Save(s => s with { Model = string.IsNullOrWhiteSpace(value) ? AssistantPrompt.DefaultModel : value.Trim() });
+        get => IsOpenAI ? _main.AssistantSettings.OpenAIModel : _main.AssistantSettings.Model;
+        set => Save(s => IsOpenAI
+            ? s with { OpenAIModel = string.IsNullOrWhiteSpace(value) ? AssistantPrompt.OpenAIDefaultModel : value.Trim() }
+            : s with { Model = string.IsNullOrWhiteSpace(value) ? AssistantPrompt.DefaultModel : value.Trim() });
     }
 
-    public IReadOnlyList<string> SuggestedModels => AssistantPrompt.SuggestedModels;
+    public IReadOnlyList<string> SuggestedModels => IsOpenAI ? AssistantPrompt.OpenAISuggestedModels : AssistantPrompt.SuggestedModels;
 
     /// <summary>Changes during Perform: Ask me to confirm (true) or Not allowed (AS-1, AS-45).</summary>
     public bool ConfirmInPerform
@@ -188,7 +215,7 @@ public sealed class AssistantViewModel : ObservableObject
 
     public string TestResult { get => _testResult; private set => Set(ref _testResult, value); }
 
-    public string PrivacyNote => AssistantPrompt.PrivacyNote;
+    public string PrivacyNote => AssistantPrompt.PrivacyNote(ProviderName);
 
     private void Save(Func<AssistantSettings, AssistantSettings> change)
     {
@@ -204,7 +231,7 @@ public sealed class AssistantViewModel : ObservableObject
         {
             try
             {
-                Secrets.Set(KeyName, KeyText.Trim());
+                Secrets.Set(ActiveKeyName, KeyText.Trim());
             }
             catch (Exception e) when (e is IOException or InvalidOperationException)
             {
@@ -213,7 +240,7 @@ public sealed class AssistantViewModel : ObservableObject
             }
 
             KeyText = string.Empty;
-            AppLog.Write("Assistant", "API key stored");
+            AppLog.Write("Assistant", $"{ProviderName} API key stored");
         }
 
         _client = null;
@@ -238,16 +265,16 @@ public sealed class AssistantViewModel : ObservableObject
         }
         catch (Exception e)
         {
-            TestResult = AssistantClient.ErrorText(e);
+            TestResult = client.ErrorText(e);
         }
     }
 
-    private AssistantClient? Client()
+    private IAssistantBackend? Client()
     {
         if (_client is not null)
             return _client;
-        var key = Secrets.Get(KeyName);
-        return string.IsNullOrEmpty(key) ? null : _client = ClientFactory(key, _main.AssistantSettings.WorkspaceId);
+        var key = Secrets.Get(ActiveKeyName);
+        return string.IsNullOrEmpty(key) ? null : _client = ClientFactory(_main.AssistantSettings.Provider, key, _main.AssistantSettings.WorkspaceId);
     }
 
     // ---- The conversation (AS-10, AS-20) --------------------------------------------------------------------
@@ -278,64 +305,42 @@ public sealed class AssistantViewModel : ObservableObject
         TrimHistory();
         var before = _history.Count;
 
-        List<ContentBlockParam> content = [new TextBlockParam { Text = text }];
+        List<string> content = [text];
         if (_cardNotes.Count > 0)
         {
-            content.Add(new TextBlockParam { Text = string.Join("\n", _cardNotes) });
+            content.Add(string.Join("\n", _cardNotes));
             _cardNotes.Clear();
         }
 
-        content.Add(new TextBlockParam { Text = _main.AssistantState() });
-        _history.Add(new UserMessageParam { Content = content });
+        content.Add(_main.AssistantState());
+        _history.Add(new UserTurn(content));
 
         try
         {
             for (var round = 1; ; round++)
             {
                 var reply = await client.SendAsync(Model, _history);
-                List<ContentBlockParam> echo = [];
-                List<ContentBlockParam> results = [];
-                var words = new List<string>();
-                foreach (var block in reply.Content)
-                {
-                    if (block.TryPickText(out var t))
-                    {
-                        echo.Add(new TextBlockParam { Text = t.Text });
-                        words.Add(t.Text);
-                    }
-                    else if (block.TryPickThinking(out var thinking))
-                    {
-                        echo.Add(new ThinkingBlockParam { Thinking = thinking.Thinking, Signature = thinking.Signature });
-                    }
-                    else if (block.TryPickRedactedThinking(out var redacted))
-                    {
-                        echo.Add(new RedactedThinkingBlockParam { Data = redacted.Data });
-                    }
-                    else if (block.TryPickToolUse(out var use))
-                    {
-                        echo.Add(new ToolUseBlockParam { ID = use.ID, Name = use.Name, Input = use.Input });
-                        var result = Execute(use.Name, JsonSerializer.SerializeToNode(use.Input) as JsonObject ?? [], done);
-                        results.Add(new ToolResultBlockParam { ToolUseID = use.ID, Content = result.ToJsonString(), IsError = result["ok"]?.GetValue<bool>() == false && result["status"] is null });
-                    }
-                }
+                _history.Add(reply.Turn);
 
-                _history.Add(new AssistantMessageParam { Content = echo });
-
-                if (reply.StopReason == "refusal")
+                if (reply.Refused)
                 {
                     Add(new AssistantRow(AssistantRowKind.Error, "The assistant declined this request."));
                     break;
                 }
 
-                if (results.Count == 0)
+                if (reply.Turn.Calls.Count == 0)
                 {
-                    if (string.Join("\n\n", words).Trim() is { Length: > 0 } answer)
+                    if (string.Join("\n\n", reply.Turn.Texts).Trim() is { Length: > 0 } answer)
                         Add(new AssistantRow(AssistantRowKind.Assistant, answer));
                     break;
                 }
 
-                results.Add(new TextBlockParam { Text = _main.AssistantState() });
-                _history.Add(new UserMessageParam { Content = results });
+                var results = reply.Turn.Calls.Select(call =>
+                {
+                    var result = Execute(call.Name, call.Input, done);
+                    return new ToolResult(call.Id, result.ToJsonString(), result["ok"]?.GetValue<bool>() == false && result["status"] is null);
+                }).ToList();
+                _history.Add(new ResultsTurn(results, _main.AssistantState()));
                 if (round == AssistantPrompt.MaxRounds)
                 {
                     // The model never saw an answer to these results; drop the round so the next message starts clean.
@@ -349,7 +354,7 @@ public sealed class AssistantViewModel : ObservableObject
         {
             // Error bubbles are not sent to the model (AS-20): the unanswered message goes from the history.
             _history.RemoveRange(before, _history.Count - before);
-            Add(new AssistantRow(AssistantRowKind.Error, AssistantClient.ErrorText(e)));
+            Add(new AssistantRow(AssistantRowKind.Error, client.ErrorText(e)));
             AppLog.Write("Assistant", $"Error: {e.Message}");
         }
         finally
@@ -378,13 +383,12 @@ public sealed class AssistantViewModel : ObservableObject
         _history.RemoveRange(0, cut);
         for (var i = 0; i < _history.Count; i++)
         {
-            if (_history[i].Value is AssistantMessageParam { Content.Value: IReadOnlyList<ContentBlockParam> blocks } assistant)
-                _history[i] = assistant with { Content = blocks.Where(b => b.Value is not (ThinkingBlockParam or RedactedThinkingBlockParam)).ToList() };
+            if (_history[i] is ReplyTurn { Native: not null } reply)
+                _history[i] = reply with { Native = null };
         }
     }
 
-    private static bool IsTypedMessage(MessageParam message) =>
-        message.Value is UserMessageParam { Content.Value: IReadOnlyList<ContentBlockParam> blocks } && blocks.All(b => b.Value is TextBlockParam);
+    private static bool IsTypedMessage(AssistantTurn turn) => turn is UserTurn;
 
     /// <summary>One tool call: reads answer at once; changes apply in Prepare and become a card in Perform (AS-45).</summary>
     private JsonObject Execute(string tool, JsonObject input, List<string> done)

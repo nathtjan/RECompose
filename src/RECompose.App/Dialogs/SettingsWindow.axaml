@@ -214,14 +214,18 @@
         <ScrollViewer VerticalScrollBarVisibility="Auto" DataContext="{Binding Assistant}" x:DataType="vm:AssistantViewModel">
           <StackPanel Spacing="6" Margin="16,0,16,0">
             <TextBlock Classes="title" Text="Assistant" />
-            <TextBlock Classes="label" Text="ANTHROPIC API KEY" Margin="0,6,0,0" />
+            <TextBlock Classes="label" Text="PROVIDER" Margin="0,6,0,0" />
+            <ComboBox ItemsSource="{Binding Providers}" SelectedItem="{Binding ProviderName}" HorizontalAlignment="Stretch" AutomationProperties.Name="Provider" />
+            <TextBlock Classes="meta" TextWrapping="Wrap"
+                       Text="Each provider keeps its own key and model. Switching carries the conversation on." />
+            <TextBlock Classes="label" Text="{Binding KeyLabel}" Margin="0,6,0,0" />
             <DockPanel>
               <Button DockPanel.Dock="Right" Content="Save" Command="{Binding SaveKeyCommand}" Margin="6,0,0,0" />
-              <TextBox Text="{Binding KeyText}" PasswordChar="•" PlaceholderText="sk-ant-…" AutomationProperties.Name="Anthropic API key" />
+              <TextBox Text="{Binding KeyText}" PasswordChar="•" PlaceholderText="{Binding KeyPlaceholder}" AutomationProperties.Name="API key" />
             </DockPanel>
             <TextBlock Classes="meta" Text="{Binding KeyStatus}" TextWrapping="Wrap" />
-            <TextBlock Classes="label" Text="WORKSPACE ID (OPTIONAL)" Margin="0,6,0,0" />
-            <TextBox Text="{Binding WorkspaceId}" AutomationProperties.Name="Workspace ID" />
+            <TextBlock Classes="label" Text="WORKSPACE ID (OPTIONAL)" Margin="0,6,0,0" IsVisible="{Binding IsAnthropic}" />
+            <TextBox Text="{Binding WorkspaceId}" AutomationProperties.Name="Workspace ID" IsVisible="{Binding IsAnthropic}" />
             <TextBlock Classes="label" Text="MODEL" Margin="0,6,0,0" />
             <AutoCompleteBox Text="{Binding Model}" ItemsSource="{Binding SuggestedModels}" FilterMode="StartsWith" AutomationProperties.Name="Model" />
             <CheckBox IsChecked="{Binding ConfirmInPerform}" Content="Allow changes during Perform, with confirmation" Margin="0,6,0,0" />

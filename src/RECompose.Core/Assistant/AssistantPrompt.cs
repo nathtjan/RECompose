@@ -12,18 +12,25 @@ public static class AssistantPrompt
     public const string DefaultModel = "claude-sonnet-5-5";
     public static IReadOnlyList<string> SuggestedModels { get; } = [DefaultModel, "claude-opus-5-5", "claude-haiku-5-5"];
 
+    /// <summary>The model for the OpenAI provider; any Chat Completions model with function calling works.</summary>
+    public const string OpenAIDefaultModel = "gpt-5";
+    public static IReadOnlyList<string> OpenAISuggestedModels { get; } = [OpenAIDefaultModel, "gpt-5-mini"];
+
     /// <summary>The last messages sent with each request (AS-20).</summary>
     public const int HistoryLimit = 40;
 
     /// <summary>Tool rounds per user message (AS-10).</summary>
     public const int MaxRounds = 10;
 
-    public const string PrivacyNote = "The assistant sends song titles, sections, arrangements, service details and app state to Anthropic. Audio is never sent.";
-    public const string KeyRejected = "The Anthropic API key was rejected. Update it in Settings > Assistant.";
+    /// <summary>The provider names as shown: "Anthropic", "OpenAI".</summary>
+    public static string PrivacyNote(string provider) =>
+        $"The assistant sends song titles, sections, arrangements, service details and app state to {provider}. Audio is never sent.";
+
+    public static string KeyRejected(string provider) => $"The {provider} API key was rejected. Update it in Settings > Assistant.";
 
     public static string ApiError(string message) => $"Assistant error: {message}";
 
-    public static string Offline(string detail) => $"Assistant error: Couldn't reach the Anthropic API ({detail}).";
+    public static string Offline(string provider, string detail) => $"Assistant error: Couldn't reach the {provider} API ({detail}).";
 
     /// <summary>
     /// The system prompt (AS-11). It stays the same for a whole conversation: the mode and the state snapshot change, so they go

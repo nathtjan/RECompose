@@ -62,6 +62,101 @@ public sealed class AssistantTests : IDisposable
             Reply([new JsonObject { ["type"] = "tool_use", ["id"] = $"toolu_{Replies.Count}", ["name"] = name, ["input"] = input }], "tool_use");
 
         public void Text(string text) => Reply([new JsonObject { ["type"] = "text", ["text"] = text }], "end_turn");
+
+        // OpenAI Chat Completions replies.
+        public void OpenAIReply(JsonObject message, string finish) => Replies.Enqueue((HttpStatusCode.OK, new JsonObject
+        {
+            ["id"] = $"chatcmpl-{Replies.Count}",
+            ["object"] = "chat.completion",
+            ["model"] = "gpt-5",
+            ["choices"] = new JsonArray(new JsonObject { ["index"] = 0, ["message"] = message, ["finish_reason"] = finish }),
+        }.ToJsonString()));
+
+        public void OpenAITool(string name, JsonObject input) => OpenAIReply(new JsonObject
+        {
+            ["role"] = "assistant",
+            ["content"] = null,
+            ["tool_calls"] = new JsonArray(new JsonObject
+            {
+                ["id"] = $"call_{Replies.Count}",
+                ["type"] = "function",
+                ["function"] = new JsonObject { ["name"] = name, ["arguments"] = input.ToJsonString() },
+            }),
+        }, "tool_calls");
+
+        public void OpenAIText(string text) => OpenAIReply(new JsonObject { ["role"] = "assistant", ["content"] = text }, "stop");
+    }
+
+    private static void UseOpenAI(MainViewModel vm)
+    {
+        vm.Assistant.ProviderName = "OpenAI";
+        vm.Assistant.Secrets.Set(AssistantViewModel.OpenAIKeyName, "sk-openai");
+    }
+
+    [Fact]
+    public async Task With_OpenAI_the_tool_loop_runs_through_chat_completions_with_function_tools()
+    {
+        var vm = await SundayAsync();
+        UseOpenAI(vm);
+        Assert.Equal(("OPENAI API KEY", "gpt-5", false), (vm.Assistant.KeyLabel, vm.Assistant.Model, vm.Assistant.IsAnthropic));
+        _api.OpenAITool("set_entry_key", new JsonObject { ["entry"] = 1, ["key"] = "C" });
+        _api.OpenAIText("Song 1 is now in C.");
+
+        await vm.Assistant.SendAsync("song 1 in C");
+
+        Assert.Equal("song 1 in C | ✓ Sunday 26 Oct: Champion to C. | Song 1 is now in C.", Rows(vm.Assistant));
+        Assert.Equal(2, vm.CurrentService!.Entries[0].KeyOffset);
+
+        // The first request: the OpenAI endpoint and key, the fixed system prompt, every tool as a function, the state with the message.
+        var (request, body) = _api.Requests[0];
+        Assert.Equal("https://api.openai.com/v1/chat/completions", request.RequestUri!.ToString());
+        Assert.Equal("Bearer sk-openai", request.Headers.Authorization!.ToString());
+        Assert.Equal("gpt-5", body!["model"]!.GetValue<string>());
+        var tools = body["tools"]!.AsArray();
+        Assert.Equal(21, tools.Count);
+        Assert.Equal(("function", "object"), (tools[0]!["type"]!.GetValue<string>(), tools[0]!["function"]!["parameters"]!["type"]!.GetValue<string>()));
+        var messages = body["messages"]!.AsArray();
+        Assert.Equal("system", messages[0]!["role"]!.GetValue<string>());
+        Assert.DoesNotContain("<state>", messages[0]!["content"]!.GetValue<string>(), StringComparison.Ordinal);
+        Assert.Contains("<state>", messages[1]!["content"]![1]!["text"]!.GetValue<string>(), StringComparison.Ordinal);
+
+        // The second: the call, its result as a tool message right after it, then the state after the change.
+        messages = _api.Requests[1].Body!["messages"]!.AsArray();
+        var call = messages[2]!["tool_calls"]![0]!;
+        Assert.Equal("set_entry_key", call["function"]!["name"]!.GetValue<string>());
+        Assert.Equal(("tool", call["id"]!.GetValue<string>()), (messages[3]!["role"]!.GetValue<string>(), messages[3]!["tool_call_id"]!.GetValue<string>()));
+        Assert.StartsWith("{\"ok\":true", messages[3]!["content"]!.GetValue<string>(), StringComparison.Ordinal);
+        Assert.Equal("user", messages[4]!["role"]!.GetValue<string>());
+        Assert.Contains("\"key\":\"C\"", messages[4]!["content"]!.GetValue<string>(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Each_provider_has_its_own_key_model_and_errors()
+    {
+        var vm = await SundayAsync();
+        UseOpenAI(vm);
+        vm.Assistant.Model = "gpt-5-mini";
+        _api.Replies.Enqueue((HttpStatusCode.Unauthorized, """{"error":{"message":"Incorrect API key provided","type":"invalid_request_error"}}"""));
+        await vm.Assistant.SendAsync("hi");
+        Assert.Equal("⊗ The OpenAI API key was rejected. Update it in Settings > Assistant.", vm.Assistant.Rows[^1].Text);
+
+        _api.Replies.Enqueue((HttpStatusCode.NotFound, """{"error":{"message":"The model `gpt-9` does not exist","type":"invalid_request_error"}}"""));
+        await vm.Assistant.SendAsync("again");
+        Assert.Equal("⊗ Assistant error: The model `gpt-9` does not exist", vm.Assistant.Rows[^1].Text);
+
+        // Back to Anthropic: its key and model come back, OpenAI's stay for next time.
+        vm.Assistant.ProviderName = "Anthropic";
+        Assert.Equal((RECompose.Core.Assistant.AssistantPrompt.DefaultModel, true, false), (vm.Assistant.Model, vm.Assistant.IsAnthropic, vm.Assistant.NeedsKey));
+        _api.Text("Hello.");
+        await vm.Assistant.SendAsync("hello");
+        Assert.Equal("https://api.anthropic.com/v1/messages", _api.Requests[^1].Request.RequestUri!.GetLeftPart(UriPartial.Path));
+        vm.Assistant.ProviderName = "OpenAI";
+        Assert.Equal("gpt-5-mini", vm.Assistant.Model);
+
+        // No OpenAI key: the setup card names OpenAI and nothing is sent.
+        vm.Assistant.Secrets.Set(AssistantViewModel.OpenAIKeyName, null);
+        vm.Assistant.SaveKeyCommand.Execute(null);
+        Assert.Equal((true, "Add your OpenAI API key to use the assistant"), (vm.Assistant.NeedsKey, vm.Assistant.NeedsKeyText));
     }
 
     private async Task<MainViewModel> SundayAsync()
@@ -95,7 +190,9 @@ public sealed class AssistantTests : IDisposable
 
         vm.Assistant.Secrets = new MemorySecretStore();
         vm.Assistant.Secrets.Set(AssistantViewModel.KeyName, "sk-test");
-        vm.Assistant.ClientFactory = (key, workspace) => new AssistantClient(key, workspace, new HttpClient(_api));
+        vm.Assistant.ClientFactory = (provider, key, workspace) => provider == RECompose.Core.Settings.AssistantSettings.OpenAI
+            ? new OpenAIAssistantClient(key, new HttpClient(_api))
+            : new AnthropicAssistantClient(key, workspace, new HttpClient(_api));
         return vm;
     }
 

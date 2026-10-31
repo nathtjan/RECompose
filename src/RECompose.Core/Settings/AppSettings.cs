@@ -209,10 +209,19 @@ public sealed record AppSettings
 /// <summary>Settings › Assistant (AS-1).</summary>
 public sealed record AssistantSettings
 {
+    public const string Anthropic = "anthropic";
+    public const string OpenAI = "openai";
+
+    /// <summary>Who answers: <see cref="Anthropic"/> (the default) or <see cref="OpenAI"/>. Each keeps its own key and model.</summary>
+    public string Provider { get; init; } = Anthropic;
+
     /// <summary>Sent as <c>anthropic-workspace-id</c> when set.</summary>
     public string? WorkspaceId { get; init; }
 
+    /// <summary>The Anthropic model.</summary>
     public string Model { get; init; } = RECompose.Core.Assistant.AssistantPrompt.DefaultModel;
+
+    public string OpenAIModel { get; init; } = RECompose.Core.Assistant.AssistantPrompt.OpenAIDefaultModel;
 
     /// <summary>Changes during Perform: true = ask me to confirm (the default), false = not allowed (AS-45).</summary>
     public bool ConfirmInPerform { get; init; } = true;
