@@ -664,6 +664,7 @@ internal sealed class ServiceDialogs : IDialogs
     }
 
     public Task<bool> EditTransitionAsync(TransitionViewModel transition) => Task.FromResult(EditTransition?.Invoke(transition) ?? false);
+    public Task<bool> EditRenderAsync(RenderAudioViewModel render) => Task.FromResult(false);
     public Task<string?> PickAudioFileAsync(string title) => Task.FromResult<string?>(null);
     public Task<TrackEdit?> EditTrackAsync(TrackEdit initial, IReadOnlyList<string> outputs, string title = "Edit track", string confirmLabel = "Save") => Task.FromResult<TrackEdit?>(null);
 }

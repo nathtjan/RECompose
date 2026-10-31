@@ -52,7 +52,7 @@ public class EngineHostTests
         var session = await EngineHost.ConnectOrStartAsync(options, ct);
 
         Assert.False(session.Attached);
-        Assert.Equal("0.1.0", session.EngineVersion);
+        Assert.Matches(@"^\d+\.\d+\.\d+$", session.EngineVersion); // VersionTests compares it with Directory.Build.props
         Assert.StartsWith("JUCE v", session.JuceVersion);
         Assert.True(session.ProcessId > 0);
         await session.PingAsync(ct);

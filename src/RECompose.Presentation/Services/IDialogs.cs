@@ -78,6 +78,9 @@ public interface IDialogs
     /// <summary>The transition popover (SL-21). True = Save.</summary>
     Task<bool> EditTransitionAsync(TransitionViewModel transition);
 
+    /// <summary>Render audio…: the files to make and how they follow the mixer. True = Render.</summary>
+    Task<bool> EditRenderAsync(RenderAudioViewModel render);
+
     /// <summary>All services…: the service to open, or null = Cancel.</summary>
     Task<ServiceChoice?> BrowseServicesAsync(ServiceBrowserViewModel browser);
 }

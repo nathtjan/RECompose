@@ -657,6 +657,24 @@ public sealed class EngineClient : IAsyncDisposable
         return (LoadedSong.From(reply["song"]), DeviceInfo.From(reply["device"]), EngineSnapshot.From(reply["snapshot"]!.AsObject()));
     }
 
+    /// <summary>
+    /// Protocol 17: renders <paramref name="frames"/> of the loaded song to a file. The first call names the <paramref name="path"/>
+    /// and format; later calls append; <paramref name="finish"/> closes it. Returns the peak of what was written.
+    /// </summary>
+    public async Task<double> BounceAsync(int frames, int channel, int width, string? path = null, string format = "wav", int bits = 24, bool finish = false, CancellationToken ct = default)
+    {
+        var request = new JsonObject { ["frames"] = frames, ["channel"] = channel, ["width"] = width, ["finish"] = finish };
+        if (path is not null)
+        {
+            request["path"] = path;
+            request["format"] = format;
+            request["bits"] = bits;
+        }
+
+        var reply = await Session.Connection.RequestAsync("bounce", request, ct).ConfigureAwait(false);
+        return (double?)reply["peak"] ?? 0;
+    }
+
     /// <summary>Tests only: renders through a null device and returns per-channel peak and RMS.</summary>
     public async Task<(IReadOnlyList<double> Peak, IReadOnlyList<double> Rms, EngineSnapshot Snapshot)> RenderOfflineAsync(int frames, int channels = 2, string? path = null, CancellationToken ct = default)
     {

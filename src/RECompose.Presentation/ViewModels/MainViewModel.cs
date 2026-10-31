@@ -101,6 +101,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         RetranscribeCommand = new RelayCommand(RetranscribeAsync, () => _song is not null);
         MarkCommand = new RelayCommand(() => MarkAtPlayhead(), () => _song is not null);
         RestoreSongVersionCommand = new RelayCommand(RestoreSongVersionAsync, () => _song is not null);
+        RenderAudioCommand = new RelayCommand(RenderAudioAsync, () => _song is not null);
+        CancelRenderAudioCommand = new RelayCommand(CancelRenderAudio);
         RelayCommand.Failed = ex =>
         {
             AppLog.Error("Command", ex);
@@ -135,7 +137,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             if (Set(ref _song, value))
             {
                 OnPropertyChanged(nameof(HasSong));
-                foreach (var command in new[] { PlayPauseCommand, StopCommand, ToStartCommand, ApplySongEditsCommand, ReanalyseClickCommand, DetectDownbeatCommand, RetranscribeCommand, MarkCommand, RestoreSongVersionCommand })
+                foreach (var command in new[] { PlayPauseCommand, StopCommand, ToStartCommand, ApplySongEditsCommand, ReanalyseClickCommand, DetectDownbeatCommand, RetranscribeCommand, MarkCommand, RestoreSongVersionCommand, RenderAudioCommand })
                     command.Refresh();
                 RefreshEntryCommands();
                 RefreshLiveCommands();
@@ -379,6 +381,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public RelayCommand RetranscribeCommand { get; }
     public RelayCommand MarkCommand { get; }
     public RelayCommand RestoreSongVersionCommand { get; }
+    public RelayCommand RenderAudioCommand { get; }
+    public RelayCommand CancelRenderAudioCommand { get; }
 
     /// <summary>KEY −/+ and TEMPO −/+ in the song header (UI-13, PB-60): the loaded service entry.</summary>
     public RelayCommand KeyDownCommand { get; }

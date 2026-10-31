@@ -132,6 +132,7 @@ juce::var Engine::handle (const juce::String& type, const juce::var& message)
     if (type == "setPlan")      return setPlan (message, slotFor (message));
     if (type == "getState")     return getState();
     if (type == "renderOffline") return renderOffline (message);
+    if (type == "bounce")       return bounce (message);
     if (type == "loadPadSet")   return loadPadSet (message);
     if (type == "pad")          return pad (message);
 
@@ -1463,6 +1464,84 @@ juce::var Engine::getState()
         .set ("snapshot", snapshot());
 }
 
+// Pulls the graph through 512-frame blocks into `buffer` without the device, waiting for the disk.
+void Engine::renderBlocks (juce::AudioBuffer<float>& buffer, int channels, int frames)
+{
+    auto& s = cur();
+    for (auto& slot : slots_)
+        slot.player.prepare (s.song->sampleRate, 512, channels);
+    transitions_.prepare (s.song->sampleRate);
+    pads_.prepare (s.song->sampleRate);
+    std::vector<float*> pointers (static_cast<std::size_t> (channels));
+
+    for (int done = 0; done < frames;)
+    {
+        const int n = std::min (512, frames - done);
+        for (int c = 0; c < channels; ++c)
+            pointers[static_cast<std::size_t> (c)] = buffer.getWritePointer (c, done);
+        processBlock (pointers.data(), channels, n, true);
+        done += n;
+    }
+    collectRetired();
+}
+
+// Protocol 17: renders the loaded song to a file in pieces, so a long song needs no memory and the app can show progress
+// and cancel between calls. Only for an engine started for the purpose (no audio device open).
+juce::var Engine::bounce (const juce::var& message)
+{
+    if (cur().song == nullptr)
+        return makeError ({}, "noSong", "No song is loaded.");
+    if (callbackActive_.load())
+        return makeError ({}, "busy", "Rendering to a file needs an engine without an audio device.");
+
+    const int frames = juce::jlimit (0, 48000 * 60, static_cast<int> (number (message, "frames", 0.0)));
+    const int channel = juce::jlimit (0, kMaxOutputChannels - 1, static_cast<int> (number (message, "channel", 0.0)));
+    const int width = juce::jlimit (1, kMaxOutputChannels - channel, static_cast<int> (number (message, "width", 2.0)));
+    const int channels = channel + width;
+
+    if (const auto path = text (message, "path"); path.isNotEmpty())
+    {
+        bounceWriter_.reset();
+        const juce::File file (path);
+        file.deleteFile();
+        auto stream = std::make_unique<juce::FileOutputStream> (file);
+        if (stream->failedToOpen())
+            return makeError ({}, "writeFailed", "The file could not be written: " + stream->getStatus().getErrorMessage());
+
+        const bool flac = text (message, "format") == "flac";
+        const int bits = static_cast<int> (number (message, "bits", 24.0));
+        juce::WavAudioFormat wav;
+        juce::FlacAudioFormat flacFormat;
+        juce::AudioFormat& format = flac ? static_cast<juce::AudioFormat&> (flacFormat) : static_cast<juce::AudioFormat&> (wav);
+        auto options = juce::AudioFormatWriterOptions{}
+                           .withSampleRate (cur().song->sampleRate)
+                           .withNumChannels (width)
+                           .withBitsPerSample (bits == 32 ? 32 : bits == 16 ? 16 : 24);
+        if (! flac && bits == 32)
+            options = options.withSampleFormat (juce::AudioFormatWriterOptions::SampleFormat::floatingPoint);
+        std::unique_ptr<juce::OutputStream> out = std::move (stream);
+        bounceWriter_ = format.createWriterFor (out, options);
+        if (bounceWriter_ == nullptr)
+            return makeError ({}, "writeFailed", "The file format does not allow " + juce::String (width) + " channels at " + juce::String (bits) + " bits.");
+    }
+
+    if (bounceWriter_ == nullptr)
+        return makeError ({}, "badMessage", "bounce needs a path to start a file.");
+
+    juce::AudioBuffer<float> buffer (channels, frames);
+    renderBlocks (buffer, channels, frames);
+
+    float peak = 0.0f;
+    for (int c = channel; c < channels; ++c)
+        peak = std::max (peak, buffer.getMagnitude (c, 0, frames));
+    juce::AudioBuffer<float> slice (buffer.getArrayOfWritePointers() + channel, width, frames);
+    bounceWriter_->writeFromAudioSampleBuffer (slice, 0, frames);
+    if (flag (message, "finish", false))
+        bounceWriter_.reset(); // closes and flushes the file
+
+    return Obj().set ("type", "bounced").set ("frames", frames).set ("peak", peak);
+}
+
 juce::var Engine::renderOffline (const juce::var& message)
 {
     auto& s = cur();
@@ -1480,22 +1559,8 @@ juce::var Engine::renderOffline (const juce::var& message)
     if (hadSilent)
         silent_.stop();
 
-    for (auto& slot : slots_)
-        slot.player.prepare (s.song->sampleRate, 512, channels);
-    transitions_.prepare (s.song->sampleRate);
-    pads_.prepare (s.song->sampleRate);
     juce::AudioBuffer<float> buffer (channels, frames);
-    std::vector<float*> pointers (static_cast<std::size_t> (channels));
-
-    for (int done = 0; done < frames;)
-    {
-        const int n = std::min (512, frames - done);
-        for (int c = 0; c < channels; ++c)
-            pointers[static_cast<std::size_t> (c)] = buffer.getWritePointer (c, done);
-        processBlock (pointers.data(), channels, n, true);
-        done += n;
-    }
-    collectRetired();
+    renderBlocks (buffer, channels, frames);
 
     juce::Array<juce::var> peaks, rms;
     for (int c = 0; c < channels; ++c)

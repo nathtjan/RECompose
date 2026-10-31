@@ -761,6 +761,7 @@ internal sealed class ScriptedDialogs : IDialogs
     public Task<string?> AskNameAsync(string title, string label, string initial, string confirmLabel) => Task.FromResult<string?>(NameAnswer ?? initial);
     public Task<int?> ChooseAsync(string title, string message, IReadOnlyList<string> choices, string confirmLabel) => Task.FromResult<int?>(0);
     public Task<bool> EditTransitionAsync(TransitionViewModel transition) => Task.FromResult(false);
+    public Task<bool> EditRenderAsync(RenderAudioViewModel render) => Task.FromResult(false);
 
     /// <summary>What the Edit track dialog returns; null cancels it.</summary>
     public TrackEdit? Track { get; set; }

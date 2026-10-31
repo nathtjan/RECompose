@@ -187,6 +187,8 @@ private:
     juce::var setPlan (const juce::var& message, Slot& s);
     juce::var getState();
     juce::var renderOffline (const juce::var& message);
+    void renderBlocks (juce::AudioBuffer<float>& buffer, int channels, int frames);
+    juce::var bounce (const juce::var& message);
     juce::var loadPadSet (const juce::var& message);
     juce::var pad (const juce::var& message);
     void openPadBank (double rate);
@@ -253,6 +255,8 @@ private:
     std::vector<std::unique_ptr<audio::PadBank>> padBanks_; // the one sounding and any still fading out
     std::string padSetId_;
     std::array<std::string, audio::kPadKeys> padFiles_;
+
+    std::unique_ptr<juce::AudioFormatWriter> bounceWriter_; // the file `bounce` is writing (protocol 17)
 
     std::atomic<bool> callbackActive_ { false };
     std::atomic<int> outputLatency_ { 0 };

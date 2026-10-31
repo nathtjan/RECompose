@@ -1,0 +1,50 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<!-- Song > Render audio: the files to make, grouped, and how closely they follow the mixer. -->
+<d:DialogWindow xmlns="https://github.com/avaloniaui"
+        xmlns:d="using:RECompose.App.Dialogs"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:RECompose.Presentation.ViewModels"
+        x:Class="RECompose.App.Dialogs.RenderAudioWindow"
+        x:DataType="vm:RenderAudioViewModel"
+        Title="Render audio"
+        Width="560" Height="640"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False">
+  <DockPanel Margin="20">
+    <StackPanel DockPanel.Dock="Top" Spacing="2" Margin="0,0,0,12">
+      <TextBlock Classes="label" Text="RENDER AUDIO" />
+      <TextBlock Classes="title" Text="{Binding SongTitle}" />
+      <TextBlock Classes="meta" TextWrapping="Wrap" Text="As it plays now: the chosen arrangement, key and tempo. Each ticked item becomes one file." />
+    </StackPanel>
+
+    <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8" Margin="0,12,0,0">
+      <Button x:Name="CancelButton" Content="Cancel" IsCancel="True" />
+      <Button x:Name="RenderButton" Classes="primary" Content="Choose folder and render" IsDefault="True" />
+    </StackPanel>
+
+    <ScrollViewer>
+      <StackPanel Spacing="12">
+        <ItemsControl ItemsSource="{Binding Sources}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:RenderSourceChoice">
+              <StackPanel Orientation="Horizontal" Spacing="12">
+                <CheckBox Content="{Binding Label}" IsChecked="{Binding IsChecked}" MinWidth="260" />
+                <TextBlock Classes="meta" Text="{Binding Group}" VerticalAlignment="Center" />
+              </StackPanel>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <TextBlock Classes="label" Text="FOLLOW THE MIXER" />
+        <CheckBox Content="Muted tracks stay silent" IsChecked="{Binding RespectMute}" />
+        <CheckBox Content="Solo silences the other tracks" IsChecked="{Binding RespectSolo}" />
+        <CheckBox Content="Track volumes" IsChecked="{Binding RespectTrackVolume}" />
+        <CheckBox Content="Master volume" IsChecked="{Binding RespectMasterVolume}" />
+        <CheckBox Content="The arrangement's own mutes" IsChecked="{Binding RespectArrangementMutes}" />
+
+        <TextBlock Classes="label" Text="FORMAT" />
+        <ComboBox ItemsSource="{Binding Formats}" SelectedItem="{Binding Format}" AutomationProperties.Name="Format" />
+      </StackPanel>
+    </ScrollViewer>
+  </DockPanel>
+</d:DialogWindow>

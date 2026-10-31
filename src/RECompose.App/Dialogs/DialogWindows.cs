@@ -37,6 +37,16 @@ public partial class TransitionWindow : DialogWindow
     }
 }
 
+public partial class RenderAudioWindow : DialogWindow
+{
+    public RenderAudioWindow()
+    {
+        AvaloniaXamlLoader.Load(this);
+        this.FindControl<Button>("CancelButton")!.Click += (_, _) => Close(false);
+        this.FindControl<Button>("RenderButton")!.Click += (_, _) => Close(true);
+    }
+}
+
 public partial class SettingsWindow : DialogWindow
 {
     public SettingsWindow()
@@ -316,6 +326,12 @@ public sealed class AvaloniaDialogs(Window owner) : IDialogs
     public async Task<bool> EditTransitionAsync(TransitionViewModel transition)
     {
         var window = new TransitionWindow { DataContext = transition };
+        return await window.ShowDialog<bool>(owner);
+    }
+
+    public async Task<bool> EditRenderAsync(RenderAudioViewModel render)
+    {
+        var window = new RenderAudioWindow { DataContext = render };
         return await window.ShowDialog<bool>(owner);
     }
 

@@ -158,9 +158,20 @@ public sealed partial class MainViewModel
         foreach (var (id, line) in events.Lines)
             _midiLines[id + idBase] = line;
 
+        var calls = CallsFor(events, song, out var missing);
+        if (missing.Count > 0)
+            _ = SpeakThenResendAsync(missing.Distinct().ToList(), song.Id);
+
+        var midi = events.Midi.Select(m => m.Id == 0 ? m : m with { Id = m.Id + idBase }).ToList();
+        return (plan.Segments(events.GuideSilences, GuideTrackIds(song)), midi, calls, events);
+    }
+
+    /// <summary>The spoken calls whose clips are ready; <paramref name="missing"/> lists the phrases still to be spoken.</summary>
+    private List<EngineCall> CallsFor(AutomationEvents events, Song song, out List<string> missing)
+    {
         var guide = song.GuideAnalysis is { } g ? song.Tracks.FirstOrDefault(t => t.Id == g.TrackId)?.File : null;
         var calls = new List<EngineCall>();
-        var missing = new List<string>();
+        missing = [];
         foreach (var call in events.Calls)
         {
             if (call.FromSec is { } from && guide is not null)
@@ -176,11 +187,7 @@ public sealed partial class MainViewModel
                 missing.Add(call.Text);
         }
 
-        if (missing.Count > 0)
-            _ = SpeakThenResendAsync(missing.Distinct().ToList(), song.Id);
-
-        var midi = events.Midi.Select(m => m.Id == 0 ? m : m with { Id = m.Id + idBase }).ToList();
-        return (plan.Segments(events.GuideSilences, GuideTrackIds(song)), midi, calls, events);
+        return calls;
     }
 
     /// <summary>Renders the phrases a plan needs and sends the plan again with them (PB-71: clips are made once and cached).</summary>
