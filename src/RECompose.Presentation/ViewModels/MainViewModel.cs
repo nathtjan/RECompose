@@ -464,7 +464,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         engine.SongChanged += id => _ui.Post(() => _ = OnSongChangedAsync(id));
         engine.SongEnded += id => _ui.Post(() => _ = OnSongEndedAsync(id));
         ClearNext(); // a new engine has nothing in its next slot
-        engine.Disconnected += () => _ui.Post(() => _ = OnEngineLostAsync());
+        engine.Disconnected += () => _ui.Post(() => _ = OnEngineLostAsync(engine.Session.Connection.CloseReason));
         _engine = engine;
 
         var (loaded, device, snapshot) = await engine.GetStateAsync();
@@ -540,11 +540,11 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         return (null, null);
     }
 
-    private async Task OnEngineLostAsync()
+    private async Task OnEngineLostAsync(string? reason)
     {
         if (_shuttingDown || _restarting)
             return;
-        AppLog.Write("Errors", "Audio engine connection lost; restarting it");
+        AppLog.Write("Errors", $"Audio engine connection lost ({reason ?? "no reason given"}); restarting it");
         _restarting = true;
         _engine = null;
         State = TransportState.Stopped;

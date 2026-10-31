@@ -20,8 +20,21 @@ public sealed class LiveControlTests : IDisposable
     private readonly string _endpoint = Path.Combine(Path.GetTempPath(), $"rec-{Guid.NewGuid():N}"[..14] + ".sock");
     private readonly LockedDispatcher _ui = new();
 
+    // Why an engine connection dropped, for the failure message. AppLog is shared, so another test's line can show up too.
+    private readonly List<string> _lost = [];
+
+    public LiveControlTests() => AppLog.Added += OnLog;
+
+    private void OnLog(Core.Logging.LogEntry entry)
+    {
+        if (entry.Text.Contains("connection lost", StringComparison.Ordinal))
+            lock (_lost)
+                _lost.Add(entry.Text);
+    }
+
     public void Dispose()
     {
+        AppLog.Added -= OnLog;
         try
         {
             Directory.Delete(_root, true);
@@ -147,7 +160,10 @@ public sealed class LiveControlTests : IDisposable
             await vm.DisposeAsync();
             List<Exception> errors = [];
             _ui.Post(() => errors = [.. _ui.Errors]); // under the dispatcher's own lock, where errors are added
-            Assert.Fail("The engine connection was lost." + string.Concat(errors.Select(e => Environment.NewLine + e)));
+            List<string> lost;
+            lock (_lost)
+                lost = [.. _lost];
+            Assert.Fail("The engine connection was lost." + string.Concat(lost.Concat(errors.Select(e => e.ToString())).Select(e => Environment.NewLine + e)));
             return;
         }
 
@@ -502,6 +518,8 @@ public sealed class LiveControlTests : IDisposable
             await Eventually(() => vm.State == RECompose.Engine.TransportState.Playing);
             var before = vm.PlanPositionSec;
 
+            // The silent clock starts with the loss, so time is measured from there, not from when the app noticed it.
+            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
             var route = await vm.EngineForTests.InjectDeviceLossAsync(ct: TestContext.Current.CancellationToken);
             Assert.Equal("silent", route);
             await Eventually(() => vm.OnSilentClock);
@@ -510,7 +528,6 @@ public sealed class LiveControlTests : IDisposable
             Assert.Equal("No audio device · keeping time", vm.AudioStatus);
 
             // Nothing renders offline now: the silent clock moves the song on in real time.
-            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
             await Eventually(() => vm.PlanPositionSec - before >= 1.5);
             var moved = vm.PlanPositionSec - before;
             Assert.InRange(moved, 1.5, stopwatch.Elapsed.TotalSeconds + 0.1); // real time, never faster

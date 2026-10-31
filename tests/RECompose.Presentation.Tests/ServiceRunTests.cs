@@ -98,16 +98,21 @@ public sealed class ServiceRunTests : IDisposable
         return value;
     }
 
-    private static async Task Eventually(Func<bool> condition, int timeoutMs = 10000)
+    private static async Task Eventually(Func<bool> condition, int timeoutMs = 10000, Func<string>? state = null)
     {
         var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
         while (!condition())
         {
             if (DateTime.UtcNow > deadline)
-                Assert.Fail("The condition was not met in time.");
+                Assert.Fail("The condition was not met in time." + (state is null ? string.Empty : " " + state()));
             await Task.Delay(20);
         }
     }
+
+    /// <summary>What the app shows of the service run, for a failure message.</summary>
+    private string RunState(MainViewModel vm) => OnUi(() =>
+        $"Song: {vm.Song?.Title}, entry: {vm.LoadedEntry?.Id}, next: {vm.NextServiceEntry?.Id} ({vm.NextSongTitle}), state: {vm.State}, status: {vm.Status}, " +
+        $"loaded rows: {string.Join(",", vm.Setlist.Rows.Select(r => r.IsLoaded ? "1" : "0"))}, position: {vm.PlanPositionSec:0.00}");
 
     /// <summary>Plays for some seconds through the engine's offline render.</summary>
     private static async Task RenderAsync(MainViewModel vm, double seconds)
@@ -218,7 +223,7 @@ public sealed class ServiceRunTests : IDisposable
         {
             var first = vm.LoadedEntry!.Id;
             await RenderAsync(vm, 4.5); // the first song is 4 s long
-            await Eventually(() => OnUi(() => vm.LoadedEntry?.Id != first && vm.Setlist.Rows is { Count: 2 } rows && rows[1].IsLoaded));
+            await Eventually(() => OnUi(() => vm.LoadedEntry?.Id != first && vm.Setlist.Rows is { Count: 2 } rows && rows[1].IsLoaded), state: () => RunState(vm));
             Assert.Equal("Goodness", vm.Song!.Title);
             Assert.False(vm.IsPlaying);
         }

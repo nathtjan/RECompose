@@ -35,6 +35,9 @@ public sealed class EngineConnection : IAsyncDisposable
     /// <summary>Completes when the connection has closed, for whatever reason.</summary>
     public Task Completion => _reader;
 
+    /// <summary>Why the connection closed ("The audio engine closed the connection."), once <see cref="Completion"/> is done.</summary>
+    public string? CloseReason { get; private set; }
+
     /// <summary>Connects to an engine listening on <paramref name="endpoint"/>.</summary>
     /// <exception cref="SocketException">Nothing is listening there.</exception>
     public static async Task<EngineConnection> ConnectAsync(string endpoint, CancellationToken cancellationToken = default)
@@ -143,6 +146,7 @@ public sealed class EngineConnection : IAsyncDisposable
         }
         finally
         {
+            CloseReason = reason;
             foreach (var waiting in _pending.Values)
                 waiting.TrySetException(new EngineDisconnectedException(reason));
         }

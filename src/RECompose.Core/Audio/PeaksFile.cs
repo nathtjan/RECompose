@@ -53,7 +53,13 @@ public sealed class PeaksFile
     {
         try
         {
-            return File.Exists(path) ? Parse(File.ReadAllBytes(path)) : null;
+            if (!File.Exists(path))
+                return null;
+            // A read must not block a swap or a delete clearing the file meanwhile (Windows refuses to delete an open file).
+            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
+            using var bytes = new MemoryStream();
+            stream.CopyTo(bytes);
+            return Parse(bytes.ToArray());
         }
         catch (IOException)
         {
