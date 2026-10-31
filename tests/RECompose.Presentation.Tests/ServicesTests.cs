@@ -534,9 +534,8 @@ internal sealed class ServiceDialogs : IDialogs
     public Task<bool> ReviewImportAsync(ImportReviewViewModel review) => Task.FromResult(false);
     public Task<DuplicateChoice> AskDuplicateAsync(string existingTitle) => Task.FromResult(DuplicateChoice.Cancel);
     public Task<bool> ConfirmAsync(string title, string message, string confirmLabel) => Task.FromResult(true);
-    public Task<bool> EditAudioSettingsAsync(AudioSettingsViewModel settings) => Task.FromResult(false);
+    public Task<bool> EditSettingsAsync(SettingsViewModel settings) => Task.FromResult(false);
 
-    public Task EditControlsAsync(ControlsViewModel controls) => Task.CompletedTask;
 
     public Task ShowServiceCheckAsync(ServiceCheckViewModel check) => Task.CompletedTask;
 

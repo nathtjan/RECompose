@@ -154,6 +154,9 @@ public sealed record AppSettings
     /// <summary>MIDI out; null in files written before milestone 8.</summary>
     public MidiOutSettings? MidiOut { get; init; }
 
+    /// <summary>Settings › Updates: download new releases in the background (PLAT-70). A check by hand still works when off.</summary>
+    public bool AutoUpdate { get; init; } = true;
+
     /// <summary>Settings › Playback "Replace guide calls" (AUTO-30).</summary>
     public bool ReplaceGuideCalls { get; init; } = true;
 

@@ -57,13 +57,13 @@ public sealed partial class MainViewModel
     public bool VoiceOk => VoiceIndicator is "Listening" or "Hearing…" or "PTT";
     public string VoiceToolTip => _micDenied ? $"{MicrophoneAccess.Problem} Click to open it." : _voiceError ?? "Voice control";
 
-    /// <summary>AT-61: with the microphone blocked, the Voice indicator opens the system's privacy page; otherwise Settings › Audio.</summary>
+    /// <summary>AT-61: with the microphone blocked, the Voice indicator opens the system's privacy page; otherwise Settings › Voice.</summary>
     public RelayCommand VoiceIndicatorCommand => _voiceIndicator ??= new RelayCommand(() =>
     {
         if (_micDenied)
             MicrophoneAccess.OpenSettings();
         else
-            OpenSettingsCommand.Execute(null);
+            _ = OpenSettingsAsync(SettingsTab.Voice);
     });
 
     private RelayCommand? _voiceIndicator;

@@ -147,19 +147,6 @@
             <TextBlock Text="Assistant" VerticalAlignment="Center" />
           </StackPanel>
         </Button>
-        <Button DockPanel.Dock="Right" Command="{Binding OpenControlsCommand}" ToolTip.Tip="Keys, pedals and jump timing" Margin="12,0,0,0" VerticalAlignment="Center"
-                AutomationProperties.Name="Controls">
-          <StackPanel Orientation="Horizontal" Spacing="6">
-            <c:Icon Glyph="pedal" IconSize="16" VerticalAlignment="Center" />
-            <TextBlock Text="Controls" VerticalAlignment="Center" />
-          </StackPanel>
-        </Button>
-        <Button DockPanel.Dock="Right" Command="{Binding OpenSettingsCommand}" ToolTip.Tip="Settings (Ctrl+,)" Margin="12,0,0,0" VerticalAlignment="Center">
-          <StackPanel Orientation="Horizontal" Spacing="6">
-            <c:Icon Glyph="settings" IconSize="16" VerticalAlignment="Center" />
-            <TextBlock Text="Settings" VerticalAlignment="Center" />
-          </StackPanel>
-        </Button>
         <Button DockPanel.Dock="Right" Classes="ghost" Command="{Binding OpenSettingsCommand}" VerticalAlignment="Center"
                 ToolTip.Tip="Audio device. Click to change it.">
           <StackPanel Orientation="Horizontal" Spacing="8">
@@ -1184,28 +1171,6 @@
           </Button>
           <TextBlock Classes="heading" Text="Assistant" VerticalAlignment="Center" />
         </DockPanel>
-
-        <!-- Settings › Assistant (AS-1) -->
-        <Border DockPanel.Dock="Top" Classes="inset" Padding="12" Margin="0,0,0,8" IsVisible="{Binding ShowSettings}">
-          <StackPanel Spacing="6">
-            <TextBlock Classes="label" Text="ANTHROPIC API KEY" />
-            <DockPanel>
-              <Button DockPanel.Dock="Right" Content="Save" Command="{Binding SaveKeyCommand}" Margin="6,0,0,0" />
-              <TextBox Text="{Binding KeyText}" PasswordChar="•" PlaceholderText="sk-ant-…" AutomationProperties.Name="Anthropic API key" />
-            </DockPanel>
-            <TextBlock Classes="meta" Text="{Binding KeyStatus}" TextWrapping="Wrap" />
-            <TextBlock Classes="label" Text="WORKSPACE ID (OPTIONAL)" Margin="0,6,0,0" />
-            <TextBox Text="{Binding WorkspaceId}" AutomationProperties.Name="Workspace ID" />
-            <TextBlock Classes="label" Text="MODEL" Margin="0,6,0,0" />
-            <AutoCompleteBox Text="{Binding Model}" ItemsSource="{Binding SuggestedModels}" FilterMode="StartsWith" AutomationProperties.Name="Model" />
-            <CheckBox IsChecked="{Binding ConfirmInPerform}" Content="Allow changes during Perform, with confirmation" Margin="0,6,0,0" />
-            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,6,0,0">
-              <Button Content="Test connection" Command="{Binding TestCommand}" />
-              <TextBlock Text="{Binding TestResult}" VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="220" />
-            </StackPanel>
-            <TextBlock Classes="meta" Text="{Binding PrivacyNote}" TextWrapping="Wrap" Margin="0,6,0,0" />
-          </StackPanel>
-        </Border>
 
         <!-- Composer -->
         <DockPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">

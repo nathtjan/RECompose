@@ -82,7 +82,6 @@ public sealed class AssistantViewModel : ObservableObject
     private ISecretStore? _secrets;
     private bool _isOpen;
     private bool _isWorking;
-    private bool _showSettings;
     private string _draft = string.Empty;
     private string _keyText = string.Empty;
     private string _testResult = string.Empty;
@@ -94,7 +93,7 @@ public sealed class AssistantViewModel : ObservableObject
         SendCommand = new RelayCommand(() => SendAsync(Draft), () => !IsWorking && Draft.Trim().Length > 0);
         UndoCommand = new RelayCommand(UndoLast, () => _groups.Count > 0 && !IsWorking);
         NewConversationCommand = new RelayCommand(NewConversation, () => !IsWorking);
-        SettingsCommand = new RelayCommand(() => ShowSettings = !ShowSettings);
+        SettingsCommand = new RelayCommand(() => _main.OpenSettingsAsync(SettingsTab.Assistant));
         TestCommand = new RelayCommand(TestAsync);
         SaveKeyCommand = new RelayCommand(SaveKey);
     }
@@ -160,8 +159,6 @@ public sealed class AssistantViewModel : ObservableObject
     public bool IsEmpty => Rows.Count == 0;
 
     // ---- Settings › Assistant (AS-1) -----------------------------------------------------------------------
-
-    public bool ShowSettings { get => _showSettings; set => Set(ref _showSettings, value); }
 
     /// <summary>A new key to store; the stored one is never shown.</summary>
     public string KeyText { get => _keyText; set => Set(ref _keyText, value ?? string.Empty); }

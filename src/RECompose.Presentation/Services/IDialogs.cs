@@ -51,17 +51,14 @@ public interface IDialogs
     /// <summary>A confirmation for a destructive or surprising action (UI-60). True = the confirm button.</summary>
     Task<bool> ConfirmAsync(string title, string message, string confirmLabel);
 
-    /// <summary>Settings › Audio. True = Apply.</summary>
-    Task<bool> EditAudioSettingsAsync(AudioSettingsViewModel settings);
+    /// <summary>Settings, one tab per area. True = Apply (the staged audio settings); the other tabs edit their view models in place.</summary>
+    Task<bool> EditSettingsAsync(SettingsViewModel settings);
 
     /// <summary>The service check (REL-1): the items with their Fix buttons.</summary>
     Task ShowServiceCheckAsync(ServiceCheckViewModel check);
 
     /// <summary>"RECompose closed unexpectedly…" with the choices of REL-31.</summary>
     Task<ResumeChoice> AskResumeAsync(ResumeQuestion question);
-
-    /// <summary>Settings › Playback and › Controls (SET-20, SET-28). Edits the view model in place.</summary>
-    Task EditControlsAsync(ControlsViewModel controls);
 
     /// <summary>New service, Duplicate service and Rename (SL-2): a name and an optional date and time. Null = Cancel.</summary>
     Task<ServiceDetails?> AskServiceDetailsAsync(string title, string confirmLabel, ServiceDetails initial);

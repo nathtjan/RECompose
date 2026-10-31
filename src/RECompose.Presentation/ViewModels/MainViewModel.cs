@@ -1335,49 +1335,69 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         ShowToast($"Saved {model.Title}");
     }
 
-    // ---- Settings › Audio (SET-10) ----------------------------------------------------
+    // ---- Settings (SET-10) ------------------------------------------------------------
 
-    private async Task OpenAudioSettingsAsync()
+    private Task OpenAudioSettingsAsync() => OpenSettingsAsync(SettingsTab.Audio);
+
+    /// <summary>The Settings window on one tab. Audio and Voice need the engine; without it the window opens on Controls.</summary>
+    internal async Task OpenSettingsAsync(SettingsTab tab)
     {
-        if (_engine is null)
+        AudioSettingsViewModel? audio = null;
+        if (_engine is { } engine)
+        {
+            var (types, current) = await engine.ListDevicesAsync();
+            audio = new AudioSettingsViewModel(types, current, _settings.Audio)
+            {
+                SelectedCacheBudget = $"{_settings.RenderBudgetGb} GB",
+                CacheText = RenderCacheText,
+                CleanCacheCommand = new RelayCommand(() =>
+                {
+                    CleanRenderCache();
+                    audio!.CacheText = RenderCacheText;
+                }),
+            };
+        }
+        else if (tab is SettingsTab.Audio or SettingsTab.Voice)
         {
             Banner = "The audio engine isn't running, so audio settings can't be changed.";
-            return;
+            tab = SettingsTab.Controls;
         }
 
-        var (types, current) = await _engine.ListDevicesAsync();
-        AudioSettingsViewModel? vm = null;
-        vm = new AudioSettingsViewModel(types, current, _settings.Audio)
-        {
-            SelectedCacheBudget = $"{_settings.RenderBudgetGb} GB",
-            CacheText = RenderCacheText,
-            CleanCacheCommand = new RelayCommand(() =>
-            {
-                CleanRenderCache();
-                vm!.CacheText = RenderCacheText;
-            }),
-        };
-        VoiceTest = vm; // while it is open, what the mic hears is only described (VC-1 test panel)
+        await Controls.LoadMidiPortsAsync();
+        var settings = new SettingsViewModel(this, audio, tab);
+        var midiBefore = (_settings.MidiOut, _settings.ReplaceGuideCalls);
+        VoiceTest = audio; // while it is open, what the mic hears is only described (VC-1 test panel)
         bool applied;
         try
         {
-            applied = await _dialogs.EditAudioSettingsAsync(vm);
+            applied = await _dialogs.EditSettingsAsync(settings);
         }
         finally
         {
             VoiceTest = null;
         }
 
-        if (!applied)
-            return;
+        if (applied && audio is not null)
+            await ApplyAudioAsync(audio);
+        if (_song is not null && midiBefore != (_settings.MidiOut, _settings.ReplaceGuideCalls))
+            OnPlanChanged(_song.Plan, sameArrangement: true); // MIDI channel, note naming and guide replacement go with the plan
+    }
+
+    /// <summary>Applies the staged audio settings; nothing restarts when they did not change.</summary>
+    private async Task ApplyAudioAsync(AudioSettingsViewModel vm)
+    {
         if (vm.CacheBudgetGb != _settings.RenderBudgetGb)
         {
             _settings = _settings with { RenderBudgetGb = vm.CacheBudgetGb };
+            _store.SaveSettings(_settings);
             SaveRenders(EvictToBudget(Renders));
         }
 
+        var next = vm.ToSettings(_settings.Audio);
+        if (next == _settings.Audio)
+            return;
         var previousOutputs = (_settings.Audio.MainChannel, _settings.Audio.MainWidth, _settings.Audio.CueChannel, _settings.Audio.CueWidth);
-        _settings = _settings with { Audio = vm.ToSettings(_settings.Audio) };
+        _settings = _settings with { Audio = next };
         _store.SaveSettings(_settings);
         Banner = null;
         await OpenDeviceAsync();

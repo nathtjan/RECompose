@@ -1,0 +1,219 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<!-- Settings: Audio and Voice (SET-10, VC-1) are staged and applied with Apply; Controls, MIDI out (SET-20, SET-28, SET-30,
+     LIVE-50…55) and Assistant (AS-1) change as they are edited. -->
+<d:DialogWindow xmlns="https://github.com/avaloniaui"
+        xmlns:d="using:RECompose.App.Dialogs"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:RECompose.Presentation.ViewModels"
+        x:Class="RECompose.App.Dialogs.SettingsWindow"
+        x:DataType="vm:SettingsViewModel"
+        Title="Settings"
+        Width="760" Height="720" MinHeight="420"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False">
+  <DockPanel Margin="20">
+    <DockPanel DockPanel.Dock="Bottom" Margin="0,12,0,0">
+      <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8">
+        <Button x:Name="CancelButton" Content="Close" IsCancel="True" />
+        <Button x:Name="ApplyButton" Classes="primary" Content="Apply" IsEnabled="{Binding HasAudio}" />
+      </StackPanel>
+      <TextBlock Classes="meta" VerticalAlignment="Center" TextWrapping="Wrap" Margin="0,0,12,0"
+                 Text="Audio, Voice and the cache size take effect on Apply. The other tabs change as you edit them." />
+    </DockPanel>
+
+    <TabControl x:Name="Tabs" TabStripPlacement="Left" SelectedIndex="{Binding SelectedIndex}">
+      <TabItem Header="Audio" IsEnabled="{Binding HasAudio}">
+        <ScrollViewer VerticalScrollBarVisibility="Auto" DataContext="{Binding Audio}" x:DataType="vm:AudioSettingsViewModel">
+          <StackPanel Spacing="12" Margin="16,0,16,0">
+            <TextBlock Classes="title" Text="Audio" />
+            <TextBlock Classes="mono" Foreground="{DynamicResource text-secondary}" Text="{Binding CurrentDevice}" TextWrapping="Wrap" />
+
+            <Grid ColumnDefinitions="140,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="10">
+              <TextBlock Grid.Row="0" Classes="label" Text="DRIVER" VerticalAlignment="Center" />
+              <ComboBox Grid.Row="0" Grid.Column="1" ItemsSource="{Binding DeviceTypes}" SelectedItem="{Binding SelectedType}" HorizontalAlignment="Stretch" />
+
+              <TextBlock Grid.Row="1" Classes="label" Text="DEVICE" VerticalAlignment="Center" />
+              <ComboBox Grid.Row="1" Grid.Column="1" ItemsSource="{Binding Devices}" SelectedItem="{Binding SelectedDevice}" HorizontalAlignment="Stretch" />
+
+              <TextBlock Grid.Row="2" Classes="label" Text="SAMPLE RATE" VerticalAlignment="Center" />
+              <ComboBox Grid.Row="2" Grid.Column="1" ItemsSource="{Binding SampleRates}" SelectedItem="{Binding SelectedRate}" HorizontalAlignment="Stretch" />
+
+              <TextBlock Grid.Row="3" Classes="label" Text="BUFFER" VerticalAlignment="Center" />
+              <ComboBox Grid.Row="3" Grid.Column="1" ItemsSource="{Binding BufferSizes}" SelectedItem="{Binding SelectedBuffer}" HorizontalAlignment="Stretch" />
+
+              <TextBlock Grid.Row="4" Classes="label" Text="MAIN" VerticalAlignment="Center" ToolTip.Tip="Music tracks" />
+              <ComboBox Grid.Row="4" Grid.Column="1" ItemsSource="{Binding OutputOptions}" SelectedItem="{Binding MainOutput}" HorizontalAlignment="Stretch" />
+
+              <TextBlock Grid.Row="5" Classes="label" Text="CUE" VerticalAlignment="Center" ToolTip.Tip="Click and guide, for in-ears" />
+              <ComboBox Grid.Row="5" Grid.Column="1" ItemsSource="{Binding OutputOptions}" SelectedItem="{Binding CueOutput}" HorizontalAlignment="Stretch" />
+
+              <TextBlock Grid.Row="6" Grid.Column="1" Classes="meta" TextWrapping="Wrap"
+                         Text="Channels listed are the open device's outputs. Choose the device first and apply, then pick outputs if it has more than two." />
+
+              <TextBlock Grid.Row="7" Classes="label" Text="FALLBACK" VerticalAlignment="Center" ToolTip.Tip="Takes over within a second if the main device is lost" />
+              <ComboBox Grid.Row="7" Grid.Column="1" ItemsSource="{Binding FallbackOptions}" SelectedItem="{Binding SelectedFallback}" HorizontalAlignment="Stretch"
+                        AutomationProperties.Name="Fallback device" />
+
+              <CheckBox Grid.Row="8" Grid.Column="1" IsChecked="{Binding AutoSwitchBack}" Content="Switch back to the main device by itself" />
+              <TextBlock Grid.Row="9" Grid.Column="1" Classes="meta" TextWrapping="Wrap"
+                         Text="If the main device is lost, playback moves to the fallback at the same position. Without one, the song keeps time silently for a minute. When the main device returns, RECompose switches back at the next section boundary." />
+
+            </Grid>
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
+
+      <TabItem Header="Voice" IsEnabled="{Binding HasAudio}">
+        <ScrollViewer VerticalScrollBarVisibility="Auto" DataContext="{Binding Audio}" x:DataType="vm:AudioSettingsViewModel">
+          <StackPanel Spacing="12" Margin="16,0,16,0">
+            <TextBlock Classes="title" Text="Voice" />
+            <Grid ColumnDefinitions="140,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="10">
+              <TextBlock Grid.Row="0" Classes="label" Text="INPUT" VerticalAlignment="Center" ToolTip.Tip="The talkback mic for voice control" />
+              <ComboBox Grid.Row="0" Grid.Column="1" ItemsSource="{Binding VoiceInputs}" SelectedItem="{Binding VoiceInput}" HorizontalAlignment="Stretch"
+                        AutomationProperties.Name="Voice input" />
+              <StackPanel Grid.Row="1" Grid.Column="1" Spacing="6">
+                <CheckBox IsChecked="{Binding VoicePushToTalk}" Content="Push to talk (hold the Talk control, Settings › Controls)" />
+                <CheckBox IsChecked="{Binding VoiceConfirm}" Content="Ask before acting" />
+                <CheckBox IsChecked="{Binding VoiceGate}" Content="Ignore speech while the guide is talking" />
+                <CheckBox IsChecked="{Binding VoiceBareNames}" Content="Accept bare section names" />
+              </StackPanel>
+              <Border Grid.Row="2" Grid.Column="1" Classes="inset" Padding="10">
+                <StackPanel Spacing="6">
+                  <ProgressBar Minimum="0" Maximum="1" Value="{Binding VoiceLevel}" Height="4" MinHeight="4" AutomationProperties.Name="Voice input level" />
+                  <TextBlock Classes="mono" Text="{Binding VoiceHeard}" TextWrapping="Wrap" />
+                  <TextBlock Classes="meta" Text="{Binding VoiceWouldDo}" TextWrapping="Wrap" />
+                </StackPanel>
+              </Border>
+              <TextBlock Grid.Row="3" Grid.Column="1" Classes="meta" TextWrapping="Wrap"
+                         Text="The input is a channel of the audio device. Apply, then open this again to test: while Settings is open nothing you say changes playback." />
+
+              <TextBlock Grid.Row="4" Classes="label" Text="MD CONFIRM" VerticalAlignment="Center" ToolTip.Tip="Spoken confirmations of live actions, for the MD's in-ear" />
+              <ComboBox Grid.Row="4" Grid.Column="1" ItemsSource="{Binding MdOptions}" SelectedItem="{Binding MdOutput}" HorizontalAlignment="Stretch"
+                        AutomationProperties.Name="MD confirm output" />
+              <TextBlock Grid.Row="5" Grid.Column="1" Classes="meta" Foreground="{DynamicResource state-warning}" Text="{Binding MdWarning}"
+                         IsVisible="{Binding MdWarning, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+            </Grid>
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
+
+      <TabItem Header="Controls">
+        <DockPanel Margin="16,0,16,0" DataContext="{Binding Controls}" x:DataType="vm:ControlsViewModel">
+          <StackPanel DockPanel.Dock="Top" Spacing="10">
+            <TextBlock Classes="title" Text="Playback" />
+            <Grid ColumnDefinitions="180,*" RowDefinitions="Auto,Auto" RowSpacing="10">
+              <TextBlock Grid.Row="0" Classes="label" Text="JUMP TAKES EFFECT" VerticalAlignment="Center" />
+              <ComboBox x:Name="TimingSelect" Grid.Row="0" Grid.Column="1" ItemsSource="{Binding TimingChoices}" SelectedItem="{Binding SelectedTiming}" HorizontalAlignment="Stretch" />
+              <TextBlock Grid.Row="1" Classes="label" Text="AFTER A JUMP" VerticalAlignment="Center" />
+              <CheckBox x:Name="ContinueBox" Grid.Row="1" Grid.Column="1" IsChecked="{Binding ContinueAsWritten}"
+                        Content="Carry on as written instead of returning to the arrangement" />
+            </Grid>
+            <DockPanel Margin="0,12,0,0">
+              <Button DockPanel.Dock="Right" Content="Restore defaults" Command="{Binding RestoreDefaultsCommand}" />
+              <TextBlock Classes="title" Text="Controls" />
+            </DockPanel>
+            <TextBlock Classes="meta" TextWrapping="Wrap"
+                       Text="Press Learn, then a key, a note, a controller or a foot pedal. Two presses within 250 ms count once. A pedal acts when it is pressed." />
+            <TextBlock Classes="mono" Text="{Binding LastInput}" Foreground="{DynamicResource state-playing}" />
+          </StackPanel>
+
+          <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="0,8,0,0">
+            <ItemsControl x:Name="ControlRows" ItemsSource="{Binding Rows}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:ControlRow">
+                  <Grid ColumnDefinitions="150,*,Auto,Auto" Margin="0,3" ColumnSpacing="8">
+                    <TextBlock Grid.Column="0" Text="{Binding Name}" VerticalAlignment="Center" FontWeight="SemiBold" />
+                    <TextBlock Grid.Column="1" Classes="mono" Text="{Binding Inputs}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                    <Button Grid.Column="2" Content="{Binding LearnLabel}" Command="{Binding LearnCommand}" MinWidth="150" AutomationProperties.Name="Learn" />
+                    <Button Grid.Column="3" Content="Clear" Command="{Binding ClearCommand}" />
+                  </Grid>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </ScrollViewer>
+        </DockPanel>
+      </TabItem>
+
+      <TabItem Header="MIDI">
+        <ScrollViewer VerticalScrollBarVisibility="Auto" DataContext="{Binding Controls}" x:DataType="vm:ControlsViewModel">
+          <StackPanel Spacing="10" Margin="16,0,16,0">
+            <TextBlock Classes="title" Text="MIDI out" />
+            <Grid ColumnDefinitions="180,*,Auto" RowDefinitions="Auto,Auto" RowSpacing="10" ColumnSpacing="8">
+              <TextBlock Grid.Row="0" Classes="label" Text="PORT" VerticalAlignment="Center" />
+              <ComboBox Grid.Row="0" Grid.Column="1" ItemsSource="{Binding MidiPorts}" SelectedItem="{Binding MidiPort}" HorizontalAlignment="Stretch"
+                        AutomationProperties.Name="MIDI out port" ToolTip.Tip="Lighting software listens here; on Windows use a loopMIDI port or a MIDI interface" />
+              <Button Grid.Row="0" Grid.Column="2" Content="Send test note" Command="{Binding TestNoteCommand}" />
+              <TextBlock Grid.Row="1" Classes="label" Text="CHANNEL · MIDDLE C" VerticalAlignment="Center" />
+              <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                <ComboBox ItemsSource="{Binding Channels}" SelectedItem="{Binding MidiChannel}" MinWidth="80" AutomationProperties.Name="MIDI channel" />
+                <ComboBox ItemsSource="{Binding MiddleCChoices}" SelectedItem="{Binding MiddleC}" MinWidth="80" AutomationProperties.Name="Middle C is"
+                          ToolTip.Tip="What MIDI note 60 is called" />
+              </StackPanel>
+            </Grid>
+            <TextBlock Classes="title" Text="Guide calls" Margin="0,12,0,0" />
+            <CheckBox IsChecked="{Binding ReplaceGuideCalls}" Content="Replace guide calls that announce the wrong section"
+                      ToolTip.Tip="After a change, the guide's call for the section as written is silenced and the right one plays" />
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
+
+      <TabItem Header="Assistant">
+        <ScrollViewer VerticalScrollBarVisibility="Auto" DataContext="{Binding Assistant}" x:DataType="vm:AssistantViewModel">
+          <StackPanel Spacing="6" Margin="16,0,16,0">
+            <TextBlock Classes="title" Text="Assistant" />
+            <TextBlock Classes="label" Text="ANTHROPIC API KEY" Margin="0,6,0,0" />
+            <DockPanel>
+              <Button DockPanel.Dock="Right" Content="Save" Command="{Binding SaveKeyCommand}" Margin="6,0,0,0" />
+              <TextBox Text="{Binding KeyText}" PasswordChar="•" PlaceholderText="sk-ant-…" AutomationProperties.Name="Anthropic API key" />
+            </DockPanel>
+            <TextBlock Classes="meta" Text="{Binding KeyStatus}" TextWrapping="Wrap" />
+            <TextBlock Classes="label" Text="WORKSPACE ID (OPTIONAL)" Margin="0,6,0,0" />
+            <TextBox Text="{Binding WorkspaceId}" AutomationProperties.Name="Workspace ID" />
+            <TextBlock Classes="label" Text="MODEL" Margin="0,6,0,0" />
+            <AutoCompleteBox Text="{Binding Model}" ItemsSource="{Binding SuggestedModels}" FilterMode="StartsWith" AutomationProperties.Name="Model" />
+            <CheckBox IsChecked="{Binding ConfirmInPerform}" Content="Allow changes during Perform, with confirmation" Margin="0,6,0,0" />
+            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,6,0,0">
+              <Button Content="Test connection" Command="{Binding TestCommand}" />
+              <TextBlock Text="{Binding TestResult}" VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="320" />
+            </StackPanel>
+            <TextBlock Classes="meta" Text="{Binding PrivacyNote}" TextWrapping="Wrap" Margin="0,6,0,0" />
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
+
+      <TabItem Header="Storage">
+        <StackPanel Spacing="10" Margin="16,0,16,0">
+          <TextBlock Classes="title" Text="Storage" />
+          <Grid ColumnDefinitions="140,*" RowDefinitions="Auto,Auto,Auto" RowSpacing="10" DataContext="{Binding Audio}" x:DataType="vm:AudioSettingsViewModel">
+            <TextBlock Grid.Row="0" Classes="label" Text="RENDER CACHE" VerticalAlignment="Center" ToolTip.Tip="Stems rendered in other keys and tempos" />
+            <ComboBox Grid.Row="0" Grid.Column="1" ItemsSource="{Binding CacheBudgets}" SelectedItem="{Binding SelectedCacheBudget}" HorizontalAlignment="Stretch"
+                      AutomationProperties.Name="Render cache size" />
+            <DockPanel Grid.Row="1" Grid.Column="1">
+              <Button DockPanel.Dock="Right" Content="Clean cache" Command="{Binding CleanCacheCommand}" />
+              <TextBlock Classes="meta" Text="{Binding CacheText}" VerticalAlignment="Center" TextWrapping="Wrap" />
+            </DockPanel>
+            <TextBlock Grid.Row="2" Grid.Column="1" Classes="meta" TextWrapping="Wrap" Text="The cache size takes effect on Apply." />
+          </Grid>
+          <Grid ColumnDefinitions="140,*,Auto" ColumnSpacing="8">
+            <TextBlock Classes="label" Text="DATA FOLDER" VerticalAlignment="Center" ToolTip.Tip="Settings, the library, services and caches. An update keeps it." />
+            <TextBlock Grid.Column="1" Classes="mono" Text="{Binding DataFolder}" TextWrapping="Wrap" VerticalAlignment="Center" />
+            <Button Grid.Column="2" Content="Open" Command="{Binding OpenDataFolderCommand}" />
+          </Grid>
+        </StackPanel>
+      </TabItem>
+
+      <TabItem Header="Updates">
+        <StackPanel Spacing="10" Margin="16,0,16,0" DataContext="{Binding Main}" x:DataType="vm:MainViewModel">
+          <TextBlock Classes="title" Text="Updates" />
+          <CheckBox IsChecked="{Binding AutoUpdate}" Content="Download new versions in the background" />
+          <TextBlock Classes="meta" TextWrapping="Wrap"
+                     Text="A new version downloads while you work and installs when RECompose quits, never during Perform or while playing. With this off, nothing is checked or installed unless you check by hand." />
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <Button Content="Check for updates" Command="{Binding CheckForUpdatesCommand}" />
+            <TextBlock Text="{Binding UpdateCheckText}" VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="360" />
+          </StackPanel>
+        </StackPanel>
+      </TabItem>
+    </TabControl>
+  </DockPanel>
+</d:DialogWindow>

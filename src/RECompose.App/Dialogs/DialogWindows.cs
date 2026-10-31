@@ -33,28 +33,19 @@ public partial class TransitionWindow : DialogWindow
     }
 }
 
-public partial class AudioSettingsWindow : DialogWindow
+public partial class SettingsWindow : DialogWindow
 {
-    public AudioSettingsWindow()
+    public SettingsWindow()
     {
         AvaloniaXamlLoader.Load(this);
         this.FindControl<Button>("CancelButton")!.Click += (_, _) => Close(false);
         this.FindControl<Button>("ApplyButton")!.Click += (_, _) => Close(true);
-    }
-}
-
-public partial class ControlsWindow : DialogWindow
-{
-    public ControlsWindow()
-    {
-        AvaloniaXamlLoader.Load(this);
-        this.FindControl<Button>("CloseButton")!.Click += (_, _) => Close();
 
         // Learn takes the next key pressed here (LIVE-53); pedals arrive through the engine.
         Avalonia.Input.Key? learned = null;
         AddHandler(KeyDownEvent, (_, e) =>
         {
-            if (DataContext is ControlsViewModel controls && controls.IsLearning)
+            if ((DataContext as SettingsViewModel)?.Controls is { IsLearning: true } controls)
             {
                 if (e.Key == Avalonia.Input.Key.Escape)
                     controls.CancelLearn();
@@ -73,7 +64,41 @@ public partial class ControlsWindow : DialogWindow
                 e.Handled = true;
             }
         }, Avalonia.Interactivity.RoutingStrategies.Tunnel);
-        Closed += (_, _) => (DataContext as ControlsViewModel)?.CancelLearn();
+        Closed += (_, _) => (DataContext as SettingsViewModel)?.Controls.CancelLearn();
+    }
+}
+
+/// <summary>Help › About: the version, the engine protocol, the licence and the project's page.</summary>
+public static class AboutDialog
+{
+    public static Task ShowAsync(Window owner)
+    {
+        var window = new DialogWindow
+        {
+            Title = "About RECompose",
+            Width = 380,
+            SizeToContent = SizeToContent.Height,
+            CanResize = false,
+            ShowInTaskbar = false,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+        };
+
+        var heading = new TextBlock { Text = "RECompose" };
+        heading.Classes.Add("title");
+        var version = typeof(AboutDialog).Assembly.GetName().Version?.ToString(3);
+        var details = new TextBlock
+        {
+            Text = $"Version {version}\nEngine protocol {RECompose.Engine.EngineProtocol.Version}\nAGPL-3.0-or-later",
+            TextWrapping = Avalonia.Media.TextWrapping.Wrap,
+        };
+        details.Classes.Add("mono");
+        var github = new Button { Content = "RECompose on GitHub", HorizontalAlignment = HorizontalAlignment.Left };
+        github.Click += (_, _) => SystemShell.Open(AppUpdates.Repository);
+        var close = new Button { Content = "Close", Classes = { "primary" }, IsDefault = true, IsCancel = true, HorizontalAlignment = HorizontalAlignment.Right };
+        close.Click += (_, _) => window.Close();
+
+        window.Content = new StackPanel { Margin = new Thickness(20), Spacing = 12, Children = { heading, details, github, close } };
+        return window.ShowDialog(owner);
     }
 }
 
@@ -234,15 +259,9 @@ public sealed class AvaloniaDialogs(Window owner) : IDialogs
         await window.ShowDialog(owner);
     }
 
-    public async Task EditControlsAsync(ControlsViewModel controls)
+    public async Task<bool> EditSettingsAsync(SettingsViewModel settings)
     {
-        var window = new ControlsWindow { DataContext = controls };
-        await window.ShowDialog(owner);
-    }
-
-    public async Task<bool> EditAudioSettingsAsync(AudioSettingsViewModel settings)
-    {
-        var window = new AudioSettingsWindow { DataContext = settings };
+        var window = new SettingsWindow { DataContext = settings };
         // Taller than a small screen: cap it there and scroll the settings, with Apply always in view.
         if (owner.Screens.ScreenFromTopLevel(owner) is { } screen)
             window.MaxHeight = screen.WorkingArea.Height / screen.Scaling - 48;

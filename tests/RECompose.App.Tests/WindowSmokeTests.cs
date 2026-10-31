@@ -244,20 +244,33 @@ public sealed class WindowSmokeTests : IDisposable
             Assert.NotNull(review.CaptureRenderedFrame());
             review.Close();
 
-            var audio = new AudioSettingsWindow
+            var data = new DataStore(Path.Combine(_root, "data"));
+            await using var main = new MainViewModel(data, new EngineHostOptions(executable, _endpoint), tools, new AvaloniaDispatcher(), new AcceptingDialogs(), new SpeechModel(data.Root, allowDownload: false));
+            var audioSettings = new AudioSettingsViewModel(
+                [new DeviceTypeInfo("Windows Audio", ["Speakers", "Focusrite USB"]), new DeviceTypeInfo("ASIO", ["Focusrite USB ASIO"])],
+                new DeviceInfo("ASIO", "Focusrite USB ASIO", 48000, 256, ["Out 1", "Out 2", "Out 3", "Out 4"], [44100, 48000], [128, 256, 512], 312),
+                new Core.Settings.AudioSettings());
+            var settings = new SettingsWindow
             {
-                DataContext = new AudioSettingsViewModel(
-                    [new DeviceTypeInfo("Windows Audio", ["Speakers", "Focusrite USB"]), new DeviceTypeInfo("ASIO", ["Focusrite USB ASIO"])],
-                    new DeviceInfo("ASIO", "Focusrite USB ASIO", 48000, 256, ["Out 1", "Out 2", "Out 3", "Out 4"], [44100, 48000], [128, 256, 512], 312),
-                    new Core.Settings.AudioSettings()),
+                DataContext = new SettingsViewModel(main, audioSettings, SettingsTab.Audio),
                 MaxHeight = 480, // a short screen: the settings scroll, Apply stays in view
             };
-            audio.Show();
+            settings.Show();
             Dispatcher.UIThread.RunJobs();
-            Assert.NotNull(audio.CaptureRenderedFrame());
-            var apply = audio.FindControl<Button>("ApplyButton")!;
-            Assert.True(apply.TranslatePoint(new Avalonia.Point(0, apply.Bounds.Height), audio)!.Value.Y <= audio.Bounds.Height);
-            audio.Close();
+            Assert.NotNull(settings.CaptureRenderedFrame());
+            var apply = settings.FindControl<Button>("ApplyButton")!;
+            Assert.True(apply.TranslatePoint(new Avalonia.Point(0, apply.Bounds.Height), settings)!.Value.Y <= settings.Bounds.Height);
+
+            // Every tab renders without binding errors.
+            var model = (SettingsViewModel)settings.DataContext!;
+            foreach (var tab in Enum.GetValues<SettingsTab>())
+            {
+                model.SelectedIndex = (int)tab;
+                Dispatcher.UIThread.RunJobs();
+                Assert.NotNull(settings.CaptureRenderedFrame());
+            }
+
+            settings.Close();
         }, TestContext.Current.CancellationToken);
 
         var problems = Problems(sink);
@@ -297,9 +310,7 @@ internal sealed class AcceptingDialogs : IDialogs
     public Task<string?> PickOpenFileAsync(string title, string extension) => Task.FromResult<string?>(null);
     public Task<bool> ReviewImportAsync(ImportReviewViewModel review) => Task.FromResult(true);
     public Task<DuplicateChoice> AskDuplicateAsync(string existingTitle) => Task.FromResult(DuplicateChoice.Cancel);
-    public Task<bool> EditAudioSettingsAsync(AudioSettingsViewModel settings) => Task.FromResult(false);
-
-    public Task EditControlsAsync(ControlsViewModel controls) => Task.CompletedTask;
+    public Task<bool> EditSettingsAsync(SettingsViewModel settings) => Task.FromResult(false);
 
     public Task ShowServiceCheckAsync(ServiceCheckViewModel check) => Task.CompletedTask;
 

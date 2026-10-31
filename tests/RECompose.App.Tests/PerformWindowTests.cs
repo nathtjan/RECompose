@@ -291,7 +291,7 @@ public sealed class PerformWindowTests : IDisposable
             Assert.False(vm.IsPending);
 
             // Settings › Controls: the rows, Learn on a key, and the playback options render.
-            var controls = new RECompose.App.Dialogs.ControlsWindow { DataContext = vm.Controls, Width = 640, Height = 640 };
+            var controls = new RECompose.App.Dialogs.SettingsWindow { DataContext = new SettingsViewModel(vm, null, SettingsTab.Controls), Width = 760, Height = 720 };
             controls.Show();
             Dispatcher.UIThread.RunJobs();
             var go = vm.Controls.Rows.First(r => r.Action == RECompose.Core.Controls.ControlAction.Go);
@@ -340,7 +340,7 @@ public sealed class PerformWindowTests : IDisposable
             Dispatcher.UIThread.RunJobs();
 
             // KEY-1: a button keeps focus after its dialog closes; Space on it is play, not a second click (press and release).
-            var settings = window.GetVisualDescendants().OfType<Button>().First(b => ToolTip.GetTip(b) as string == "Settings (Ctrl+,)");
+            var settings = window.GetVisualDescendants().OfType<Button>().First(b => ToolTip.GetTip(b) as string == "Audio device. Click to change it." && b.IsEffectivelyVisible);
             Assert.Equal(0, Clicks(settings));
 
             // PB-60: double-click KEY to type it; Enter applies.

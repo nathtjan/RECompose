@@ -85,6 +85,41 @@ public sealed class MainViewModelTests : IDisposable
     }
 
     [Fact]
+    public async Task Settings_open_on_the_tab_that_was_asked_for_and_the_voice_light_opens_Voice()
+    {
+        await using var vm = NewViewModel();
+        await vm.InitializeAsync();
+
+        vm.OpenSettingsCommand.Execute(null);
+        await Eventually(() => _dialogs.LastSettings is not null, 5000);
+        Assert.Equal((int)SettingsTab.Audio, _dialogs.LastSettings!.SelectedIndex);
+        Assert.True(_dialogs.LastSettings.HasAudio);
+
+        vm.OpenControlsCommand.Execute(null);
+        await Eventually(() => _dialogs.LastSettings!.SelectedIndex == (int)SettingsTab.Controls, 5000);
+
+        vm.Assistant.SettingsCommand.Execute(null);
+        await Eventually(() => _dialogs.LastSettings!.SelectedIndex == (int)SettingsTab.Assistant, 5000);
+        Assert.Same(vm.Assistant, _dialogs.LastSettings!.Assistant);
+    }
+
+    [Fact]
+    public async Task Updates_can_be_turned_off_and_still_be_checked_by_hand()
+    {
+        await using var vm = NewViewModel();
+        await vm.InitializeAsync();
+        Assert.True(vm.AutoUpdate);
+
+        vm.AutoUpdate = false;
+        Assert.False(vm.CurrentSettings.AutoUpdate);
+        Assert.False(vm.InstallUpdateOnQuit());
+
+        vm.CheckForUpdatesCommand.Execute(null);
+        await Eventually(() => vm.UpdateCheckText.Length > 0, 5000);
+        Assert.Contains("not installed", vm.UpdateCheckText);
+    }
+
+    [Fact]
     public async Task Imports_a_stems_folder_with_review_lane_order_outputs_and_peaks()
     {
         await using var vm = NewViewModel();
@@ -604,9 +639,14 @@ internal sealed class ScriptedDialogs : IDialogs
         return Task.FromResult(Duplicate);
     }
 
-    public Task<bool> EditAudioSettingsAsync(AudioSettingsViewModel settings) => Task.FromResult(false);
+    /// <summary>The Settings window the last command opened.</summary>
+    public SettingsViewModel? LastSettings { get; private set; }
 
-    public Task EditControlsAsync(ControlsViewModel controls) => Task.CompletedTask;
+    public Task<bool> EditSettingsAsync(SettingsViewModel settings)
+    {
+        LastSettings = settings;
+        return Task.FromResult(false);
+    }
 
     public Task ShowServiceCheckAsync(ServiceCheckViewModel check) => Task.CompletedTask;
 

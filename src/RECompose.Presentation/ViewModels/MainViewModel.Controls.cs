@@ -25,13 +25,7 @@ public sealed partial class MainViewModel
     /// <summary>Settings › Controls and › Playback.</summary>
     public ControlsViewModel Controls => _controls ??= new ControlsViewModel(this);
 
-    public RelayCommand OpenControlsCommand => _openControls ??= new RelayCommand(async () =>
-    {
-        await Controls.LoadMidiPortsAsync();
-        await _dialogs.EditControlsAsync(Controls);
-        if (_song is not null)
-            OnPlanChanged(_song.Plan, sameArrangement: true); // MIDI channel, note naming and guide replacement go with the plan
-    });
+    public RelayCommand OpenControlsCommand => _openControls ??= new RelayCommand(() => OpenSettingsAsync(SettingsTab.Controls));
 
     internal void ReopenMidiOut()
     {

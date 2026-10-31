@@ -26,7 +26,8 @@ public partial class MainWindow
         ("View", [("Prepare or Perform", vm.TogglePerformCommand), ("Assistant", vm.ToggleAssistantCommand)]),
         ("Window", [("Minimise", new RelayCommand(() => window.WindowState = WindowState.Minimized)),
             ("Full screen", new RelayCommand(() => window.WindowState = window.WindowState == WindowState.FullScreen ? WindowState.Normal : WindowState.FullScreen))]),
-        ("Help", [("RECompose on GitHub", new RelayCommand(() => window.Launcher.LaunchUriAsync(new Uri(Presentation.Services.AppUpdates.Repository))))]),
+        ("Help", [("RECompose on GitHub", new RelayCommand(() => window.Launcher.LaunchUriAsync(new Uri(Presentation.Services.AppUpdates.Repository)))),
+            ("-", null), ("About RECompose", new RelayCommand(() => Dialogs.AboutDialog.ShowAsync(window)))]),
     ];
 
     private void BuildMenu(MainViewModel vm)
