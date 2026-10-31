@@ -6,6 +6,9 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets/RECompose.ico</ApplicationIcon>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- The XAML compiler logs through MSBuild, which TreatWarningsAsErrors does not reach: obsolete XAML members fail the build too. -->
+    <MSBuildWarningsAsErrors>$(MSBuildWarningsAsErrors);AVLN5001</MSBuildWarningsAsErrors>
   </PropertyGroup>
 
   <ItemGroup>

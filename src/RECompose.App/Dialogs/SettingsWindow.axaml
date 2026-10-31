@@ -78,7 +78,7 @@
             </ItemsControl>
             <Grid ColumnDefinitions="140,*,Auto">
               <TextBlock Classes="label" Text="NEW BUS" VerticalAlignment="Center" />
-              <TextBox Grid.Column="1" Text="{Binding NewBusName}" Watermark="Lead Vox" AutomationProperties.Name="New bus name" />
+              <TextBox Grid.Column="1" Text="{Binding NewBusName}" PlaceholderText="Lead Vox" AutomationProperties.Name="New bus name" />
               <Button Grid.Column="2" Content="Add bus" Command="{Binding AddBusCommand}" Margin="8,0,0,0" />
             </Grid>
             <TextBlock Classes="meta" Text="{Binding BusError}" TextWrapping="Wrap" IsVisible="{Binding BusError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
