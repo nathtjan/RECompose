@@ -153,8 +153,8 @@ public static class AudioRender
 
     private static string Unique(string songTitle, RenderSource source, RenderFormat format, IEnumerable<string> taken)
     {
-        var invalid = Path.GetInvalidFileNameChars();
-        var stem = string.Concat($"{songTitle} - {source.Label}".Where(c => !invalid.Contains(c))).Trim();
+        // The Windows set everywhere, so the folder can move between computers.
+        var stem = string.Concat($"{songTitle} - {source.Label}".Where(c => !char.IsControl(c) && !"\\/:*?\"<>|".Contains(c))).Trim();
         return ServiceExchange.UniqueName(stem, taken) + format.Extension();
     }
 }
