@@ -80,7 +80,7 @@ struct PadRig
     {
         PadCommand c;
         c.type = PadCommand::Type::setFade;
-        c.frames = static_cast<std::int64_t> (seconds * kRate);
+        c.value = static_cast<float> (seconds);
         pads.post (c);
     }
 
@@ -147,6 +147,15 @@ TEST ("pads: a key fades in, another key takes over, stop fades out (SL-42, SL-4
     CHECK (rms (stopped, 7200, 2400) < 1.0e-4f);
     CHECK (rig.pads.key() == -1);
     CHECK (! rig.bank->keys[7].wanted.load()); // the disk no longer reads it
+}
+
+TEST ("pads: the fade time is in seconds at the device's rate, even when the rate comes after it")
+{
+    PadRig rig;               // fade 0.1 s, sent before the rate below
+    rig.pads.prepare (kRate / 2); // the device opens at half the rate: 0.1 s is half as many frames
+    rig.play (3);
+    const auto out = rig.render (9600);
+    CHECK (near (rms (out, 2400, 960), 0.354f, 0.02f)); // full level after 0.1 s (2400 frames), not still halfway
 }
 
 TEST ("pads: a short file loops from 90 % back to 25 % with no gap (SL-46)")

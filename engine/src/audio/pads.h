@@ -63,7 +63,7 @@ struct PadCommand
         setBank,   // a new pad set; a sounding key crossfades to the same key of the new set (SL-41)
         play,      // `key` fades in, every other key fades out (SL-42); key < 0 = stop
         setGain,   // the pad volume, linear (SL-45)
-        setFade,   // the fade time in frames (SL-45)
+        setFade,   // the fade time in seconds, in `value` (SL-45)
         setFollow, // follow the key heard in the plan (SL-44)
         setOutput, // device channel and width of the Pad output (PB-85)
     };
@@ -131,7 +131,7 @@ private:
     bool fromPadBars_ = false; // the pad sounds because pad bars started it
     bool follow_ = false;
     float gain_ = 0.5011872f;  // −6 dB (SL-45)
-    std::int64_t fadeFrames_ = 4 * 48000;
+    float fadeSec_ = 4.0f; // in seconds: frames follow the device rate, which may be known only later
     int channel_ = 0;
     int width_ = 2;
     double sampleRate_ = 48000.0;

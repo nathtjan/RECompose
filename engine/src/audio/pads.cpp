@@ -223,7 +223,8 @@ void PadPlayer::drain() noexcept
 void PadPlayer::fadeTo (Voice& voice, float target) noexcept
 {
     voice.target = target;
-    voice.step = (target - voice.gain) / static_cast<float> (std::max<std::int64_t> (1, fadeFrames_));
+    const auto frames = std::max<std::int64_t> (1, std::llround (static_cast<double> (fadeSec_) * sampleRate_));
+    voice.step = (target - voice.gain) / static_cast<float> (frames);
 }
 
 void PadPlayer::start (int bankIndex, int key) noexcept
@@ -277,7 +278,7 @@ void PadPlayer::handle (const PadCommand& command) noexcept
             return;
 
         case PadCommand::Type::setFade:
-            fadeFrames_ = std::max<std::int64_t> (1, command.frames);
+            fadeSec_ = command.value;
             return;
 
         case PadCommand::Type::setFollow:

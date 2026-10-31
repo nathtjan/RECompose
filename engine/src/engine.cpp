@@ -231,7 +231,7 @@ juce::var Engine::pad (const juce::var& message)
     {
         audio::PadCommand c;
         c.type = audio::PadCommand::Type::setFade;
-        c.frames = static_cast<std::int64_t> (std::llround (std::max (0.01, static_cast<double> (v)) * engineRate()));
+        c.value = static_cast<float> (std::max (0.01, static_cast<double> (v)));
         send (c);
     }
     if (const auto v = message.getProperty ("follow", {}); v.isBool())
