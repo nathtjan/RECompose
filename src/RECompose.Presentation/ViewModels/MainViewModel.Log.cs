@@ -101,6 +101,8 @@ public sealed partial class MainViewModel
             _log.RemoveRange(0, _log.Count - MaxLogEntries);
         if (shown.Count > 0)
             ShownLog = [.. Enumerable.Reverse(shown).Concat(_shownLog).Take(MaxLogEntries)];
+        if (_log.Count > 0 && !ReferenceEquals(_log[^1], _lastLog))
+            ShowLastLog(_log[^1]);
     }
 
     private void FilterLog() =>

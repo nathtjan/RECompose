@@ -29,6 +29,19 @@
     <Style Selector="Ellipse.led.ready">
       <Setter Property="Fill" Value="{DynamicResource state-hold}" />
     </Style>
+    <Style Selector="Border.statusbar">
+      <Setter Property="Background" Value="{DynamicResource bg-surface}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource border}" />
+      <Setter Property="BorderThickness" Value="0,1,0,0" />
+      <Setter Property="Padding" Value="12,0" />
+    </Style>
+    <Style Selector="Border.statusbar Button">
+      <Setter Property="Padding" Value="4,2" />
+      <Setter Property="MinHeight" Value="0" />
+    </Style>
+    <Style Selector="TextBlock.meta.warn">
+      <Setter Property="Foreground" Value="{DynamicResource state-warning}" />
+    </Style>
     <Style Selector="ListBox#Library ListBoxItem">
       <Setter Property="Padding" Value="16,8" />
     </Style>
@@ -126,7 +139,7 @@
     </Style>
   </Window.Styles>
 
-  <Grid RowDefinitions="80,Auto,*">
+  <Grid RowDefinitions="80,Auto,*,Auto">
 
     <!-- Top bar (UI-11): the title row (menu, name, window keys) above the toolbar row -->
     <Grid Grid.Row="0" RowDefinitions="32,48">
@@ -1208,6 +1221,29 @@
     </Border>
   
     <!-- Perform replaces the whole window below the title (UI-40); playback never stops when it opens -->
+    <!-- Bottom bar: the latest log line and the engine's live statistics; Prepare only, the stage stays clean -->
+    <Border Grid.Row="3" Classes="statusbar" Height="26" IsVisible="{Binding IsPrepare}">
+      <DockPanel>
+        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="16" VerticalAlignment="Center">
+          <TextBlock Classes="meta" Text="{Binding StatsCpu}" VerticalAlignment="Center" ToolTip.Tip="How much of each audio block the engine's processing takes." />
+          <TextBlock Classes="meta" Text="{Binding StatsLatency}" VerticalAlignment="Center" ToolTip.Tip="Output latency: from the engine to the speakers." />
+          <TextBlock Classes="meta" Classes.warn="{Binding XrunsWarn}" Text="{Binding StatsXruns, StringFormat='Xruns {0}'}" VerticalAlignment="Center"
+                     ToolTip.Tip="Times the audio device asked for sound before it was ready, heard as a click. A bigger buffer in Settings › Audio helps." />
+          <TextBlock Classes="meta" Classes.warn="{Binding DiskWarn}" Text="{Binding StatsDisk, StringFormat='Disk {0}'}" VerticalAlignment="Center"
+                     ToolTip.Tip="Blocks played as silence because a stem was not read from disk in time. A faster drive, or finished renders instead of live key and tempo changes, helps." />
+          <Button Classes="ghost" Content="Reset" Command="{Binding ResetStatsCommand}" VerticalAlignment="Center"
+                  ToolTip.Tip="Count xruns and disk from zero, e.g. before a service." AutomationProperties.Name="Reset statistics" />
+        </StackPanel>
+        <Button Classes="ghost" Command="{Binding OpenLogCommand}" HorizontalAlignment="Left" HorizontalContentAlignment="Left" VerticalAlignment="Center"
+                ToolTip.Tip="Open the log." AutomationProperties.Name="Latest log line" Margin="0,0,16,0">
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <TextBlock Classes="label" Text="{Binding LastLogChip}" VerticalAlignment="Center" />
+            <TextBlock Classes="meta" Text="{Binding LastLogText}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+          </StackPanel>
+        </Button>
+      </DockPanel>
+    </Border>
+
     <local:PerformView x:Name="Perform" Grid.Row="0" Grid.RowSpan="3" Margin="0,32,0,0" IsVisible="{Binding IsPerform}" />
 
     <!-- Assistant (UI-17, AS-2): a drawer over the right edge in Prepare and Perform, below the top bar; Ctrl+J -->

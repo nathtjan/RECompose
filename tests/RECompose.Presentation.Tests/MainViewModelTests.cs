@@ -625,6 +625,27 @@ public sealed class MainViewModelTests : IDisposable
     }
 
     [Fact]
+    public async Task The_bottom_bar_counts_xruns_and_disk_misses_from_the_last_reset()
+    {
+        await using var vm = NewViewModel();
+        static EngineSnapshot Snapshot(int xruns, long starved) =>
+            new(TransportState.Playing, 0, 0, Latency: 480, SampleRate: 48000, null, 0, true, false, starved, xruns, Cpu: 0.123, true,
+                new Dictionary<string, float>(), 0, 0);
+
+        vm.ApplyStats(Snapshot(3, 0));
+        Assert.Equal(("CPU 12 %", "Latency 10 ms", 3L, 0L, true, false), (vm.StatsCpu, vm.StatsLatency, vm.StatsXruns, vm.StatsDisk, vm.XrunsWarn, vm.DiskWarn));
+
+        vm.ResetStatsCommand.Execute(null);
+        Assert.Equal((0L, false), (vm.StatsXruns, vm.XrunsWarn));
+        vm.ApplyStats(Snapshot(5, 2));
+        Assert.Equal((2L, 2L, true), (vm.StatsXruns, vm.StatsDisk, vm.DiskWarn));
+
+        // A reopened device counts from zero again.
+        vm.ApplyStats(Snapshot(1, 2));
+        Assert.Equal(1L, vm.StatsXruns);
+    }
+
+    [Fact]
     public void Buses_save_only_what_differs_from_the_defaults_plus_the_custom_ones()
     {
         var current = new DeviceInfo("Windows Audio", "Interface", 48000, 256, ["1", "2", "3", "4", "5", "6"], [48000], [256], 0, []);

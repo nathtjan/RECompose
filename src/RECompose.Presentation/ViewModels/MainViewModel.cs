@@ -59,7 +59,6 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private bool _shuttingDown;
     private bool _restarting;
     private long _lastFrame;
-    private int _dropouts;
     private DeviceInfo? _device;
     private int _selectedTab;
     private long? _seekFrame;          // a seek the engine hasn't confirmed yet
@@ -631,7 +630,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         if (previous?.StatusLabel != device.StatusLabel)
             AppLog.Write("Audio", $"Device {device.StatusLabel}, buffer {device.BufferSize}, latency {device.OutputLatency} frames");
         AudioOk = true;
-        AudioStatus = (_dropouts > 0 ? $"{_dropouts} dropouts · " : string.Empty) + device.StatusLabel; // first: the device name may be cut off
+        AudioStatus = device.StatusLabel;
     }
 
     // ---- Library and import (SL-50…56) -------------------------------------------
@@ -1007,11 +1006,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         ShowEnginePad(s.PadKey); // pads sound whether or not a song is loaded (SL-40)
         ApplyRoute(s);
         ApplyVoice(s.Voice);
-        if (s.Xruns + s.Starved != _dropouts)
-        {
-            _dropouts = (int)(s.Xruns + s.Starved);
-            ShowDevice(_device);
-        }
+        ApplyStats(s);
 
         if (_song is null || s.SongId != _song.Id)
         {
