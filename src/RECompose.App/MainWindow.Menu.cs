@@ -20,7 +20,7 @@ public partial class MainWindow
             ("Key up", vm.KeyUpCommand), ("Key down", vm.KeyDownCommand), ("Tempo up", vm.TempoUpCommand), ("Tempo down", vm.TempoDownCommand), ("-", null),
             ("Re-analyse click", vm.ReanalyseClickCommand), ("Transcribe guide again", vm.RetranscribeCommand), ("Restore earlier version…", vm.RestoreSongVersionCommand)]),
         ("Service", [("New service…", vm.Setlist.NewServiceCommand), ("Duplicate service…", vm.Setlist.DuplicateServiceCommand), ("Rename…", vm.Setlist.RenameServiceCommand), ("-", null),
-            ("Service check", vm.OpenCheckCommand), ("Restore earlier version…", vm.Setlist.RestoreVersionCommand), ("-", null),
+            ("Service check", vm.OpenCheckCommand), ("Run check", vm.QuickCheckCommand), ("Restore earlier version…", vm.Setlist.RestoreVersionCommand), ("-", null),
             ("Export service…", vm.Setlist.ExportServiceCommand), ("Import service…", vm.Setlist.ImportServiceCommand), ("Export report", vm.ExportReportCommand)]),
         ("Transport", [("Play or pause", vm.PlayPauseCommand), ("Stop", vm.StopCommand), ("To start", vm.ToStartCommand), ("-", null), ("PANIC", vm.PanicCommand)]),
         ("View", [("Prepare or Perform", vm.TogglePerformCommand), ("Assistant", vm.ToggleAssistantCommand)]),

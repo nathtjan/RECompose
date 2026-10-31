@@ -271,7 +271,7 @@ public sealed class PerformWindowTests : IDisposable
             vm.ApplySnapshotForTests(Snapshot(vm, 6));
             Dispatcher.UIThread.RunJobs();
 
-            // The rehearsal helpers are on the status row in Rehearsal lock and gone in Service lock.
+            // The rehearsal helpers are under the rail in Rehearsal lock and gone in Service lock.
             var perform = window.FindControl<PerformView>("Perform")!;
             Assert.True(perform.FindControl<ToggleButton>("LoopKey")!.IsVisible);
             Assert.True(perform.FindControl<ComboBox>("PracticeSelect")!.IsVisible);

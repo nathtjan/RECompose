@@ -99,12 +99,9 @@
       <Setter Property="MinHeight" Value="28" />
       <Setter Property="Padding" Value="8,0" />
     </Style>
-    <!-- The drawer leaves the top bar, and the window keys in it, uncovered (title row 32, then Prepare's toolbar 48 or Perform's status row 60) -->
+    <!-- The drawer leaves the top bar, and the window keys in it, uncovered (title row 32, then the 48 px toolbar or Perform's status row) -->
     <Style Selector="Border.drawer">
       <Setter Property="Margin" Value="0,80,0,0" />
-    </Style>
-    <Style Selector="Border.drawer.perform">
-      <Setter Property="Margin" Value="0,92,0,0" />
     </Style>
   </Window.Styles>
 
@@ -1179,7 +1176,6 @@
 
     <!-- Assistant (UI-17, AS-2): a drawer over the right edge in Prepare and Perform, below the top bar; Ctrl+J -->
     <Border Grid.Row="0" Grid.RowSpan="3" Width="400" HorizontalAlignment="Right" Classes="panel drawer" BorderBrush="{DynamicResource border}" BorderThickness="1,0,0,0"
-            Classes.perform="{Binding $parent[Window].((vm:MainViewModel)DataContext).IsPerform}"
             Background="{DynamicResource bg-surface}" IsVisible="{Binding IsOpen}" DataContext="{Binding $parent[Window].((vm:MainViewModel)DataContext).Assistant}" x:DataType="vm:AssistantViewModel">
       <DockPanel Margin="12">
         <!-- Header: title, Undo, New conversation, settings, close -->

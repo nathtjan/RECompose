@@ -74,10 +74,6 @@
       <Setter Property="Background" Value="{DynamicResource state-error}" />
       <Setter Property="Foreground" Value="{DynamicResource text-on-accent}" />
     </Style>
-    <Style Selector="ToggleButton.lock">
-      <Setter Property="MinHeight" Value="40" />
-      <Setter Property="Padding" Value="14,0" />
-    </Style>
     <Style Selector="Ellipse.cancelled">
       <Setter Property="Width" Value="8" />
       <Setter Property="Height" Value="8" />
@@ -88,22 +84,28 @@
     </Style>
   </UserControl.Styles>
 
-  <Grid RowDefinitions="60,Auto,*,108">
+  <Grid RowDefinitions="48,Auto,*,108">
 
-    <!-- Status row (60 px) -->
-    <Border Grid.Row="0" Classes="topbar" Padding="12,0,0,0">
+    <!-- Status row (48 px, as tall as Prepare's toolbar) -->
+    <Border Grid.Row="0" Classes="topbar" Padding="16,0,0,0">
       <DockPanel>
-        <c:HoldButton x:Name="LeavePerform" DockPanel.Dock="Left" Command="{Binding TogglePerformCommand}" HoldRequired="{Binding IsServiceLock}"
-                      Height="44" MinHeight="44" Padding="16,0" VerticalAlignment="Center" AutomationProperties.Name="Prepare"
-                      ToolTip.Tip="Back to Prepare (Ctrl+P). In Service lock, hold to leave.">
-          <TextBlock Text="Prepare" VerticalAlignment="Center" />
-        </c:HoldButton>
-        <!-- The service info has a fixed width, so the lock beside it never moves -->
-        <StackPanel DockPanel.Dock="Left" Margin="16,0,0,0" Width="200" VerticalAlignment="Center" Spacing="0">
-          <TextBlock x:Name="ServiceName" Text="{Binding Setlist.Title}" FontWeight="Bold" TextTrimming="CharacterEllipsis" />
-          <TextBlock x:Name="ClockLine" Classes="meta" Text="Perform" />
+        <!-- The left side matches Prepare's toolbar: the same Prepare | Perform pair, then the service where its picker is -->
+        <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center" Spacing="2">
+          <c:HoldButton x:Name="LeavePerform" Command="{Binding TogglePerformCommand}" HoldRequired="{Binding IsServiceLock}"
+                        AutomationProperties.Name="Prepare" ToolTip.Tip="Back to Prepare (Ctrl+P). In Service lock, hold to leave.">
+            <TextBlock Text="Prepare" VerticalAlignment="Center" />
+          </c:HoldButton>
+          <ToggleButton Content="Perform" IsChecked="True" IsHitTestVisible="False" Focusable="False" />
         </StackPanel>
-        <ToggleButton x:Name="LockKey" DockPanel.Dock="Left" Classes="lock" IsChecked="{Binding IsServiceLock, Mode=TwoWay}" Margin="8,0,0,0" Width="44" Padding="0"
+        <!-- The service box has a fixed width, so the lock beside it never moves -->
+        <Border DockPanel.Dock="Left" Classes="inset" Margin="24,0,0,0" Width="280" MinHeight="{DynamicResource size-key-compact}" Padding="10,0"
+                BorderThickness="1" BorderBrush="{DynamicResource control-border}" VerticalAlignment="Center">
+          <DockPanel VerticalAlignment="Center">
+            <TextBlock x:Name="ClockLine" DockPanel.Dock="Right" Classes="meta" Margin="8,0,0,0" VerticalAlignment="Center" />
+            <TextBlock x:Name="ServiceName" Text="{Binding Setlist.Title}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+          </DockPanel>
+        </Border>
+        <ToggleButton x:Name="LockKey" DockPanel.Dock="Left" IsChecked="{Binding IsServiceLock, Mode=TwoWay}" Margin="8,0,0,0" Width="40" Padding="0"
                       VerticalAlignment="Center" AutomationProperties.Name="Service lock"
                       ToolTip.Tip="Service lock. Locked: stopping, jumping and loading need a deliberate press, and the rehearsal helpers are put away. Unlocked: every key acts at once.">
           <Panel>
@@ -112,42 +114,16 @@
           </Panel>
         </ToggleButton>
 
-        <Button DockPanel.Dock="Right" Classes="key danger" Command="{Binding PanicCommand}" MinWidth="104" Margin="16,0,0,0" VerticalAlignment="Center"
+        <Button DockPanel.Dock="Right" Classes="key danger" Command="{Binding PanicCommand}" Height="40" MinHeight="40" MinWidth="96" Margin="16,0,0,0" VerticalAlignment="Center"
                 AutomationProperties.Name="Panic" ToolTip.Tip="Stop everything now">
           <StackPanel Orientation="Horizontal" Spacing="8">
             <c:Icon Glyph="panic" IconSize="18" VerticalAlignment="Center" />
             <TextBlock Text="PANIC" VerticalAlignment="Center" />
           </StackPanel>
         </Button>
-        <Rectangle DockPanel.Dock="Right" Width="1" Fill="{DynamicResource divider}" Margin="12,12,0,12" />
-        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" Margin="0,0,16,0" IsVisible="{Binding IsRehearsalLock}">
-          <ToggleButton x:Name="LoopKey" IsChecked="{Binding IsLooping, Mode=OneWay}" Command="{Binding LoopCommand}" MinHeight="40" Padding="12,0"
-                        ToolTip.Tip="Loop this section with a bar of click between passes (L)" AutomationProperties.Name="Loop">
-            <StackPanel Orientation="Horizontal" Spacing="6"><c:Icon Glyph="loop" IconSize="16" VerticalAlignment="Center" /><TextBlock Text="Loop" VerticalAlignment="Center" /></StackPanel>
-          </ToggleButton>
-          <ToggleButton x:Name="ClickGuideKey" IsChecked="{Binding ClickGuideOnly, Mode=TwoWay}" MinHeight="40" Padding="12,0"
-                        ToolTip.Tip="Hear only the click and the guide" AutomationProperties.Name="Click and guide only">
-            <TextBlock Text="Click + guide" VerticalAlignment="Center" />
-          </ToggleButton>
-          <TextBlock Classes="label" Text="SPEED" VerticalAlignment="Center" />
-          <ComboBox x:Name="PracticeSelect" ItemsSource="{x:Static vm:MainViewModel.PracticeChoices}" SelectedItem="{Binding PracticePercent}" Width="96" MinHeight="40"
-                    ToolTip.Tip="Practice speed, in percent of the service tempo. It slows the song for rehearsal without changing the tempo set below, and goes back to 100% with Service lock or a new song."
-                    AutomationProperties.Name="Practice speed">
-            <ComboBox.ItemTemplate>
-              <DataTemplate x:DataType="x:Int32">
-                <TextBlock Text="{Binding StringFormat={}{0}%}" />
-              </DataTemplate>
-            </ComboBox.ItemTemplate>
-          </ComboBox>
-        </StackPanel>
-        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="16" VerticalAlignment="Center">
-          <Border Classes="pill" VerticalAlignment="Center" IsVisible="{Binding HasPracticeTempo}"><TextBlock x:Name="PracticeBadgeText" Text="{Binding PracticeBadge}" /></Border>
-          <Border Classes="pill" VerticalAlignment="Center" Classes.playing="{Binding IsPlaying}" Classes.loading="{Binding IsLoadingStatus}">
-            <TextBlock Text="{Binding Status}" />
-          </Border>
-          <Button Classes="ghost" Command="{Binding QuickCheckCommand}" ToolTip.Tip="Run check: the quick service check. Playback keeps going." AutomationProperties.Name="Run check">
-            <TextBlock Classes="label" Text="CHECK" VerticalAlignment="Center" />
-          </Button>
+        <Rectangle DockPanel.Dock="Right" Width="1" Fill="{DynamicResource divider}" Margin="12,10,0,10" />
+        <!-- Only the status lights: the transport state is on NOW, the rehearsal helpers under the rail, Run check in the menu -->
+        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center" Margin="0,0,4,0">
           <Button Classes="ghost" Command="{Binding OpenSettingsCommand}" ToolTip.Tip="Audio device. Click for Settings." AutomationProperties.Name="Audio">
             <StackPanel Orientation="Horizontal" Spacing="8">
               <Ellipse Classes="led" Classes.ok="{Binding AudioOk}" VerticalAlignment="Center" />
@@ -199,6 +175,34 @@
       <Border Grid.Column="0" Classes="panel" BorderThickness="0,0,1,0">
         <DockPanel>
           <TextBlock DockPanel.Dock="Top" Classes="label" Text="SETLIST" Margin="16,14,16,8" />
+          <!-- Rehearsal helpers at the rail's foot, where Prepare keeps its pads; put away in Service lock -->
+          <Border DockPanel.Dock="Bottom" BorderBrush="{DynamicResource border}" BorderThickness="0,1,0,0" Padding="16,12" IsVisible="{Binding IsRehearsalLock}">
+            <StackPanel Spacing="8">
+              <TextBlock Classes="label" Text="REHEARSE" />
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <ToggleButton x:Name="LoopKey" IsChecked="{Binding IsLooping, Mode=OneWay}" Command="{Binding LoopCommand}" Padding="12,0"
+                              ToolTip.Tip="Loop this section with a bar of click between passes (L)" AutomationProperties.Name="Loop">
+                  <StackPanel Orientation="Horizontal" Spacing="6"><c:Icon Glyph="loop" IconSize="16" VerticalAlignment="Center" /><TextBlock Text="Loop" VerticalAlignment="Center" /></StackPanel>
+                </ToggleButton>
+                <ToggleButton x:Name="ClickGuideKey" IsChecked="{Binding ClickGuideOnly, Mode=TwoWay}" Padding="12,0"
+                              ToolTip.Tip="Hear only the click and the guide" AutomationProperties.Name="Click and guide only">
+                  <TextBlock Text="Click + guide" VerticalAlignment="Center" />
+                </ToggleButton>
+              </StackPanel>
+              <DockPanel>
+                <TextBlock Classes="label" Text="SPEED" VerticalAlignment="Center" Margin="0,0,8,0" />
+                <ComboBox x:Name="PracticeSelect" ItemsSource="{x:Static vm:MainViewModel.PracticeChoices}" SelectedItem="{Binding PracticePercent}" HorizontalAlignment="Stretch"
+                          ToolTip.Tip="Practice speed, in percent of the service tempo. It slows the song for rehearsal without changing the tempo set below, and goes back to 100% with Service lock or a new song."
+                          AutomationProperties.Name="Practice speed">
+                  <ComboBox.ItemTemplate>
+                    <DataTemplate x:DataType="x:Int32">
+                      <TextBlock Text="{Binding StringFormat={}{0}%}" />
+                    </DataTemplate>
+                  </ComboBox.ItemTemplate>
+                </ComboBox>
+              </DockPanel>
+            </StackPanel>
+          </Border>
           <ItemsControl x:Name="Rail" ItemsSource="{Binding Setlist.Rows}">
             <ItemsControl.ItemTemplate>
               <DataTemplate x:DataType="vm:SetlistRowViewModel">
@@ -233,7 +237,15 @@
         <Grid Grid.Row="0" ColumnDefinitions="*,280" ColumnSpacing="12">
           <Border Grid.Column="0" Classes="inset" Padding="20,12">
             <StackPanel VerticalAlignment="Center" Spacing="6">
-              <TextBlock Classes="label" Text="NOW" />
+              <DockPanel>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8">
+                  <Border Classes="pill" IsVisible="{Binding HasPracticeTempo}"><TextBlock x:Name="PracticeBadgeText" Text="{Binding PracticeBadge}" /></Border>
+                  <Border x:Name="StatusPill" Classes="pill" Classes.playing="{Binding IsPlaying}" Classes.loading="{Binding IsLoadingStatus}">
+                    <TextBlock Text="{Binding Status}" />
+                  </Border>
+                </StackPanel>
+                <TextBlock Classes="label" Text="NOW" VerticalAlignment="Center" />
+              </DockPanel>
               <StackPanel Orientation="Horizontal" Spacing="20">
                 <TextBlock x:Name="NowLabel" Text="{Binding NowLabel}" FontSize="{DynamicResource type-now-size}" FontWeight="Bold" TextTrimming="CharacterEllipsis" />
                 <TextBlock Classes="readout" FontSize="{DynamicResource type-readout-xl-size}" Text="{Binding NowDetail}" VerticalAlignment="Bottom" Margin="0,0,0,14" />

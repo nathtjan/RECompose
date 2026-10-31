@@ -32,7 +32,7 @@ public partial class PerformView : UserControl
         };
     }
 
-    private void ShowClock() => ClockLine.Text = $"Perform · {DateTime.Now:HH:mm}";
+    private void ShowClock() => ClockLine.Text = $"{DateTime.Now:HH:mm}";
 
     private void OnTileClick(object? sender, RoutedEventArgs e)
     {

@@ -6,7 +6,7 @@ The screen the MD reads from the keyboard stand (UI-40). Design it at the minimu
 
 | Region | Height | Contents |
 |---|---|---|
-| Status row | 60 px (`size-status-bar`) | Prepare key (`HoldButton`, `touch` size: hold to leave Perform) · service name over "Perform · clock" · LOCK switch (`SegmentedControl`, perform size, open and closed padlocks: Rehearsal / Service lock) · `StatusIndicator`s as buttons that open their detail: AUDIO, MIDI, VOICE with level, RENDER, CPU · divider · PANIC (`Button` danger) isolated at the right edge |
+| Status row | 48 px (`size-status-bar`), as tall as Prepare's toolbar | Left side as in Prepare: Prepare / Perform pair (Prepare is a `HoldButton`: hold to leave Perform in Service lock) · service box with the clock · lock key (open and closed padlocks: Rehearsal / Service lock). Right side: `StatusIndicator`s as buttons that open their detail: AUDIO, MIDI, VOICE with level, RENDER, CPU · divider · PANIC (`Button` danger, 40 px) isolated at the right edge. The state pill sits on NOW, the rehearsal helpers (Loop, Click + guide, speed) at the foot of the rail, Run check in the Service menu |
 | Body | the rest | setlist rail 248 px wide on the left; main column with `NowBlock` and a 280 px readouts column (Song bar, Elapsed, Remaining stacked, one value each, never wrapped), `NextCard`, plan strip of `Tile`s (76 px), mini timeline (`Lane`) at its natural height |
 | Key deck | 108 px, `bg-app` | `KeyGroup`s: TRANSPORT (restart, Stop hold, Play/GO yellow, Next song hold) · LIVE (Vamp, Repeat, Move on, End, Cancel) · JUMP TIMING (`Select`, perform size) · KEY and TEMPO (`NumberField`, perform size) |
 
