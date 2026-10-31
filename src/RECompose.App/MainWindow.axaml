@@ -87,9 +87,26 @@
       <Setter Property="Background" Value="{DynamicResource accent-subtle}" />
     </Style>
     <Style Selector="TextBox.cell">
+      <Setter Property="MinWidth" Value="0" /> <!-- the column sets the width; the theme's minimum spilled into the next column -->
       <Setter Property="MinHeight" Value="28" />
       <Setter Property="Padding" Value="6,2" />
       <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="TextBox.mono">
+      <Setter Property="FontFamily" Value="{DynamicResource FontMono}" />
+      <Setter Property="FontSize" Value="{DynamicResource type-mono-size}" />
+    </Style>
+    <!-- A pad key: as tall as a field, the label at body size so its flat or sharp reads -->
+    <Style Selector="ToggleButton.ms.pad">
+      <Setter Property="Height" Value="28" />
+      <Setter Property="MinHeight" Value="28" />
+      <Setter Property="FontSize" Value="{DynamicResource type-body-size}" />
+    </Style>
+    <!-- A cue row: the fields, the selects and the buttons all one height -->
+    <Style Selector="Grid.cue TextBox, Grid.cue ComboBox, Grid.cue Button">
+      <Setter Property="Height" Value="{DynamicResource size-key-compact}" />
+      <Setter Property="MinHeight" Value="{DynamicResource size-key-compact}" />
+      <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
     <Style Selector="ComboBox.cell">
       <Setter Property="MinHeight" Value="28" />
@@ -377,33 +394,34 @@
                   <DataTemplate x:DataType="vm:PadSetItem"><TextBlock Text="{Binding Name}" /></DataTemplate>
                 </ComboBox.ItemTemplate>
               </ComboBox>
-              <TextBlock Classes="label" Text="PADS" VerticalAlignment="Center" />
+              <TextBlock DockPanel.Dock="Left" Classes="label" Text="PADS" VerticalAlignment="Center" Margin="0,0,12,0" />
+              <CheckBox Content="Follow song" IsChecked="{Binding Follow}" ToolTip.Tip="The pad follows the song's key, key lifts included" />
             </DockPanel>
             <ItemsControl ItemsSource="{Binding FirstRow}">
-              <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal" Spacing="2" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+              <ItemsControl.ItemsPanel><ItemsPanelTemplate><UniformGrid Columns="6" ColumnSpacing="2" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
               <ItemsControl.ItemTemplate>
                   <DataTemplate x:DataType="vm:PadKeyViewModel">
-                    <ToggleButton Classes="ms" Tag="{Binding PitchClass}" Click="OnPadKeyClick" IsChecked="{Binding IsPlaying, Mode=OneWay}" Content="{Binding Label}"
-                                  Width="38" Padding="0" AutomationProperties.Name="{Binding AccessibleName}"
+                    <ToggleButton Classes="ms pad" Tag="{Binding PitchClass}" Click="OnPadKeyClick" IsChecked="{Binding IsPlaying, Mode=OneWay}" Content="{Binding Label}"
+                                  HorizontalAlignment="Stretch" Padding="0" AutomationProperties.Name="{Binding AccessibleName}"
                                   ToolTip.Tip="{Binding AccessibleName}" />
                   </DataTemplate>
               </ItemsControl.ItemTemplate>
             </ItemsControl>
             <ItemsControl ItemsSource="{Binding SecondRow}">
-              <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal" Spacing="2" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+              <ItemsControl.ItemsPanel><ItemsPanelTemplate><UniformGrid Columns="6" ColumnSpacing="2" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
               <ItemsControl.ItemTemplate>
                   <DataTemplate x:DataType="vm:PadKeyViewModel">
-                    <ToggleButton Classes="ms" Tag="{Binding PitchClass}" Click="OnPadKeyClick" IsChecked="{Binding IsPlaying, Mode=OneWay}" Content="{Binding Label}"
-                                  Width="38" Padding="0" AutomationProperties.Name="{Binding AccessibleName}"
+                    <ToggleButton Classes="ms pad" Tag="{Binding PitchClass}" Click="OnPadKeyClick" IsChecked="{Binding IsPlaying, Mode=OneWay}" Content="{Binding Label}"
+                                  HorizontalAlignment="Stretch" Padding="0" AutomationProperties.Name="{Binding AccessibleName}"
                                   ToolTip.Tip="{Binding AccessibleName}" />
                   </DataTemplate>
               </ItemsControl.ItemTemplate>
             </ItemsControl>
             <DockPanel>
-              <Button DockPanel.Dock="Left" Content="{Binding PlayStopLabel}" Command="{Binding PlayStopCommand}" Margin="0,0,8,0" Width="64" />
-              <CheckBox DockPanel.Dock="Left" Content="Follow song" IsChecked="{Binding Follow}" Margin="0,0,8,0" ToolTip.Tip="The pad follows the song's key, key lifts included" />
-              <ComboBox DockPanel.Dock="Right" ItemsSource="{Binding FadeChoices}" SelectedItem="{Binding Fade}" AutomationProperties.Name="Pad fade time" ToolTip.Tip="Fade time" />
-              <Slider Minimum="-40" Maximum="0" Value="{Binding VolumeDb}" Margin="0,0,8,0" AutomationProperties.Name="Pad volume" ToolTip.Tip="Pad volume" />
+              <Button DockPanel.Dock="Left" Content="{Binding PlayStopLabel}" Command="{Binding PlayStopCommand}" Margin="0,0,8,0" VerticalAlignment="Center"
+                      Width="52" Padding="0" HorizontalContentAlignment="Center" /> <!-- fits Play and Stop alike, so the slider never moves -->
+              <ComboBox DockPanel.Dock="Right" ItemsSource="{Binding FadeChoices}" SelectedItem="{Binding Fade}" VerticalAlignment="Center" AutomationProperties.Name="Pad fade time" ToolTip.Tip="Fade time" />
+              <Slider Minimum="-40" Maximum="0" Value="{Binding VolumeDb}" Margin="0,0,8,0" VerticalAlignment="Center" AutomationProperties.Name="Pad volume" ToolTip.Tip="Pad volume" />
             </DockPanel>
           </StackPanel>
         </Border>
@@ -981,9 +999,9 @@
                 </Button>
                 <TextBlock Classes="meta" Text="C adds a cue at the playhead" VerticalAlignment="Center" />
               </StackPanel>
-              <Grid DockPanel.Dock="Top" ColumnDefinitions="140,170,110,110,50,130,80,40,84,40" Margin="8,0,8,4">
+              <Grid DockPanel.Dock="Top" ColumnDefinitions="*,120,116,72,48,148,88,36,84,32" Margin="8,0,8,4">
                 <TextBlock Grid.Column="0" Classes="label" Text="CUE" />
-                <TextBlock Grid.Column="1" Classes="label" Text="POSITION" />
+                <TextBlock Grid.Column="1" Classes="label" Text="CHART BAR" />
                 <TextBlock Grid.Column="2" Classes="label" Text="ACTION" />
                 <TextBlock Grid.Column="3" Classes="label" Text="VALUE" />
                 <TextBlock Grid.Column="4" Classes="label" Text="CH" />
@@ -998,15 +1016,16 @@
                   <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="vm:CueRowViewModel">
                       <StackPanel Margin="8,2">
-                        <Grid ColumnDefinitions="140,170,110,110,50,130,80,40,84,40">
+                        <Grid Classes="cue" ColumnDefinitions="*,120,116,72,48,148,88,36,84,32">
                           <DockPanel Grid.Column="0" Margin="0,0,8,0">
                             <TextBlock DockPanel.Dock="Left" Text="◆" VerticalAlignment="Center" Margin="0,0,6,0" />
                             <TextBox Classes="cell" Text="{Binding Name}" AutomationProperties.Name="Cue name" />
                           </DockPanel>
-                          <TextBlock Grid.Column="1" Classes="mono" Text="{Binding PositionText}" VerticalAlignment="Center" />
+                          <TextBlock Grid.Column="1" Classes="mono" Text="{Binding PositionText}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="0,0,8,0"
+                                     ToolTip.Tip="{Binding PositionText}" />
                           <ComboBox Grid.Column="2" Classes="cell" ItemsSource="{x:Static vm:CueRowViewModel.Kinds}" SelectedItem="{Binding Kind}" Margin="0,0,8,0"
                                     HorizontalAlignment="Stretch" AutomationProperties.Name="Cue action" />
-                          <TextBox Grid.Column="3" Classes="cell mono" Text="{Binding Value}" Margin="0,0,8,0" FontFamily="{DynamicResource FontMono}"
+                          <TextBox Grid.Column="3" Classes="cell mono" Text="{Binding Value}" Margin="0,0,8,0"
                                    ToolTip.Tip="{Binding Summary}" AutomationProperties.Name="Cue value" />
                           <TextBox Grid.Column="4" Classes="cell mono" Text="{Binding Channel}" Margin="0,0,8,0" AutomationProperties.Name="MIDI channel" />
                           <ComboBox Grid.Column="5" Classes="cell" ItemsSource="{x:Static vm:CueRowViewModel.PassChoices}" SelectedItem="{Binding Passes}" Margin="0,0,8,0"

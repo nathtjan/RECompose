@@ -295,7 +295,7 @@ public sealed class CueRowViewModel : ObservableObject
         Cue = cue;
         _middleC = midi.MiddleC;
         var bar = Readouts.ChartBar(grid, cue.SourceSec);
-        PositionText = $"chart bar {bar} · {Format.Clock(cue.SourceSec)}";
+        PositionText = $"{bar} · {Format.Clock(cue.SourceSec)}"; // under CHART BAR
         Warning = MidiNotes.Clash(cue, midi.Notes) is { } type ? $"Same note as {RECompose.Core.Sections.SectionTypes.DisplayName(type)} sections" : string.Empty;
         PlayheadCommand = new RelayCommand(() => main.CueToPlayhead(cue.Id));
         DeleteCommand = new RelayCommand(() => main.DeleteCue(cue.Id));
