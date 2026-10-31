@@ -1,90 +1,75 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-using System.Net;
-using System.Net.Http.Headers;
-using System.Text;
+using System.ClientModel;
+using System.ClientModel.Primitives;
 using System.Text.Json.Nodes;
+using OpenAI;
+using OpenAI.Chat;
+using OpenAI.Models;
 using RECompose.Core.Assistant;
 
 namespace RECompose.Presentation.Services;
 
-/// <summary>A failed OpenAI request: the HTTP status and error.message from the body.</summary>
-public sealed class OpenAIApiException(HttpStatusCode status, string message) : Exception(message)
-{
-    public HttpStatusCode Status { get; } = status;
-}
-
 /// <summary>
-/// The OpenAI Chat Completions API with function tools, over plain HTTP (AS-10): 60 s per call, 2 retries for 429 and 5xx.
-/// Tests pass an <see cref="HttpClient"/> with a fake handler.
+/// The OpenAI Chat Completions API with function tools through the official SDK (AS-10): 60 s per call, 2 retries for 429
+/// and 5xx. Tests pass an <see cref="HttpClient"/> with a fake handler.
 /// </summary>
 public sealed class OpenAIAssistantClient : IAssistantBackend
 {
-    private static readonly Uri Api = new("https://api.openai.com/v1/");
-    private const int Retries = 2;
-
-    private static readonly JsonArray ToolList = [.. AssistantPrompt.Tools.Select(t => (JsonNode)new JsonObject
-    {
-        ["type"] = "function",
-        ["function"] = new JsonObject
+    private static readonly List<ChatTool> ToolList = AssistantPrompt.Tools.Select(t => ChatTool.CreateFunctionTool(
+        t.Name,
+        t.Description,
+        BinaryData.FromString(new JsonObject
         {
-            ["name"] = t.Name,
-            ["description"] = t.Description,
-            ["parameters"] = new JsonObject
-            {
-                ["type"] = "object",
-                ["properties"] = t.Properties.DeepClone(),
-                ["required"] = new JsonArray([.. t.Required.Select(r => (JsonNode)r)]),
-            },
-        },
-    })];
+            ["type"] = "object",
+            ["properties"] = t.Properties.DeepClone(),
+            ["required"] = new JsonArray([.. t.Required.Select(r => (JsonNode)r)]),
+        }.ToJsonString()))).ToList();
 
-    private readonly HttpClient _http;
-    private readonly string _apiKey;
+    private ChatClient? _chat;
+    private string? _chatModel;
+    private readonly OpenAIModelClient _models;
+    private readonly ApiKeyCredential _key;
+    private readonly OpenAIClientOptions _options;
 
     public OpenAIAssistantClient(string apiKey, HttpClient? http = null)
     {
-        _apiKey = apiKey;
-        _http = http ?? new HttpClient();
-        _http.Timeout = TimeSpan.FromSeconds(60);
+        _key = new ApiKeyCredential(apiKey);
+        _options = new OpenAIClientOptions
+        {
+            NetworkTimeout = TimeSpan.FromSeconds(60),
+            RetryPolicy = new ClientRetryPolicy(maxRetries: 2),
+        };
+        if (http is not null)
+            _options.Transport = new HttpClientPipelineTransport(http);
+        _models = new OpenAIModelClient(_key, _options);
     }
 
     public string ProviderName => "OpenAI";
 
     public async Task<AssistantReply> SendAsync(string model, IReadOnlyList<AssistantTurn> history, CancellationToken ct = default)
     {
-        var messages = new JsonArray { new JsonObject { ["role"] = "system", ["content"] = AssistantPrompt.System } };
-        foreach (var turn in history)
-            foreach (var m in ToMessages(turn))
-                messages.Add(m);
+        // A chat client is bound to one model; the model can change between messages.
+        if (_chat is null || _chatModel != model)
+            (_chat, _chatModel) = (new ChatClient(model, _key, _options), model);
+        var chat = _chat;
+        var options = new ChatCompletionOptions { MaxOutputTokenCount = 16000 };
+        foreach (var tool in ToolList)
+            options.Tools.Add(tool);
 
-        var body = new JsonObject
-        {
-            ["model"] = model,
-            ["messages"] = messages,
-            ["tools"] = ToolList.DeepClone(),
-            ["max_completion_tokens"] = 16000,
-        };
-        var reply = await RequestAsync(HttpMethod.Post, "chat/completions", body, ct);
+        List<ChatMessage> messages = [new SystemChatMessage(AssistantPrompt.System), .. history.SelectMany(ToMessages)];
+        ChatCompletion completion = await chat.CompleteChatAsync(messages, options, ct);
 
-        var message = reply["choices"]?[0]?["message"] as JsonObject ?? throw new OpenAIApiException(HttpStatusCode.OK, "The answer had no message.");
-        var texts = message["content"]?.GetValue<string>() is { Length: > 0 } content ? [content] : new List<string>();
-        var calls = (message["tool_calls"] as JsonArray ?? [])
-            .OfType<JsonObject>()
-            .Where(c => c["function"] is JsonObject)
-            .Select(c => new ToolCall(
-                c["id"]?.GetValue<string>() ?? string.Empty,
-                c["function"]!["name"]?.GetValue<string>() ?? string.Empty,
-                Arguments(c["function"]!["arguments"]?.GetValue<string>())))
-            .ToList();
-        return new AssistantReply(new ReplyTurn(texts, calls), message["refusal"]?.GetValue<string>() is { Length: > 0 });
+        var texts = completion.Content.Select(p => p.Text).Where(t => !string.IsNullOrEmpty(t)).ToList();
+        var calls = completion.ToolCalls.Select(c => new ToolCall(c.Id, c.FunctionName, Arguments(c.FunctionArguments))).ToList();
+        return new AssistantReply(new ReplyTurn(texts, calls), !string.IsNullOrEmpty(completion.Refusal));
     }
 
-    /// <summary>The model's arguments as JSON text; text that isn't an object gives no arguments, and the tool says what is missing.</summary>
-    private static JsonObject Arguments(string? json)
+    /// <summary>The model's arguments; text that isn't a JSON object gives none, and the tool says what is missing.</summary>
+    private static JsonObject Arguments(BinaryData? json)
     {
         try
         {
-            return JsonNode.Parse(json ?? "{}") as JsonObject ?? [];
+            return JsonNode.Parse(json?.ToString() is { Length: > 0 } text ? text : "{}") as JsonObject ?? [];
         }
         catch (System.Text.Json.JsonException)
         {
@@ -92,67 +77,39 @@ public sealed class OpenAIAssistantClient : IAssistantBackend
         }
     }
 
-    // A reply's tool calls must be followed at once by one "tool" message each; the state comes after them.
-    private static IEnumerable<JsonObject> ToMessages(AssistantTurn turn)
+    // A reply's tool calls must be followed at once by one tool message each; the state comes after them.
+    private static IEnumerable<ChatMessage> ToMessages(AssistantTurn turn)
     {
         switch (turn)
         {
             case UserTurn user:
-                yield return new JsonObject
-                {
-                    ["role"] = "user",
-                    ["content"] = new JsonArray([.. user.Texts.Select(t => (JsonNode)new JsonObject { ["type"] = "text", ["text"] = t })]),
-                };
+                yield return new UserChatMessage(user.Texts.Select(ChatMessageContentPart.CreateTextPart));
+                break;
+            case ReplyTurn { Calls.Count: 0 } reply:
+                yield return new AssistantChatMessage(string.Join("\n\n", reply.Texts));
                 break;
             case ReplyTurn reply:
-                var assistant = new JsonObject { ["role"] = "assistant", ["content"] = reply.Texts.Count > 0 ? string.Join("\n\n", reply.Texts) : null };
-                if (reply.Calls.Count > 0)
-                {
-                    assistant["tool_calls"] = new JsonArray([.. reply.Calls.Select(c => (JsonNode)new JsonObject
-                    {
-                        ["id"] = c.Id,
-                        ["type"] = "function",
-                        ["function"] = new JsonObject { ["name"] = c.Name, ["arguments"] = c.Input.ToJsonString() },
-                    })]);
-                }
-
+                var assistant = new AssistantChatMessage(reply.Calls.Select(c =>
+                    ChatToolCall.CreateFunctionToolCall(c.Id, c.Name, BinaryData.FromString(c.Input.ToJsonString()))));
+                foreach (var text in reply.Texts)
+                    assistant.Content.Add(ChatMessageContentPart.CreateTextPart(text));
                 yield return assistant;
                 break;
             case ResultsTurn results:
                 foreach (var r in results.Results)
-                    yield return new JsonObject { ["role"] = "tool", ["tool_call_id"] = r.Id, ["content"] = r.Content };
-                yield return new JsonObject { ["role"] = "user", ["content"] = results.State };
+                    yield return new ToolChatMessage(r.Id, r.Content);
+                yield return new UserChatMessage(results.State);
                 break;
         }
     }
 
-    public Task TestAsync(string model, CancellationToken ct = default) => RequestAsync(HttpMethod.Get, $"models/{Uri.EscapeDataString(model)}", null, ct);
-
-    private async Task<JsonObject> RequestAsync(HttpMethod method, string path, JsonObject? body, CancellationToken ct)
-    {
-        for (var attempt = 0; ; attempt++)
-        {
-            using var request = new HttpRequestMessage(method, new Uri(Api, path));
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _apiKey);
-            if (body is not null)
-                request.Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json");
-
-            using var response = await _http.SendAsync(request, ct);
-            var text = await response.Content.ReadAsStringAsync(ct);
-            if (response.IsSuccessStatusCode)
-                return JsonNode.Parse(text) as JsonObject ?? [];
-
-            var retry = response.StatusCode == HttpStatusCode.TooManyRequests || (int)response.StatusCode >= 500;
-            if (!retry || attempt == Retries)
-                throw new OpenAIApiException(response.StatusCode, AssistantErrors.ApiMessage(text));
-            await Task.Delay(TimeSpan.FromSeconds(attempt + 1), ct);
-        }
-    }
+    public Task TestAsync(string model, CancellationToken ct = default) => _models.GetModelAsync(model, ct);
 
     public string ErrorText(Exception e) => e switch
     {
-        OpenAIApiException { Status: HttpStatusCode.Unauthorized } => AssistantPrompt.KeyRejected(ProviderName),
-        OpenAIApiException api => AssistantPrompt.ApiError(api.Message),
+        ClientResultException { Status: 401 } => AssistantPrompt.KeyRejected(ProviderName),
+        ClientResultException { Status: 0 } => AssistantPrompt.Offline(ProviderName, AssistantErrors.Innermost(e)), // no answer at all
+        ClientResultException api => AssistantPrompt.ApiError(AssistantErrors.ApiMessage(api.GetRawResponse()?.Content.ToString() ?? api.Message)),
         HttpRequestException => AssistantPrompt.Offline(ProviderName, AssistantErrors.Innermost(e)),
         TaskCanceledException { InnerException: TimeoutException } => AssistantPrompt.Offline(ProviderName, "no answer in 60 seconds"),
         _ => AssistantPrompt.ApiError(e.Message),

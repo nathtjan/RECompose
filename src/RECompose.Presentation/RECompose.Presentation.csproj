@@ -17,6 +17,7 @@
 
   <ItemGroup>
     <PackageReference Include="Anthropic" />
+    <PackageReference Include="OpenAI" />
     <PackageReference Include="Velopack" />
   </ItemGroup>
 </Project>
