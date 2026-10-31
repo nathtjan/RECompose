@@ -2,6 +2,7 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
+using RECompose.App.Controls;
 using RECompose.Presentation.ViewModels;
 
 namespace RECompose.App;
@@ -21,6 +22,9 @@ public partial class PerformView : UserControl
             _clock.Start();
         };
         DetachedFromVisualTree += (_, _) => _clock.Stop();
+        // Double-click KEY or TEMPO to type it, as in Prepare (PB-60).
+        InlineEditing.Attach(this, () => TopLevel.GetTopLevel(this), KeyValue, KeyEdit, text => (DataContext as MainViewModel)?.TypeKey(text));
+        InlineEditing.Attach(this, () => TopLevel.GetTopLevel(this), TempoValue, TempoEdit, text => (DataContext as MainViewModel)?.TypeTempo(text));
         Mini.SeekRequested += seconds =>
         {
             if (DataContext is MainViewModel vm)

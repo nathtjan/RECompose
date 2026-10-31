@@ -10,6 +10,7 @@ using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform.Storage;
 using Avalonia.VisualTree;
+using RECompose.App.Controls;
 using RECompose.App.Dialogs;
 using RECompose.Core.Services;
 using RECompose.Presentation.ViewModels;
@@ -203,48 +204,7 @@ public partial class MainWindow : Window
         };
     }
 
-    /// <summary>The readout swaps for a field: Enter or leaving it applies a changed value, Esc keeps the old one.</summary>
-    private void InlineEdit(TextBlock view, TextBox edit, Action<string> commit)
-    {
-        // A click on something that takes no focus (a panel, a label) doesn't end the edit by itself.
-        AddHandler(PointerPressedEvent, (_, e) =>
-        {
-            if (edit.IsVisible && !(e.Source is Avalonia.Visual source && (source == edit || edit.IsVisualAncestorOf(source))))
-                Close(true);
-        }, RoutingStrategies.Tunnel, handledEventsToo: true);
-        view.DoubleTapped += (_, e) =>
-        {
-            // The field takes the readout's place exactly: the readout keeps its space (only hidden), the field its width.
-            edit.Text = view.Text;
-            edit.Width = view.Bounds.Width;
-            view.Opacity = 0;
-            edit.IsVisible = true;
-            edit.Focus();
-            edit.SelectAll();
-            e.Handled = true;
-        };
-        edit.KeyDown += (_, e) =>
-        {
-            if (e.Key is Key.Enter or Key.Escape)
-            {
-                Close(e.Key == Key.Enter);
-                e.Handled = true;
-            }
-        };
-        edit.LostFocus += (_, _) => Close(true);
-
-        void Close(bool apply)
-        {
-            if (!edit.IsVisible)
-                return; // hiding the field moves focus away, which calls this again
-            edit.IsVisible = false;
-            view.Opacity = 1;
-            if (edit.IsFocused)
-                Focus(); // a hidden field keeping focus would turn the single-key shortcuts off (KEY-1)
-            if (apply && edit.Text is { } text && text.Trim() != view.Text?.Trim())
-                commit(text);
-        }
-    }
+    private void InlineEdit(TextBlock view, TextBox edit, Action<string> commit) => InlineEditing.Attach(this, () => this, view, edit, commit);
 
     private static bool CommitCell(TextBox? box)
     {

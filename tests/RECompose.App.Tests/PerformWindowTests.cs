@@ -119,7 +119,8 @@ public sealed class PerformWindowTests : IDisposable
 
             var perform = window.FindControl<PerformView>("Perform")!;
             Assert.True(perform.IsVisible);
-            Assert.True(perform.Bounds.Width >= 1279 && perform.Bounds.Height >= 759);
+            Assert.True(perform.Bounds.Width >= 1279 && perform.Bounds.Height >= 759 - 32); // below the title row with the menu
+            Assert.Equal(32, perform.Bounds.Y);
 
             // During Verse 1: NOW names the section, the strip has a tile per plan item with the current one marked.
             vm.ApplySnapshotForTests(Snapshot(vm, 6));
@@ -380,6 +381,28 @@ public sealed class PerformWindowTests : IDisposable
             vm.ApplySnapshotForTests(Snapshot(vm, 6));
             Dispatcher.UIThread.RunJobs();
             Assert.Equal(0, Clicks(window.FindControl<PerformView>("Perform")!.FindControl<ToggleButton>("LoopKey")!));
+
+            // Perform's key deck types a key like Prepare's header, and one lock key sits beside the service name.
+            var deck = window.FindControl<PerformView>("Perform")!;
+            var deckKey = deck.FindControl<TextBlock>("KeyValue")!;
+            var deckKeyEdit = deck.FindControl<TextBox>("KeyEdit")!;
+            DoubleClick(deckKey);
+            Assert.True(deckKeyEdit.IsVisible);
+            var keyDown = deck.GetVisualDescendants().OfType<Button>().First(b => Avalonia.Automation.AutomationProperties.GetName(b) == "Key down");
+            Assert.Equal(keyDown.Bounds.Height, deckKeyEdit.Bounds.Height);
+            deckKeyEdit.Text = "D";
+            window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+            Dispatcher.UIThread.RunJobs();
+            Assert.False(deckKeyEdit.IsVisible);
+            Assert.Equal("D (+4)", deckKey.Text);
+
+            var lockKey = deck.FindControl<ToggleButton>("LockKey")!;
+            var lockAt = lockKey.Bounds.X;
+            lockKey.IsChecked = true;
+            Dispatcher.UIThread.RunJobs();
+            Assert.True(vm.IsServiceLock);
+            Assert.Equal(lockAt, lockKey.Bounds.X);
+            Assert.Equal("100%", ((TextBlock)deck.FindControl<ComboBox>("PracticeSelect")!.GetVisualDescendants().OfType<TextBlock>().First(t => t.Text?.EndsWith('%') == true)).Text);
             window.Close();
 
             void DoubleClick(Control target)

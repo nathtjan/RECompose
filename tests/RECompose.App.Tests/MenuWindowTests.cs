@@ -43,6 +43,20 @@ public sealed class MenuWindowTests
 
             Assert.Equal(["File", "Edit", "Song", "Service", "Transport", "View", "Window", "Help"], groups.Select(g => g.Header));
             Assert.All(groups.SelectMany(g => g.Commands), Assert.NotNull);
+
+            // Perform keeps the title row and its menu; Service lock turns the menu off so nothing stops or jumps by a stray click.
+            if (!OperatingSystem.IsMacOS())
+            {
+                var menu = window.FindControl<Menu>("AppMenu")!;
+                vm.IsPerform = true;
+                Dispatcher.UIThread.RunJobs();
+                Assert.True(menu.IsEffectivelyVisible);
+                Assert.True(menu.IsEffectivelyEnabled);
+                vm.IsServiceLock = true;
+                Dispatcher.UIThread.RunJobs();
+                Assert.False(menu.IsEffectivelyEnabled);
+            }
+
             window.Close();
         }, TestContext.Current.CancellationToken);
     }

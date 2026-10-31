@@ -99,24 +99,24 @@
       <Setter Property="MinHeight" Value="28" />
       <Setter Property="Padding" Value="8,0" />
     </Style>
-    <!-- The drawer leaves the top bar, and the window keys in it, uncovered (Prepare 80, Perform 60) -->
+    <!-- The drawer leaves the top bar, and the window keys in it, uncovered (title row 32, then Prepare's toolbar 48 or Perform's status row 60) -->
     <Style Selector="Border.drawer">
       <Setter Property="Margin" Value="0,80,0,0" />
     </Style>
     <Style Selector="Border.drawer.perform">
-      <Setter Property="Margin" Value="0,60,0,0" />
+      <Setter Property="Margin" Value="0,92,0,0" />
     </Style>
   </Window.Styles>
 
   <Grid RowDefinitions="80,Auto,*">
 
     <!-- Top bar (UI-11): the title row (menu, name, window keys) above the toolbar row -->
-    <Grid Grid.Row="0" RowDefinitions="32,48" IsVisible="{Binding IsPrepare}">
+    <Grid Grid.Row="0" RowDefinitions="32,48">
     <Border Grid.Row="0" Classes="topbar" Padding="0">
       <Grid ColumnDefinitions="*,Auto,*">
         <StackPanel Grid.Column="0" Orientation="Horizontal">
           <Panel Classes="traffic-lights" />
-          <Menu x:Name="AppMenu" IsVisible="False" VerticalAlignment="Center" AutomationProperties.Name="Menu" />
+          <Menu x:Name="AppMenu" IsVisible="False" IsEnabled="{Binding !IsServiceLock}" VerticalAlignment="Center" AutomationProperties.Name="Menu" />
         </StackPanel>
         <TextBlock Grid.Column="1" VerticalAlignment="Center" FontSize="14" IsHitTestVisible="False">
           <Run Text="REC" FontWeight="ExtraBold" /><Run Text="ompose" FontWeight="Medium" />
@@ -124,7 +124,7 @@
         <c:CaptionButtons Grid.Column="2" HorizontalAlignment="Right" />
       </Grid>
     </Border>
-    <Border Grid.Row="1" Classes="topbar" Padding="16,0,16,0">
+    <Border Grid.Row="1" Classes="topbar" Padding="16,0,16,0" IsVisible="{Binding IsPrepare}">
       <DockPanel>
         <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center" Spacing="2">
           <ToggleButton Content="Prepare" IsChecked="{Binding IsPrepare, Mode=OneWay}" IsHitTestVisible="False" />
@@ -1147,7 +1147,7 @@
     </Border>
   
     <!-- Perform replaces the whole window below the title (UI-40); playback never stops when it opens -->
-    <local:PerformView x:Name="Perform" Grid.Row="0" Grid.RowSpan="3" IsVisible="{Binding IsPerform}" />
+    <local:PerformView x:Name="Perform" Grid.Row="0" Grid.RowSpan="3" Margin="0,32,0,0" IsVisible="{Binding IsPerform}" />
 
     <!-- Assistant (UI-17, AS-2): a drawer over the right edge in Prepare and Perform, below the top bar; Ctrl+J -->
     <Border Grid.Row="0" Grid.RowSpan="3" Width="400" HorizontalAlignment="Right" Classes="panel drawer" BorderBrush="{DynamicResource border}" BorderThickness="1,0,0,0"
