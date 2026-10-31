@@ -157,9 +157,26 @@ jobs:
     if: github.ref_type == 'tag'
     runs-on: ubuntu-24.04
     steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: CHANGELOG.md
+          sparse-checkout-cone-mode: false
+
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: "10.0.x"
+
+      # The release's description is this version's section of CHANGELOG.md ("## 0.2.0" or "## [0.2.0]", optionally followed
+      # by a date). A tag without an entry stops here, before anything is published.
+      - name: Release notes
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          awk -v v="$VERSION" '/^## /{p = ($2 == v || $2 == "[" v "]"); next} p' CHANGELOG.md > notes.md
+          if ! grep -q '[^[:space:]]' notes.md; then
+            echo "::error::CHANGELOG.md has no entry for $VERSION. Add a '## $VERSION' section before tagging."
+            exit 1
+          fi
+          cat notes.md
 
       - uses: actions/download-artifact@v7
         with:
@@ -178,3 +195,4 @@ jobs:
               --tag "$GITHUB_REF_NAME" --releaseName "RECompose $VERSION" --publish --merge
           done
           gh release upload "$GITHUB_REF_NAME" releases/*.dmg --repo "${{ github.repository }}"
+          gh release edit "$GITHUB_REF_NAME" --notes-file notes.md --repo "${{ github.repository }}"

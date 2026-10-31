@@ -7,6 +7,8 @@ git tag v0.2.0
 git push origin v0.2.0
 ```
 
+Before tagging, add a `## 0.2.0` section (a date after it is fine) to `CHANGELOG.md`, listing what changed since the previous release. The workflow publishes that section as the release's description and stops before publishing if the tag has no entry.
+
 It builds and tests the engine, publishes the app for `win-x64`, `osx-arm64` and `osx-x64` with the speech model, packs each with `vpk`, and publishes a GitHub release with:
 
 | File | What it is |
