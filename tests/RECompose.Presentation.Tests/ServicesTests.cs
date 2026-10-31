@@ -520,6 +520,23 @@ public sealed class ServicesTests : IDisposable
         Assert.Equal(entryId, Store.LoadSettings().LastEntryId);
     }
 
+    [Fact]
+    public async Task The_window_comes_back_maximised_and_in_its_place_after_a_restart()
+    {
+        var vm = await SundayAsync();
+        Assert.False(vm.WindowMaximized);
+        Assert.Null(vm.WindowBounds);
+        vm.SaveWindow(new Core.Settings.WindowBounds(120, 80, 1500, 950), maximized: true);
+        await vm.DisposeAsync();
+
+        var again = await NewViewModelAsync();
+        Assert.True(again.WindowMaximized);
+        Assert.Equal(new Core.Settings.WindowBounds(120, 80, 1500, 950), again.WindowBounds);
+        again.SaveWindow(new Core.Settings.WindowBounds(0, 0, 1300, 800), maximized: false);
+        Assert.False(Store.LoadSettings().WindowMaximized);
+        Assert.Equal(1300, Store.LoadSettings().Window!.Width);
+    }
+
     // ---- Mix presets (PB-81, DM-13) -------------------------------------------------------------------------
 
     [Fact]

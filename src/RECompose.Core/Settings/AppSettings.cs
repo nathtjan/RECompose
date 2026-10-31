@@ -87,6 +87,9 @@ public sealed record PadSettings
     public bool Follow { get; init; }
 }
 
+/// <summary>A window's top-left corner in screen pixels and its size in device-independent units.</summary>
+public sealed record WindowBounds(int X, int Y, double Width, double Height);
+
 /// <summary>Settings › MIDI out (SET-30).</summary>
 public sealed record MidiOutSettings
 {
@@ -135,6 +138,12 @@ public sealed record AppSettings
     /// <summary>Keys, pedals and controllers (LIVE-51); null = the page-turner profile.</summary>
     public List<RECompose.Core.Controls.ControlBinding>? Bindings { get; init; }
     public string? LastSongId { get; init; }
+
+    /// <summary>The main window was maximised when the app last closed; it opens that way again.</summary>
+    public bool WindowMaximized { get; init; }
+
+    /// <summary>The main window's place and size when not maximised; null until it has closed once.</summary>
+    public WindowBounds? Window { get; init; }
 
     /// <summary>The service shown in the sidebar (DM-80 currentServiceId).</summary>
     public string? LastServiceId { get; init; }

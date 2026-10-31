@@ -540,6 +540,21 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         return (null, null);
     }
 
+    /// <summary>The main window was maximised when it last closed.</summary>
+    public bool WindowMaximized => _settings.WindowMaximized;
+
+    /// <summary>The main window's place and size when not maximised, as it last closed; null the first time.</summary>
+    public WindowBounds? WindowBounds => _settings.Window;
+
+    /// <summary>The window closes: its state is kept for the next start.</summary>
+    public void SaveWindow(WindowBounds bounds, bool maximized)
+    {
+        if (_settings.Window == bounds && _settings.WindowMaximized == maximized)
+            return;
+        _settings = _settings with { Window = bounds, WindowMaximized = maximized };
+        _store.SaveSettings(_settings);
+    }
+
     private async Task OnEngineLostAsync(string? reason)
     {
         if (_shuttingDown || _restarting)

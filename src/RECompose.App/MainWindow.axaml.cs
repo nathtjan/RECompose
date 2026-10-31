@@ -30,9 +30,7 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
 
-        // Open nearly as tall as the screen's free area (above the taskbar or dock), never below the minimum.
-        if ((Screens.ScreenFromWindow(this) ?? Screens.Primary) is { } screen)
-            Height = Math.Max(MinHeight, screen.WorkingArea.Height / screen.Scaling - 48);
+        TrackPlacement();
 
         // The top bars are the title bar; macOS keeps its traffic lights over their left end.
         if (OperatingSystem.IsMacOS())
@@ -43,8 +41,10 @@ public partial class MainWindow : Window
 
         DataContextChanged += (_, _) =>
         {
-            if (ViewModel is { } vm)
-                BuildMenu(vm);
+            if (ViewModel is not { } vm)
+                return;
+            BuildMenu(vm);
+            RestorePlacement(vm);
         };
 
         // The assistant's newest message stays in view (UI-17).
