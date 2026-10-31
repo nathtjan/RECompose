@@ -723,4 +723,31 @@ public sealed class PadImportTests : IDisposable
         vm.UndoCommand.Execute(null);
         Assert.Equal(["OB Pad"], store.LoadPads().PadSets.Select(p => p.Name));
     }
+
+    [Fact]
+    public async Task Play_and_stop_wait_while_a_pad_fades()
+    {
+        var folder = Path.Combine(_root, "OB Pads");
+        Directory.CreateDirectory(folder);
+        foreach (var key in new[] { "C", "Db", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B" })
+            File.WriteAllBytes(Path.Combine(folder, $"OB Pad {key}.wav"), [0]);
+
+        var store = new DataStore(Path.Combine(_root, "data"));
+        var missing = Path.Combine(_root, "no-engine", EnginePaths.ExecutableFileName);
+        await using var vm = new MainViewModel(store, new EngineHostOptions(missing, Path.Combine(_root, "e.sock")), new EngineTools(missing), new LockedDispatcher(),
+            new ServiceDialogs(), new SpeechModel(store.Root, allowDownload: false));
+        await vm.InitializeAsync();
+        await vm.ImportFolderAsync(folder);
+        vm.Pads.Fade = PadFadeChoice.All[0]; // 1 s
+
+        Assert.True(vm.Pads.PlayStopCommand.CanExecute(null));
+        await vm.Pads.PressAsync(0);
+        Assert.True(vm.Pads.IsFading);
+        Assert.False(vm.Pads.PlayStopCommand.CanExecute(null));
+
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (vm.Pads.IsFading && DateTime.UtcNow < deadline)
+            await Task.Delay(50, TestContext.Current.CancellationToken);
+        Assert.True(vm.Pads.PlayStopCommand.CanExecute(null));
+    }
 }

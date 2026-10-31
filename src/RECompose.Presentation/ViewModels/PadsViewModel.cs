@@ -48,13 +48,14 @@ public sealed class PadsViewModel : ObservableObject
     private int? _playing;
     private int? _lastKey;
     private int? _songKey;
+    private int _fades; // fades started; the button waits for the last one to finish
 
     internal PadsViewModel(MainViewModel main)
     {
         _main = main;
         Keys = new ObservableCollection<PadKeyViewModel>(Enumerable.Range(0, 12).Select(pc => new PadKeyViewModel(pc)));
         KeyCommand = new RelayCommand(o => o is int pc ? PressAsync(pc) : Task.CompletedTask, () => HasSet);
-        PlayStopCommand = new RelayCommand(PlayStopAsync, () => HasSet);
+        PlayStopCommand = new RelayCommand(PlayStopAsync, () => HasSet && !IsFading);
     }
 
     public ObservableCollection<PadKeyViewModel> Keys { get; } = [];
@@ -81,6 +82,9 @@ public sealed class PadsViewModel : ObservableObject
     public RelayCommand PlayStopCommand { get; }
 
     public bool IsPlaying => _playing is not null;
+
+    /// <summary>A pad is fading in, out or across; Play/stop waits until it has finished.</summary>
+    public bool IsFading { get; private set; }
 
     /// <summary>The pitch class that sounds, or null (the journal keeps it, DM-80).</summary>
     public int? PlayingKey => _playing;
@@ -154,14 +158,37 @@ public sealed class PadsViewModel : ObservableObject
     internal Task PlayAsync(int pitchClass)
     {
         _lastKey = pitchClass;
+        StartFade();
         ShowPlaying(pitchClass);
         return _main.SendToEngineAsync(e => e.PlayPadAsync(pitchClass));
     }
 
     internal Task StopAsync()
     {
+        if (_playing is not null)
+            StartFade();
         ShowPlaying(null);
         return _main.SendToEngineAsync(e => e.PlayPadAsync(null));
+    }
+
+    private void StartFade()
+    {
+        var fade = ++_fades;
+        SetFading(true);
+        _main.After(TimeSpan.FromSeconds(Settings.FadeSec), () =>
+        {
+            if (fade == _fades)
+                SetFading(false);
+        });
+    }
+
+    private void SetFading(bool value)
+    {
+        if (IsFading == value)
+            return;
+        IsFading = value;
+        OnPropertyChanged(nameof(IsFading));
+        PlayStopCommand.Refresh();
     }
 
     // ---- From the engine and the loaded song -------------------------------------------------------------
