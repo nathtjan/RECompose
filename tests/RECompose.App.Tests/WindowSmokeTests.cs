@@ -278,6 +278,45 @@ public sealed class WindowSmokeTests : IDisposable
     }
 
     [Fact]
+    public async Task The_service_picker_keys_open_new_service_and_all_services()
+    {
+        var executable = Executable();
+        await HeadlessApp.RunAsync(async () =>
+        {
+            var store = new DataStore(Path.Combine(_root, "data"));
+            var dialogs = new AcceptingDialogs();
+            await using var vm = new MainViewModel(store, new EngineHostOptions(executable, _endpoint) { IdleExitSeconds = 3 }, new EngineTools(executable), new AvaloniaDispatcher(), dialogs,
+                new SpeechModel(store.Root, allowDownload: false));
+            var window = new MainWindow { DataContext = vm, Width = 1440, Height = 900 };
+            window.Show();
+            await vm.NewServiceAsync(); // the picker shows once there is a service
+            Dispatcher.UIThread.RunJobs();
+
+            var picker = window.FindControl<Button>("ServicePicker")!;
+            var flyout = (Flyout)picker.Flyout!;
+            // A real click: the Click event, then the command (Button.OnClick), as a pointer release does.
+            var click = typeof(Button).GetMethod("OnClick", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+            Button Key(string text) => Avalonia.VisualTree.VisualExtensions.GetVisualDescendants((Control)flyout.Content!).OfType<Button>()
+                .Single(b => b.Content as string == text || Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(b).OfType<TextBlock>().Any(t => t.Text == text));
+
+            flyout.ShowAt(picker);
+            Dispatcher.UIThread.RunJobs();
+            click.Invoke(Key("New service…"), null);
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal(2, dialogs.DetailsAsked);
+            Assert.False(flyout.IsOpen);
+
+            flyout.ShowAt(picker);
+            Dispatcher.UIThread.RunJobs();
+            click.Invoke(Key("All services…"), null);
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal(1, dialogs.Browsed);
+            Assert.False(flyout.IsOpen);
+            window.Close();
+        }, TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
     public async Task A_dialog_has_our_title_bar_with_its_title_and_a_close_key()
     {
         if (OperatingSystem.IsMacOS())
@@ -314,9 +353,22 @@ internal sealed class AcceptingDialogs : IDialogs
 
     public Task ShowServiceCheckAsync(ServiceCheckViewModel check) => Task.CompletedTask;
 
+    public int Browsed { get; private set; }
+    public Task<ServiceChoice?> BrowseServicesAsync(ServiceBrowserViewModel browser)
+    {
+        Browsed++;
+        return Task.FromResult<ServiceChoice?>(null);
+    }
+
     public Task<ResumeChoice> AskResumeAsync(ResumeQuestion question) => Task.FromResult(ResumeChoice.DontResume);
     public Task<bool> ConfirmAsync(string title, string message, string confirmLabel) => Task.FromResult(true);
-    public Task<ServiceDetails?> AskServiceDetailsAsync(string title, string confirmLabel, ServiceDetails initial) => Task.FromResult<ServiceDetails?>(initial);
+
+    public int DetailsAsked { get; private set; }
+    public Task<ServiceDetails?> AskServiceDetailsAsync(string title, string confirmLabel, ServiceDetails initial)
+    {
+        DetailsAsked++;
+        return Task.FromResult<ServiceDetails?>(initial);
+    }
     public Task<VariantScopeAnswer?> AskVariantScopeAsync(string variantName, int otherEntries) => Task.FromResult<VariantScopeAnswer?>(new VariantScopeAnswer(VariantScope.ThisService, false));
     public Task<string?> AskNameAsync(string title, string label, string initial, string confirmLabel) => Task.FromResult<string?>(initial);
     public Task<int?> ChooseAsync(string title, string message, IReadOnlyList<string> choices, string confirmLabel) => Task.FromResult<int?>(0);

@@ -706,6 +706,56 @@ public partial class MainWindow : Window
             ViewModel?.Entry.AddSection(sectionId);
     }
 
+    // The service picker: type to filter, ↓ to the list, Enter or a click to open, Esc closes the flyout.
+    private void OnServicePickerOpened(object? sender, EventArgs e)
+    {
+        if (ViewModel is { } vm)
+            vm.Setlist.ServiceFilter = string.Empty;
+        if (((sender as Flyout)?.Content as Panel)?.Children.OfType<TextBox>().FirstOrDefault() is { } box)
+            Avalonia.Threading.Dispatcher.UIThread.Post(() => box.Focus());
+    }
+
+    private void ChooseService(ServicePickerRow? row)
+    {
+        if (row is null || ViewModel is not { } vm)
+            return;
+        ServicePicker.Flyout?.Hide();
+        vm.Setlist.ChooseServiceCommand.Execute(row.Choice);
+    }
+
+    // New service… and All services… open a dialog, so the flyout closes. Not at once: Click comes before the button's
+    // command, and a closed flyout takes the button's DataContext (and so its command) with it.
+    private void OnServicePickerAction(object? sender, RoutedEventArgs e) =>
+        Avalonia.Threading.Dispatcher.UIThread.Post(() => ServicePicker.Flyout?.Hide());
+
+    private void OnServiceFilterKeyDown(object? sender, KeyEventArgs e)
+    {
+        var list = ((sender as Control)?.Parent as Panel)?.Children.OfType<ListBox>().FirstOrDefault();
+        if (list is null)
+            return;
+        if (e.Key == Key.Enter)
+            ChooseService(list.Items.OfType<ServicePickerRow>().FirstOrDefault());
+        else if (e.Key == Key.Down && list.ItemCount > 0)
+        {
+            list.SelectedIndex = 0;
+            (list.ContainerFromIndex(0) as Control)?.Focus();
+        }
+        else
+            return;
+        e.Handled = true;
+    }
+
+    private void OnServiceListKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Enter)
+            return;
+        ChooseService((sender as ListBox)?.SelectedItem as ServicePickerRow);
+        e.Handled = true;
+    }
+
+    private void OnServiceListTapped(object? sender, TappedEventArgs e) =>
+        ChooseService((e.Source as Visual)?.FindAncestorOfType<ListBoxItem>()?.DataContext as ServicePickerRow);
+
     private void OnKeyDownTunnel(object? sender, KeyEventArgs e)
     {
         if (e.Key == Key.Escape && _trackDrag is { Started: true } dragging)

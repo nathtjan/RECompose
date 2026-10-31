@@ -649,6 +649,7 @@ internal sealed class ScriptedDialogs : IDialogs
     }
 
     public Task ShowServiceCheckAsync(ServiceCheckViewModel check) => Task.CompletedTask;
+    public Task<ServiceChoice?> BrowseServicesAsync(ServiceBrowserViewModel browser) => Task.FromResult<ServiceChoice?>(null);
 
     public Task<ResumeChoice> AskResumeAsync(ResumeQuestion question) => Task.FromResult(ResumeChoice.DontResume);
     public Task<ServiceDetails?> AskServiceDetailsAsync(string title, string confirmLabel, ServiceDetails initial) => Task.FromResult<ServiceDetails?>(initial);

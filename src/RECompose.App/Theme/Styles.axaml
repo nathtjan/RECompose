@@ -2,7 +2,25 @@
 <!-- Instrument styles for the Prepare screen. Colours and sizes come from the generated
      token resources (Theme/Tokens.g.cs); nothing here is a hard-coded colour. -->
 <Styles xmlns="https://github.com/avaloniaui"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:c="using:RECompose.App.Controls"
+        xmlns:vm="using:RECompose.Presentation.ViewModels">
+
+  <Styles.Resources>
+    <!-- A service in a grouped list (the picker and All services): its group label above the first row, a check on the current one. -->
+    <DataTemplate x:Key="ServicePickerRowTemplate" x:DataType="vm:ServicePickerRow">
+      <StackPanel>
+        <TextBlock Classes="label" Text="{Binding HeadingLabel}" IsVisible="{Binding HasHeading}" Margin="10,12,10,4" />
+        <Border Classes="row">
+          <DockPanel>
+            <c:Icon DockPanel.Dock="Right" Glyph="check" IconSize="16" VerticalAlignment="Center" IsVisible="{Binding IsCurrent}"
+                    TextElement.Foreground="{DynamicResource accent-text}" />
+            <TextBlock Text="{Binding Choice.Title}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+          </DockPanel>
+        </Border>
+      </StackPanel>
+    </DataTemplate>
+  </Styles.Resources>
 
   <Style Selector="Window">
     <Setter Property="Background" Value="{DynamicResource bg-app}" />
@@ -222,6 +240,63 @@
     <Setter Property="Padding" Value="0" />
     <Setter Property="TextAlignment" Value="Center" />
     <Setter Property="VerticalContentAlignment" Value="Center" />
+  </Style>
+
+  <!-- Select: a field that opens a list (design system Select): inset ground, chevron at the right. -->
+  <Style Selector="Button.select">
+    <Setter Property="Padding" Value="10,0" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+  </Style>
+  <Style Selector="Button.select /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource bg-inset}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource control-border}" />
+  </Style>
+  <Style Selector="Button.select:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource bg-inset}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource text-secondary}" />
+  </Style>
+
+  <!-- Popover (design system Popover): raised ground, 1 px border, radius-l; head, body and foot set their own padding. -->
+  <Style Selector="FlyoutPresenter.popover">
+    <Setter Property="Background" Value="{DynamicResource bg-raised}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource border}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{DynamicResource radius-l-corner}" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="MaxWidth" Value="NaN" />
+    <Setter Property="MaxHeight" Value="NaN" />
+  </Style>
+  <!-- The popover's foot: a 1 px rule above its keys. -->
+  <Style Selector="Border.popover-foot">
+    <Setter Property="BorderBrush" Value="{DynamicResource border}" />
+    <Setter Property="BorderThickness" Value="0,1,0,0" />
+    <Setter Property="Padding" Value="16,12" />
+  </Style>
+
+  <!-- A grouped list (service picker, All services): the item only lays out; its Border.row takes hover and selection,
+       so a group label above the row stays unlit. -->
+  <Style Selector="ListBox.grouped">
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+  <Style Selector="ListBox.grouped ListBoxItem">
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="MinHeight" Value="0" />
+  </Style>
+  <Style Selector="ListBox.grouped ListBoxItem /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+  <Style Selector="ListBox.grouped Border.row">
+    <Setter Property="CornerRadius" Value="{DynamicResource radius-m-corner}" />
+    <Setter Property="Padding" Value="10,8" />
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+  <Style Selector="ListBox.grouped ListBoxItem:pointerover Border.row, ListBox.grouped ListBoxItem:selected Border.row">
+    <Setter Property="Background" Value="{DynamicResource bg-raised}" />
+  </Style>
+  <!-- On the raised popover the lit row steps down to the surface ground instead. -->
+  <Style Selector="FlyoutPresenter.popover ListBox.grouped ListBoxItem:pointerover Border.row, FlyoutPresenter.popover ListBox.grouped ListBoxItem:selected Border.row">
+    <Setter Property="Background" Value="{DynamicResource bg-surface}" />
   </Style>
 
   <Style Selector="TabItem">

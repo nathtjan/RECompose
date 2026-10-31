@@ -14,6 +14,37 @@ public sealed record ServiceChoice(string Id, string Title)
     public override string ToString() => Title;
 }
 
+/// <summary>A row of the service picker; the heading is set on the first row of each group.</summary>
+public sealed record ServicePickerRow(ServiceChoice Choice, string? Heading, bool IsCurrent)
+{
+    public bool HasHeading => Heading is not null;
+
+    /// <summary>Group labels are set in capitals (design system label style).</summary>
+    public string? HeadingLabel => Heading?.ToUpperInvariant();
+
+    /// <summary>The row's accessible name: "Sunday 26 Oct · 9:00, current".</summary>
+    public override string ToString() => IsCurrent ? $"{Choice.Title}, current" : Choice.Title;
+
+    /// <summary>The services whose name holds the filter, in order, with each heading on the first row of its group.</summary>
+    internal static IEnumerable<ServicePickerRow> Build(IEnumerable<(ServiceChoice Choice, string Heading, string Name)> services, string filter, string? currentId)
+    {
+        string? last = null;
+        foreach (var (choice, heading, _) in services.Where(s => s.Name.Contains(filter.Trim(), StringComparison.CurrentCultureIgnoreCase)))
+        {
+            yield return new ServicePickerRow(choice, heading != last ? heading : null, choice.Id == currentId);
+            last = heading;
+        }
+    }
+
+    /// <summary>"52 services", "3 of 52 services" while filtered, or "No service named “xyz”".</summary>
+    internal static string Summary(int shown, int total, string filter) =>
+        string.IsNullOrWhiteSpace(filter) ? Count(total)
+        : shown == 0 ? $"No service named “{filter.Trim()}”"
+        : $"{shown.ToString(CultureInfo.InvariantCulture)} of {Count(total)}";
+
+    private static string Count(int n) => n == 1 ? "1 service" : $"{n.ToString(CultureInfo.InvariantCulture)} services";
+}
+
 public sealed record CountInChoice(CountInMode Mode, int Bars, string Name)
 {
     public static readonly IReadOnlyList<CountInChoice> All =
@@ -88,11 +119,20 @@ public sealed class SetlistViewModel : ObservableObject
     private ServiceChoice? _current;
     private SetlistRowViewModel? _selected;
     private string _notes = string.Empty;
+    private string _filter = string.Empty;
+    private List<(ServiceChoice Choice, string Heading, string Name)> _pickable = [];
 
     internal SetlistViewModel(MainViewModel main)
     {
         _main = main;
+        ChooseServiceCommand = new RelayCommand(o =>
+        {
+            if (o is ServiceChoice choice)
+                CurrentChoice = choice;
+            return Task.CompletedTask;
+        });
         NewServiceCommand = new RelayCommand(_main.NewServiceAsync);
+        AllServicesCommand = new RelayCommand(_main.BrowseServicesAsync);
         DuplicateServiceCommand = new RelayCommand(_main.DuplicateServiceAsync, () => HasService);
         RenameServiceCommand = new RelayCommand(_main.RenameServiceAsync, () => HasService);
         DeleteServiceCommand = new RelayCommand(_main.DeleteServiceAsync, () => HasService);
@@ -128,6 +168,41 @@ public sealed class SetlistViewModel : ObservableObject
             _main.SelectService(value.Id);
         }
     }
+
+    /// <summary>
+    /// The picker's list: upcoming, recent and undated services, each row under its heading. Older ones are left to All
+    /// services… so the list stays short, but a filter searches every service.
+    /// </summary>
+    public ObservableCollection<ServicePickerRow> PickerRows { get; } = [];
+
+    /// <summary>Opens All services…, where every service is listed by month.</summary>
+    public RelayCommand AllServicesCommand { get; }
+
+    /// <summary>What the person typed in the picker; empty shows the short list.</summary>
+    public string ServiceFilter
+    {
+        get => _filter;
+        set
+        {
+            if (Set(ref _filter, value ?? string.Empty))
+                RebuildPicker();
+        }
+    }
+
+    /// <summary>Picks a service from the list (the row's choice).</summary>
+    public RelayCommand ChooseServiceCommand { get; }
+
+    private void RebuildPicker()
+    {
+        PickerRows.Clear();
+        var shown = string.IsNullOrWhiteSpace(_filter) ? _pickable.Where(p => p.Heading != "Earlier") : _pickable;
+        foreach (var row in ServicePickerRow.Build(shown, _filter, _current?.Id))
+            PickerRows.Add(row);
+        OnPropertyChanged(nameof(PickerSummary));
+    }
+
+    /// <summary>"52 services", "3 of 52 services" while filtered, or "No service named “xyz”".</summary>
+    public string PickerSummary => ServicePickerRow.Summary(PickerRows.Count, _pickable.Count, _filter);
 
     public bool HasService => _main.CurrentService is not null;
     public bool HasNoService => !HasService;
@@ -266,9 +341,19 @@ public sealed class SetlistViewModel : ObservableObject
         {
             var current = _main.CurrentService;
             Services.Clear();
-            foreach (var s in ServiceText.Ordered(_main.AllServices, DateTime.Now))
-                Services.Add(new ServiceChoice(s.Id, ServiceText.Title(s)));
+            var now = DateTime.Now;
+            var ordered = ServiceText.Ordered(_main.AllServices, now);
+            var headings = ServiceText.Headings(ordered, now);
+            _pickable = [];
+            for (var i = 0; i < ordered.Count; i++)
+            {
+                var choice = new ServiceChoice(ordered[i].Id, ServiceText.Title(ordered[i]));
+                Services.Add(choice);
+                _pickable.Add((choice, headings[i], ordered[i].Name));
+            }
+
             _current = Services.FirstOrDefault(c => c.Id == current?.Id);
+            RebuildPicker();
 
             Rows.Clear();
             Summary = string.Empty;

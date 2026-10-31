@@ -3,10 +3,14 @@ using System.Globalization;
 using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
+using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Markup.Xaml;
 using Avalonia.Platform.Storage;
+using RECompose.App.Controls;
 using RECompose.Core.Import;
+using RECompose.Core.Services;
 using RECompose.Presentation.Services;
 using RECompose.Presentation.ViewModels;
 
@@ -323,6 +327,13 @@ public sealed class AvaloniaDialogs(Window owner) : IDialogs
         AutomationProperties.SetName(name, "Service name");
         var date = new CalendarDatePicker { SelectedDate = initial.Date?.Date, PlaceholderText = "No date", HorizontalAlignment = HorizontalAlignment.Stretch };
         AutomationProperties.SetName(date, "Date");
+        // A name left at its default (or emptied) follows the date; one the person wrote stays.
+        var shownDate = date.SelectedDate;
+        date.SelectedDateChanged += (_, _) =>
+        {
+            name.Text = ServiceText.NameForDate(name.Text, shownDate, date.SelectedDate);
+            shownDate = date.SelectedDate;
+        };
         var time = new TextBox { Text = initial.Date?.ToString("H:mm", CultureInfo.InvariantCulture) ?? "9:00", Width = 100, HorizontalAlignment = HorizontalAlignment.Left };
         AutomationProperties.SetName(time, "Time");
         var problem = new TextBlock { IsVisible = false };
@@ -498,6 +509,68 @@ public sealed class AvaloniaDialogs(Window owner) : IDialogs
         cancel.Click += (_, _) => window.Close();
 
         window.Content = Body(title, message, [list], cancel, ok);
+        await window.ShowDialog(owner);
+        return result;
+    }
+
+    /// <summary>All services…: a search field and every service by month; Open, a double click or Enter opens the selected one.</summary>
+    public async Task<ServiceChoice?> BrowseServicesAsync(ServiceBrowserViewModel browser)
+    {
+        var window = new DialogWindow
+        {
+            Title = "All services",
+            Width = 480,
+            Height = 600,
+            ShowInTaskbar = false,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            DataContext = browser,
+        };
+
+        var search = new TextBox
+        {
+            PlaceholderText = "Find a service by name",
+            InnerLeftContent = new Icon { Glyph = "search", IconSize = 16, Margin = new Thickness(10, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center },
+        };
+        search.Bind(TextBox.TextProperty, new Avalonia.Data.Binding(nameof(ServiceBrowserViewModel.ServiceFilter)) { Mode = Avalonia.Data.BindingMode.TwoWay });
+        AutomationProperties.SetName(search, "Find a service");
+
+        var list = new ListBox { Classes = { "grouped" }, ItemTemplate = (Avalonia.Controls.Templates.IDataTemplate)Application.Current!.FindResource("ServicePickerRowTemplate")! };
+        list.Bind(ItemsControl.ItemsSourceProperty, new Avalonia.Data.Binding(nameof(ServiceBrowserViewModel.Rows)));
+        list.Bind(SelectingItemsControl.SelectedItemProperty, new Avalonia.Data.Binding(nameof(ServiceBrowserViewModel.Selected)) { Mode = Avalonia.Data.BindingMode.TwoWay });
+        AutomationProperties.SetName(list, "Services");
+
+        var summary = new TextBlock { Classes = { "meta" } };
+        summary.Bind(TextBlock.TextProperty, new Avalonia.Data.Binding(nameof(ServiceBrowserViewModel.Summary)));
+
+        var open = new Button { Content = "Open", Classes = { "primary" }, IsDefault = true };
+        open.Bind(InputElement.IsEnabledProperty, new Avalonia.Data.Binding(nameof(ServiceBrowserViewModel.CanOpen)));
+        var cancel = new Button { Content = "Cancel", IsCancel = true };
+        ServiceChoice? result = null;
+        void Open()
+        {
+            if (browser.Selected is not { } row)
+                return;
+            result = row.Choice;
+            window.Close();
+        }
+
+        open.Click += (_, _) => Open();
+        list.DoubleTapped += (_, _) => Open();
+        cancel.Click += (_, _) => window.Close();
+        // ↓ from the search field moves into the list, as in the picker.
+        search.KeyDown += (_, e) =>
+        {
+            if (e.Key != Key.Down || list.ItemCount == 0)
+                return;
+            (list.ContainerFromItem(list.SelectedItem ?? list.Items[0]!) as Control)?.Focus();
+            e.Handled = true;
+        };
+
+        var head = new StackPanel { Spacing = 12, Children = { summary, search } }.Dock(Avalonia.Controls.Dock.Top);
+        var foot = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Spacing = 8, Margin = new Thickness(0, 12, 0, 0), Children = { cancel, open } }
+            .Dock(Avalonia.Controls.Dock.Bottom);
+        window.Content = new DockPanel { Margin = new Thickness(20), Children = { head, foot, new Border { Margin = new Thickness(0, 12, 0, 0), Child = list } } };
+        window.Opened += (_, _) => search.Focus();
         await window.ShowDialog(owner);
         return result;
     }

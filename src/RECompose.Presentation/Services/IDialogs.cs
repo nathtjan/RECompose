@@ -77,4 +77,7 @@ public interface IDialogs
 
     /// <summary>The transition popover (SL-21). True = Save.</summary>
     Task<bool> EditTransitionAsync(TransitionViewModel transition);
+
+    /// <summary>All services…: the service to open, or null = Cancel.</summary>
+    Task<ServiceChoice?> BrowseServicesAsync(ServiceBrowserViewModel browser);
 }

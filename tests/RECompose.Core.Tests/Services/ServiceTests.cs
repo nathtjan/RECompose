@@ -271,6 +271,47 @@ public class ServiceTests
     }
 
     [Fact]
+    public void A_default_or_empty_service_name_follows_the_date_but_a_written_one_stays()
+    {
+        var sunday = new DateTime(2026, 11, 1, 9, 0, 0);
+        var wednesday = new DateTime(2026, 11, 4, 19, 0, 0);
+        Assert.Equal("Sunday 1 Nov", ServiceText.DefaultName(sunday));
+
+        Assert.Equal("Wednesday 4 Nov", ServiceText.NameForDate("Sunday 1 Nov", sunday, wednesday)); // unchanged or reverted
+        Assert.Equal("Wednesday 4 Nov", ServiceText.NameForDate("  ", sunday, wednesday)); // emptied
+        Assert.Equal("Wednesday 4 Nov", ServiceText.NameForDate(null, null, wednesday)); // first date on an undated one
+        Assert.Equal("Christmas Eve", ServiceText.NameForDate("Christmas Eve", sunday, wednesday)); // written by hand
+        Assert.Equal("Sunday 1 Nov", ServiceText.NameForDate("Sunday 1 Nov", sunday, null)); // date cleared
+    }
+
+    [Fact]
+    public void The_picker_groups_services_into_today_upcoming_recent_earlier_and_undated()
+    {
+        var now = new DateTime(2026, 10, 25, 20, 0, 0);
+        Service S(int n, DateTime? date) => new() { Id = $"s{n}", Name = $"s{n}", Date = date };
+        // This morning's service has passed its time but is still today's.
+        var services = new List<Service> { S(0, now.AddHours(-11)), S(1, null), S(99, now.AddDays(7)) };
+        for (var i = 1; i <= ServiceText.RecentCount + 2; i++)
+            services.Add(S(i + 1, now.AddDays(-7 * i)));
+
+        var ordered = ServiceText.Ordered(services, now);
+        var headings = ServiceText.Headings(ordered, now);
+
+        Assert.Equal(["Today", "Upcoming"], headings.Take(2));
+        Assert.Equal(ServiceText.RecentCount, headings.Count(h => h == "Recent"));
+        Assert.Equal(2, headings.Count(h => h == "Earlier"));
+        Assert.Equal("No date", headings[^1]);
+
+        var months = ServiceText.MonthHeadings(ordered, now);
+        Assert.Equal(["Today", "Upcoming", "October 2026", "October 2026", "October 2026", "September 2026"], months.Take(6));
+        Assert.Equal("No date", months[^1]);
+
+        // The next day has no service: no Today group.
+        var monday = now.AddDays(1);
+        Assert.DoesNotContain("Today", ServiceText.Headings(ServiceText.Ordered(services, monday), monday));
+    }
+
+    [Fact]
     public void Services_round_trip_through_the_data_folder_and_old_files_open()
     {
         var root = Path.Combine(Path.GetTempPath(), "rec-svc-" + Guid.NewGuid().ToString("N"));

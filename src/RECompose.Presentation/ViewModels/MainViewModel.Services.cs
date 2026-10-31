@@ -100,12 +100,20 @@ public sealed partial class MainViewModel
         await LoadSongAsync(entry.SongId, force: true, entry: entry, serviceId: _service.Id);
     }
 
+    /// <summary>All services…: every service by month, for those the picker leaves out.</summary>
+    public async Task BrowseServicesAsync()
+    {
+        var browser = new ServiceBrowserViewModel(_services, DateTime.Now, _service?.Id);
+        if (await _dialogs.BrowseServicesAsync(browser) is { } choice)
+            SelectService(choice.Id);
+    }
+
     // ---- Services (SL-1, SL-2) --------------------------------------------------------------------
 
     public async Task NewServiceAsync()
     {
         var sunday = NextSunday(DateTime.Now);
-        var initial = new ServiceDetails($"Sunday {sunday.ToString("d MMM", System.Globalization.CultureInfo.InvariantCulture)}", sunday);
+        var initial = new ServiceDetails(ServiceText.DefaultName(sunday), sunday);
         if (await _dialogs.AskServiceDetailsAsync("New service", "Create", initial) is not { } details)
             return;
         var service = ServiceEdit.New(details.Name, details.Date);
@@ -118,7 +126,7 @@ public sealed partial class MainViewModel
         if (_service is not { } source)
             return;
         var date = source.Date?.AddDays(7);
-        var name = date is { } d && source.Date is not null ? $"Sunday {d.ToString("d MMM", System.Globalization.CultureInfo.InvariantCulture)}" : $"{source.Name} (copy)";
+        var name = date is { } d ? ServiceText.DefaultName(d) : $"{source.Name} (copy)";
         if (await _dialogs.AskServiceDetailsAsync("Duplicate service", "Duplicate", new ServiceDetails(name, date)) is not { } details)
             return;
         var copy = ServiceEdit.Duplicate(source, details.Name, details.Date);

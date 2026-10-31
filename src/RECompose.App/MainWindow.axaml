@@ -130,15 +130,43 @@
           <ToggleButton Content="Prepare" IsChecked="{Binding IsPrepare, Mode=OneWay}" IsHitTestVisible="False" />
           <ToggleButton x:Name="PerformToggle" Content="Perform" IsChecked="{Binding IsPerform, Mode=TwoWay}" ToolTip.Tip="Perform (Ctrl+P). Playback keeps going." AutomationProperties.Name="Perform" />
         </StackPanel>
-        <ComboBox x:Name="ServicePicker" DockPanel.Dock="Left" Margin="24,0,0,0" VerticalAlignment="Center" MinWidth="240"
-                  ItemsSource="{Binding Setlist.Services}" SelectedItem="{Binding Setlist.CurrentChoice}" PlaceholderText="No service"
-                  IsVisible="{Binding Setlist.HasService}" AutomationProperties.Name="Service" ToolTip.Tip="The service to prepare">
-          <ComboBox.ItemTemplate>
-            <DataTemplate x:DataType="vm:ServiceChoice">
-              <TextBlock Text="{Binding Title}" />
-            </DataTemplate>
-          </ComboBox.ItemTemplate>
-        </ComboBox>
+        <Button x:Name="ServicePicker" Classes="select" DockPanel.Dock="Left" Margin="24,0,0,0" VerticalAlignment="Center" Width="280"
+                IsVisible="{Binding Setlist.HasService}" AutomationProperties.Name="Service" ToolTip.Tip="The service to prepare">
+          <Button.Flyout>
+            <Flyout Placement="BottomEdgeAlignedLeft" FlyoutPresenterClasses="popover" Opened="OnServicePickerOpened">
+              <DockPanel Width="360">
+                <StackPanel DockPanel.Dock="Top" Margin="16,16,16,0">
+                  <TextBlock Classes="heading" Text="Services" />
+                  <TextBlock Classes="meta" Text="{Binding Setlist.PickerSummary}" Margin="0,2,0,0" />
+                </StackPanel>
+                <TextBox DockPanel.Dock="Top" Margin="16,12,16,0" Text="{Binding Setlist.ServiceFilter, Mode=TwoWay}" PlaceholderText="Find a service by name"
+                         AutomationProperties.Name="Find a service" KeyDown="OnServiceFilterKeyDown">
+                  <TextBox.InnerLeftContent>
+                    <c:Icon Glyph="search" IconSize="16" Margin="10,0,0,0" VerticalAlignment="Center" TextElement.Foreground="{DynamicResource text-label}" />
+                  </TextBox.InnerLeftContent>
+                </TextBox>
+                <Border DockPanel.Dock="Bottom" Classes="popover-foot">
+                  <DockPanel>
+                    <Button DockPanel.Dock="Right" Classes="ghost" Content="All services…" Command="{Binding Setlist.AllServicesCommand}" Click="OnServicePickerAction"
+                            ToolTip.Tip="Every service, by month" />
+                    <Button HorizontalAlignment="Left" Command="{Binding Setlist.NewServiceCommand}" Click="OnServicePickerAction">
+                      <StackPanel Orientation="Horizontal" Spacing="6">
+                        <c:Icon Glyph="plus" IconSize="16" VerticalAlignment="Center" />
+                        <TextBlock Text="New service…" VerticalAlignment="Center" />
+                      </StackPanel>
+                    </Button>
+                  </DockPanel>
+                </Border>
+                <ListBox Classes="grouped" Margin="8" MaxHeight="400" ItemsSource="{Binding Setlist.PickerRows}" ItemTemplate="{StaticResource ServicePickerRowTemplate}"
+                         AutomationProperties.Name="Services" Tapped="OnServiceListTapped" KeyDown="OnServiceListKeyDown" />
+              </DockPanel>
+            </Flyout>
+          </Button.Flyout>
+          <DockPanel>
+            <c:Icon DockPanel.Dock="Right" Glyph="chevron-down" IconSize="16" Margin="8,0,0,0" VerticalAlignment="Center" TextElement.Foreground="{DynamicResource text-secondary}" />
+            <TextBlock Text="{Binding Setlist.Title}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+          </DockPanel>
+        </Button>
 
         <Button DockPanel.Dock="Right" Command="{Binding ToggleAssistantCommand}" ToolTip.Tip="Assistant (Ctrl+J)" Margin="12,0,0,0" VerticalAlignment="Center"
                 AutomationProperties.Name="Assistant">

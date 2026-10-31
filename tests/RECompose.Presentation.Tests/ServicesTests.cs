@@ -351,6 +351,55 @@ public sealed class ServicesTests : IDisposable
     }
 
     [Fact]
+    public async Task The_service_picker_filters_by_name_and_chooses_a_service()
+    {
+        var vm = await SundayAsync();
+        _dialogs.Details = new ServiceDetails("Christmas Eve", new DateTime(2026, 12, 24, 19, 0, 0));
+        await vm.DuplicateServiceAsync();
+        var sunday = vm.Setlist.Services.Single(s => s.Title.StartsWith("Sunday", StringComparison.Ordinal));
+        Assert.Equal(2, vm.Setlist.PickerRows.Count);
+
+        vm.Setlist.ServiceFilter = " christ";
+        Assert.Equal(["Christmas Eve · 19:00"], vm.Setlist.PickerRows.Select(r => r.Choice.Title));
+        Assert.NotNull(vm.Setlist.PickerRows[0].Heading);
+
+        vm.Setlist.ServiceFilter = string.Empty;
+        vm.Setlist.ChooseServiceCommand.Execute(sunday);
+        Assert.Equal(sunday.Id, vm.Setlist.CurrentChoice?.Id);
+    }
+
+    [Fact]
+    public async Task Old_services_leave_the_picker_for_all_services_but_a_search_still_finds_them()
+    {
+        var vm = await SundayAsync();
+        // Long past, so the groups don't change with the day the test runs.
+        for (var month = 1; month <= ServiceText.RecentCount + 2; month++)
+        {
+            _dialogs.Details = new ServiceDetails($"Old {month}", new DateTime(2020, month, 5, 9, 0, 0));
+            await vm.DuplicateServiceAsync();
+        }
+
+        Assert.DoesNotContain(vm.Setlist.PickerRows, r => r.Choice.Title.StartsWith("Old 1 ", StringComparison.Ordinal));
+        Assert.Equal("8 services", vm.Setlist.PickerSummary);
+
+        vm.Setlist.ServiceFilter = "old 1";
+        Assert.Equal(["Old 1 · 9:00"], vm.Setlist.PickerRows.Select(r => r.Choice.Title));
+        vm.Setlist.ServiceFilter = string.Empty;
+
+        ServiceBrowserViewModel? seen = null;
+        _dialogs.Browse = b =>
+        {
+            seen = b;
+            return b.Rows.Single(r => r.Choice.Title == "Old 1 · 9:00").Choice;
+        };
+        await vm.BrowseServicesAsync();
+
+        Assert.Equal(8, seen!.Rows.Count);
+        Assert.Contains(seen.Rows, r => r.Heading == "January 2020");
+        Assert.Equal("Old 1 · 9:00", vm.Setlist.Title);
+    }
+
+    [Fact]
     public async Task REL45_restore_earlier_version_brings_the_entries_back()
     {
         var vm = await SundayAsync();
@@ -538,6 +587,11 @@ internal sealed class ServiceDialogs : IDialogs
 
 
     public Task ShowServiceCheckAsync(ServiceCheckViewModel check) => Task.CompletedTask;
+
+    /// <summary>All services…: answers with the row this picks from the browser, or null for Cancel.</summary>
+    public Func<ServiceBrowserViewModel, ServiceChoice?>? Browse { get; set; }
+
+    public Task<ServiceChoice?> BrowseServicesAsync(ServiceBrowserViewModel browser) => Task.FromResult(Browse?.Invoke(browser));
 
     public ResumeChoice ResumeAnswer { get; set; } = ResumeChoice.DontResume;
     public ResumeQuestion? ResumeAsked { get; private set; }

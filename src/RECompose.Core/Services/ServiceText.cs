@@ -73,6 +73,52 @@ public static class ServiceText
         return [.. upcoming, .. past, .. undated];
     }
 
+    /// <summary>The name a new service gets from its date: "Sunday 26 Oct".</summary>
+    public static string DefaultName(DateTime date) => date.ToString("dddd d MMM", CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// The name after the date changes in the service dialog: a name that is empty or still the default for the old date
+    /// follows the new date; a name the person wrote stays. Clearing the date keeps the name.
+    /// </summary>
+    public static string NameForDate(string? name, DateTime? oldDate, DateTime? newDate)
+    {
+        var current = name?.Trim() ?? string.Empty;
+        if (newDate is not { } date)
+            return current;
+        var isDefault = current.Length == 0 || (oldDate is { } old && current == DefaultName(old));
+        return isDefault ? DefaultName(date) : current;
+    }
+
+    public const int RecentCount = 5;
+
+    /// <summary>
+    /// The picker's heading for each service of <see cref="Ordered"/>, in the same order: Today, Upcoming, Recent (the last
+    /// few past services), Earlier, No date. A heading only shows above services, so a day without one has no Today.
+    /// </summary>
+    public static List<string> Headings(IReadOnlyList<Service> ordered, DateTime now)
+    {
+        var past = 0;
+        var headings = new List<string>(ordered.Count);
+        foreach (var s in ordered)
+        {
+            if (s.Date is not { } d)
+                headings.Add("No date");
+            else if (d.Date >= now.Date)
+                headings.Add(Ahead(d, now));
+            else
+                headings.Add(past++ < RecentCount ? "Recent" : "Earlier");
+        }
+
+        return headings;
+    }
+
+    /// <summary>The All services list's heading for each service of <see cref="Ordered"/>: Today, Upcoming, then the month of each past service ("October 2026"), then No date.</summary>
+    public static List<string> MonthHeadings(IReadOnlyList<Service> ordered, DateTime now) =>
+        [.. ordered.Select(s => s.Date is not { } d ? "No date" : d.Date >= now.Date ? Ahead(d, now) : d.ToString("MMMM yyyy", CultureInfo.InvariantCulture))];
+
+    // Today's services stay here all day, even after their time (see Ordered).
+    private static string Ahead(DateTime date, DateTime now) => date.Date == now.Date ? "Today" : "Upcoming";
+
     /// <summary>The entry's key: the song's original key moved by the offset, or null when the song's key is unknown.</summary>
     public static Key? EntryKey(Song song, int keyOffset) =>
         Key.TryParse(song.OriginalKey, out var key) ? key.Transpose(keyOffset) : null;
