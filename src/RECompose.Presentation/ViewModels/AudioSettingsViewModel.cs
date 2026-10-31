@@ -381,7 +381,8 @@ public sealed class BusRowViewModel(string name, string output, bool isCustom) :
 
     public string Name { get; } = name;
     public bool IsCustom { get; } = isCustom;
-    public string Output { get => _output; set => Set(ref _output, value); }
+    /// <summary>A combo box clears its selection while its items load; a bus always keeps an output.</summary>
+    public string Output { get => _output; set => Set(ref _output, value ?? _output); }
 
     /// <summary>Removes a custom bus; set by the settings view model.</summary>
     public RelayCommand? RemoveCommand { get; set; }

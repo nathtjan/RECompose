@@ -610,6 +610,8 @@ public sealed class MainViewModelTests : IDisposable
         Assert.Null(audio.ToSettings(new Core.Settings.AudioSettings()).Buses);
         Assert.Equal("Cue", audio.Buses.Single(b => b.Name == TrackGroups.Click).Output);
 
+        audio.Buses.Single(b => b.Name == TrackGroups.Click).Output = null!; // a combo box clearing its selection
+        Assert.Equal("Cue", audio.Buses.Single(b => b.Name == TrackGroups.Click).Output);
         audio.Buses.Single(b => b.Name == TrackGroups.Click).Output = "3";
         audio.NewBusName = "Lead Vox";
         audio.AddBusCommand.Execute(null);
