@@ -67,30 +67,55 @@
         <ScrollViewer VerticalScrollBarVisibility="Auto" DataContext="{Binding Audio}" x:DataType="vm:AudioSettingsViewModel">
           <StackPanel Spacing="12" Margin="16,0,16,0">
             <TextBlock Classes="title" Text="Voice" />
-            <Grid ColumnDefinitions="140,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="10">
-              <TextBlock Grid.Row="0" Classes="label" Text="INPUT" VerticalAlignment="Center" ToolTip.Tip="The talkback mic for voice control" />
+            <TextBlock Classes="meta" TextWrapping="Wrap"
+                       Text="Talk to RECompose on a mic during a song: &quot;go to the bridge&quot;, &quot;one more time&quot;, &quot;stop&quot;. It acts as if you had pressed the key." />
+            <Grid ColumnDefinitions="140,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="10">
+              <TextBlock Grid.Row="0" Classes="label" Text="MIC INPUT" VerticalAlignment="Center" ToolTip.Tip="The talkback mic for voice control" />
               <ComboBox Grid.Row="0" Grid.Column="1" ItemsSource="{Binding VoiceInputs}" SelectedItem="{Binding VoiceInput}" HorizontalAlignment="Stretch"
                         AutomationProperties.Name="Voice input" />
-              <StackPanel Grid.Row="1" Grid.Column="1" Spacing="6">
-                <CheckBox IsChecked="{Binding VoicePushToTalk}" Content="Push to talk (hold the Talk control, Settings › Controls)" />
-                <CheckBox IsChecked="{Binding VoiceConfirm}" Content="Ask before acting" />
-                <CheckBox IsChecked="{Binding VoiceGate}" Content="Ignore speech while the guide is talking" />
-                <CheckBox IsChecked="{Binding VoiceBareNames}" Content="Accept bare section names" />
+              <TextBlock Grid.Row="1" Grid.Column="1" Classes="meta" TextWrapping="Wrap"
+                         Text="The input channel of the audio device your talkback mic is plugged into. Off turns voice control off." />
+
+              <StackPanel Grid.Row="2" Grid.Column="1" Spacing="10">
+                <StackPanel Spacing="2">
+                  <CheckBox IsChecked="{Binding VoicePushToTalk}" Content="Push to talk" />
+                  <TextBlock Classes="meta" TextWrapping="Wrap" Margin="28,0,0,0"
+                             Text="Listen only while you hold the Push to talk key or pedal (set it in Settings › Controls). Off: always listening." />
+                </StackPanel>
+                <StackPanel Spacing="2">
+                  <CheckBox IsChecked="{Binding VoiceConfirm}" Content="Ask before acting" />
+                  <TextBlock Classes="meta" TextWrapping="Wrap" Margin="28,0,0,0"
+                             Text="A command waits 4 seconds for you to say &quot;yes&quot; or press GO. Stop always acts at once." />
+                </StackPanel>
+                <StackPanel Spacing="2">
+                  <CheckBox IsChecked="{Binding VoiceGate}" Content="Ignore speech while the guide is talking" />
+                  <TextBlock Classes="meta" TextWrapping="Wrap" Margin="28,0,0,0"
+                             Text="When the guide track says &quot;Chorus&quot; into the mic, it isn't taken as a command." />
+                </StackPanel>
+                <StackPanel Spacing="2">
+                  <CheckBox IsChecked="{Binding VoiceBareNames}" Content="Accept bare section names" />
+                  <TextBlock Classes="meta" TextWrapping="Wrap" Margin="28,0,0,0"
+                             Text="&quot;Chorus 2&quot; alone means go there. Off: say &quot;go to Chorus 2&quot;, so a sung word can't move the song." />
+                </StackPanel>
               </StackPanel>
-              <Border Grid.Row="2" Grid.Column="1" Classes="inset" Padding="10">
+
+              <TextBlock Grid.Row="3" Classes="label" Text="TEST" VerticalAlignment="Top" Margin="0,10,0,0" />
+              <Border Grid.Row="3" Grid.Column="1" Classes="inset" Padding="10">
                 <StackPanel Spacing="6">
                   <ProgressBar Minimum="0" Maximum="1" Value="{Binding VoiceLevel}" Height="4" MinHeight="4" AutomationProperties.Name="Voice input level" />
                   <TextBlock Classes="mono" Text="{Binding VoiceHeard}" TextWrapping="Wrap" />
                   <TextBlock Classes="meta" Text="{Binding VoiceWouldDo}" TextWrapping="Wrap" />
                 </StackPanel>
               </Border>
-              <TextBlock Grid.Row="3" Grid.Column="1" Classes="meta" TextWrapping="Wrap"
-                         Text="The input is a channel of the audio device. Apply, then open this again to test: while Settings is open nothing you say changes playback." />
+              <TextBlock Grid.Row="4" Grid.Column="1" Classes="meta" TextWrapping="Wrap"
+                         Text="Speak to see the level, what was heard and what it would do. While Settings is open nothing you say changes playback. After changing the mic, Apply and open Settings again." />
 
-              <TextBlock Grid.Row="4" Classes="label" Text="MD CONFIRM" VerticalAlignment="Center" ToolTip.Tip="Spoken confirmations of live actions, for the MD's in-ear" />
-              <ComboBox Grid.Row="4" Grid.Column="1" ItemsSource="{Binding MdOptions}" SelectedItem="{Binding MdOutput}" HorizontalAlignment="Stretch"
+              <TextBlock Grid.Row="5" Classes="label" Text="MD CONFIRM" VerticalAlignment="Center" ToolTip.Tip="Spoken confirmations of live actions, for the MD's in-ear" />
+              <ComboBox Grid.Row="5" Grid.Column="1" ItemsSource="{Binding MdOptions}" SelectedItem="{Binding MdOutput}" HorizontalAlignment="Stretch"
                         AutomationProperties.Name="MD confirm output" />
-              <TextBlock Grid.Row="5" Grid.Column="1" Classes="meta" Foreground="{DynamicResource state-warning}" Text="{Binding MdWarning}"
+              <TextBlock Grid.Row="6" Grid.Column="1" Classes="meta" TextWrapping="Wrap"
+                         Text="Where the music director hears what RECompose is about to do (&quot;Going to Chorus 2&quot;). Pick their in-ear outputs, not the band's Cue." />
+              <TextBlock Grid.Row="7" Grid.Column="1" Classes="meta" Foreground="{DynamicResource state-warning}" Text="{Binding MdWarning}"
                          IsVisible="{Binding MdWarning, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
             </Grid>
           </StackPanel>
