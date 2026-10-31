@@ -449,7 +449,9 @@ public sealed class ServicesTests : IDisposable
         vm.SetKeyOffset(vm.Setlist.Rows[0].Id, 2);
         var file = Path.Combine(_root, "sunday" + ServiceExchange.Extension);
         _dialogs.SavePath = file;
+        _dialogs.Choice = 0; // service and songs only
         await vm.ExportServiceAsync();
+        Assert.StartsWith("With the audio, another computer gets the exact same service.", _dialogs.ChooseMessage, StringComparison.Ordinal);
         Assert.True(File.Exists(file));
 
         var originalId = Assert.Single(vm.AllServices).Id;
@@ -459,6 +461,32 @@ public sealed class ServicesTests : IDisposable
         var imported = vm.AllServices.Single(s => s.Id != originalId);
         Assert.Equal(2, imported.Entries[0].KeyOffset);
         Assert.Equal(["champion", "goodness"], imported.Entries.Select(e => e.SongId));
+    }
+
+    [Fact]
+    public async Task Importing_a_song_that_changed_since_asks_and_using_the_files_copy_can_be_undone()
+    {
+        var vm = await SundayAsync();
+        var file = Path.Combine(_root, "sunday" + ServiceExchange.Extension);
+        _dialogs.SavePath = file;
+        _dialogs.Choice = 0;
+        await vm.ExportServiceAsync();
+
+        // Champion changes here after the export: its section notes go on.
+        await vm.LoadSongAsync("champion");
+        vm.SectionNotes = true;
+
+        _dialogs.OpenPath = file;
+        _dialogs.Choice = 1; // use the file's
+        await vm.ImportServiceAsync();
+
+        Assert.Equal("Champion is in your library with the same audio, but the file's copy has other cues. Which should the service use?", _dialogs.ChooseMessage);
+        Assert.False(vm.SectionNotes);
+        Assert.Equal(["Sunday 26 Oct", "Sunday 26 Oct (2)"], vm.AllServices.Select(s => s.Name).Order());
+
+        vm.UndoCommand.Execute(null); // the import of the service
+        vm.UndoCommand.Execute(null); // the replaced song
+        Assert.True(vm.SectionNotes);
     }
 
     [Fact]
@@ -596,7 +624,7 @@ internal sealed class ServiceDialogs : IDialogs
 
     public Task<string?> PickFolderAsync() => Task.FromResult<string?>(null);
     public Task<string?> PickSaveFileAsync(string title, string suggestedName, string extension) => Task.FromResult(SavePath);
-    public Task<string?> PickOpenFileAsync(string title, string extension) => Task.FromResult(OpenPath);
+    public Task<string?> PickOpenFileAsync(string title, params string[] extensions) => Task.FromResult(OpenPath);
     public Task<bool> ReviewImportAsync(ImportReviewViewModel review) => Task.FromResult(false);
     public Task<DuplicateChoice> AskDuplicateAsync(string existingTitle) => Task.FromResult(DuplicateChoice.Cancel);
     public Task<bool> ConfirmAsync(string title, string message, string confirmLabel) => Task.FromResult(true);

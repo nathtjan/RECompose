@@ -33,11 +33,11 @@ public interface IDialogs
 {
     Task<string?> PickFolderAsync();
 
-    /// <summary>A file to write, with the suggested name and its extension (".recompose-service"); null when cancelled.</summary>
+    /// <summary>A file to write, with the suggested name and its extension (".recservice"); null when cancelled.</summary>
     Task<string?> PickSaveFileAsync(string title, string suggestedName, string extension);
 
-    /// <summary>A file to read with that extension; null when cancelled.</summary>
-    Task<string?> PickOpenFileAsync(string title, string extension);
+    /// <summary>A file to read with one of those extensions; null when cancelled.</summary>
+    Task<string?> PickOpenFileAsync(string title, params string[] extensions);
 
     /// <summary>An audio file (WAV, AIFF, FLAC, Ogg, MP3) for a track; null when cancelled.</summary>
     Task<string?> PickAudioFileAsync(string title);

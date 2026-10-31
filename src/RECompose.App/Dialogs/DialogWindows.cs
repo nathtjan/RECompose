@@ -131,13 +131,13 @@ public sealed class AvaloniaDialogs(Window owner) : IDialogs
         return file?.TryGetLocalPath();
     }
 
-    public async Task<string?> PickOpenFileAsync(string title, string extension)
+    public async Task<string?> PickOpenFileAsync(string title, params string[] extensions)
     {
         var files = await owner.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
         {
             Title = title,
             AllowMultiple = false,
-            FileTypeFilter = [new FilePickerFileType("RECompose service") { Patterns = ["*" + extension] }],
+            FileTypeFilter = [new FilePickerFileType("RECompose service") { Patterns = [.. extensions.Select(e => "*" + e)] }],
         });
         return files.Count > 0 ? files[0].TryGetLocalPath() : null;
     }

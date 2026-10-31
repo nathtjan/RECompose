@@ -35,6 +35,9 @@ public sealed class DataStore(string root)
     public string ServicesFolder => Path.Combine(Root, "services");
     public string PeaksFolder => Path.Combine(Root, "cache", "peaks");
 
+    /// <summary>Stems that came inside an imported service file, one folder per song; not a cache, the songs play from here.</summary>
+    public string MediaFolder => Path.Combine(Root, "media");
+
     /// <summary>Rendered keys and tempos (REL-10) and their index.</summary>
     public string RenderFolder => Path.Combine(Root, "cache", "render");
 

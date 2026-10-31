@@ -710,7 +710,7 @@ internal sealed class ScriptedDialogs : IDialogs
 
     public Task<string?> PickFolderAsync() => Task.FromResult(Folder);
     public Task<string?> PickSaveFileAsync(string title, string suggestedName, string extension) => Task.FromResult<string?>(null);
-    public Task<string?> PickOpenFileAsync(string title, string extension) => Task.FromResult<string?>(null);
+    public Task<string?> PickOpenFileAsync(string title, params string[] extensions) => Task.FromResult<string?>(null);
 
     /// <summary>The audio file Add track… and Swap audio… pick; null cancels.</summary>
     public string? AudioFile { get; set; }
