@@ -11,39 +11,52 @@ public enum TrackRole
 }
 
 /// <summary>
-/// Where a track plays: a logical output (Main, Cue) or a device channel (DM-12, PB-85).
+/// Where a track plays: a bus, a logical output (Main, Cue) or a device channel (DM-12, PB-85).
 /// Channels are 1-based in text ("3-4", "3") and 0-based in <see cref="Channel"/>.
+/// A bus is "bus" (the track's own group bus) or "bus:Name"; Settings maps each bus to an output.
 /// </summary>
-public readonly record struct OutputRef(OutputKind Kind, int Channel = 0, int Width = 2)
+public readonly record struct OutputRef(OutputKind Kind, int Channel = 0, int Width = 2, string? Bus = null)
 {
+    public const string GroupBusLabel = "Group bus";
+
     public static OutputRef Main => new(OutputKind.Main);
     public static OutputRef Cue => new(OutputKind.Cue);
+    public static OutputRef GroupBus => new(OutputKind.Bus);
 
     public static OutputRef Direct(int channel, int width) => new(OutputKind.Direct, channel, width == 1 ? 1 : 2);
 
-    /// <summary>"main", "cue", "3-4" or "3".</summary>
+    public static OutputRef Named(string bus) => new(OutputKind.Bus, Bus: bus);
+
+    /// <summary>"bus", "bus:Name", "main", "cue", "3-4" or "3".</summary>
     public override string ToString() => Kind switch
     {
         OutputKind.Main => "main",
         OutputKind.Cue => "cue",
+        OutputKind.Bus => Bus is null ? "bus" : $"bus:{Bus}",
         _ => Width == 1 ? $"{Channel + 1}" : $"{Channel + 1}-{Channel + 2}",
     };
 
-    /// <summary>The label used in lane headers and selects: "Main", "Cue", "3–4", "3".</summary>
+    /// <summary>The label used in lane headers and selects: "Group bus", a bus name, "Main", "Cue", "3–4", "3".</summary>
     public string Label => Kind switch
     {
         OutputKind.Main => "Main",
         OutputKind.Cue => "Cue",
+        OutputKind.Bus => Bus ?? GroupBusLabel,
         _ => Width == 1 ? $"{Channel + 1}" : $"{Channel + 1}–{Channel + 2}",
     };
 
     public static OutputRef Parse(string? text)
     {
-        var t = (text ?? string.Empty).Trim().ToLowerInvariant();
+        var raw = (text ?? string.Empty).Trim();
+        if (raw.StartsWith("bus:", StringComparison.OrdinalIgnoreCase) && raw[4..].Trim() is { Length: > 0 } name)
+            return Named(name);
+        var t = raw.ToLowerInvariant();
         if (t is "" or "main")
             return Main;
         if (t == "cue")
             return Cue;
+        if (t == "bus")
+            return GroupBus;
 
         var parts = t.Split('-', StringSplitOptions.TrimEntries);
         if (parts.Length is 1 or 2 && int.TryParse(parts[0], out var first) && first >= 1)
@@ -58,6 +71,7 @@ public enum OutputKind
     Main,
     Cue,
     Direct,
+    Bus,
 }
 
 /// <summary>One audio file of a song (DM-12).</summary>
@@ -74,7 +88,7 @@ public sealed record Track
     public int Channels { get; init; } = 2;
     public double SampleRate { get; init; }
     public long Frames { get; init; }
-    public string Output { get; init; } = "main";
+    public string Output { get; init; } = "bus";
     public bool Hidden { get; init; }
     public int Order { get; init; }
 
@@ -106,6 +120,9 @@ public static class TrackGroups
     public const string Vocals = "Vocals";
     public const string Strings = "Strings / Orch";
     public const string Other = "Other";
+
+    /// <summary>The bus pads play on; not a track group.</summary>
+    public const string Pads = "Pads";
 
     public static IReadOnlyList<string> LaneOrder { get; } =
         [Click, Guide, Drums, Percussion, Bass, Keys, ElectricGuitar, AcousticGuitar, Vocals, Strings, Other];

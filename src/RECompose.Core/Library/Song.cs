@@ -119,12 +119,18 @@ public sealed record Song
             arrangements = (Arrangements ?? []).Where(a => a is not null).Select(a => a.Normalized()).ToList();
         var defaultId = DefaultArrangementId is { } id && arrangements.Any(a => a.Id == id) ? id : null;
 
-        if (Tracks is not null && MixPresets is not null && Sections is not null && Notes is not null && Cues is not null && Automation is not null
+        // Before buses a track named Main or Cue; the old role default is now the group bus, which maps to the same output.
+        var tracks = Tracks;
+        if (tracks?.Any(t => OnOldDefault(t)) == true)
+            tracks = tracks.Select(t => OnOldDefault(t) ? t with { Output = "bus" } : t).ToList();
+
+        if (tracks is not null && MixPresets is not null && Sections is not null && Notes is not null && Cues is not null && Automation is not null
+            && ReferenceEquals(tracks, Tracks)
             && ReferenceEquals(guide, GuideAnalysis) && ReferenceEquals(arrangements, Arrangements) && defaultId == DefaultArrangementId)
             return this;
         return this with
         {
-            Tracks = Tracks ?? [],
+            Tracks = tracks ?? [],
             MixPresets = MixPresets ?? [],
             Sections = Sections ?? [],
             Notes = Notes ?? string.Empty,
@@ -135,6 +141,8 @@ public sealed record Song
             DefaultArrangementId = defaultId,
         };
     }
+
+    private static bool OnOldDefault(Track t) => t.Output == (t.Role == TrackRole.Music ? "main" : "cue");
 
     /// <summary>The variant that plays, or null for as written.</summary>
     public Arrangement? ActiveArrangement => DefaultArrangementId is { } id ? Arrangements.FirstOrDefault(a => a.Id == id) : null;

@@ -141,6 +141,7 @@ public sealed partial class MainViewModel
             MainWidth = a.MainWidth,
             CueChannel = a.CueChannel,
             CueWidth = a.CueWidth,
+            BusChannelsNeeded = a.BusChannelsNeeded,
             FallbackDeviceName = _settings.Audio.FallbackDeviceName,
             FallbackPresent = _settings.Audio.FallbackDeviceName is not null && _fallbackPresent,
             HasMidiBindings = Controls.Bindings.Any(b => b.Input.Kind != RECompose.Core.Controls.ControlKind.Key),

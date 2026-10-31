@@ -29,9 +29,73 @@ public class LibraryTests
     public void Logical_outputs_resolve_through_the_audio_settings()
     {
         var audio = new AudioSettings { MainChannel = 0, MainWidth = 2, CueChannel = 2, CueWidth = 2 };
-        Assert.Equal((0, 2), audio.Resolve("main"));
-        Assert.Equal((2, 2), audio.Resolve("cue"));   // demo step 6: Cue on outputs 3–4
-        Assert.Equal((5, 1), audio.Resolve("6"));
+        Assert.Equal((0, 2), audio.Resolve("main", TrackGroups.Bass));
+        Assert.Equal((2, 2), audio.Resolve("cue", TrackGroups.Bass));   // demo step 6: Cue on outputs 3–4
+        Assert.Equal((5, 1), audio.Resolve("6", TrackGroups.Bass));
+    }
+
+    [Theory]
+    [InlineData("bus", OutputKind.Bus, null, "Group bus")]
+    [InlineData("bus:Lead Vox", OutputKind.Bus, "Lead Vox", "Lead Vox")]
+    public void Buses_parse_and_print(string text, OutputKind kind, string? bus, string label)
+    {
+        var o = OutputRef.Parse(text);
+        Assert.Equal((kind, bus, label), (o.Kind, o.Bus, o.Label));
+        Assert.Equal(text, o.ToString());
+    }
+
+    [Fact]
+    public void An_unmapped_bus_plays_where_the_role_did_before_buses()
+    {
+        var audio = new AudioSettings { MainChannel = 0, MainWidth = 2, CueChannel = 2, CueWidth = 2 };
+        Assert.Equal((0, 2), audio.Resolve("bus", TrackGroups.Vocals));
+        Assert.Equal((2, 2), audio.Resolve("bus", TrackGroups.Click));
+        Assert.Equal((2, 2), audio.Resolve("bus", TrackGroups.Guide));
+    }
+
+    [Fact]
+    public void A_mapped_bus_moves_every_track_of_its_group_and_leaves_overrides_alone()
+    {
+        var audio = new AudioSettings
+        {
+            CueChannel = 2,
+            Buses = [new BusRoute(TrackGroups.ElectricGuitar, "5-6"), new BusRoute("Lead Vox", "8")],
+        };
+        Assert.Equal((4, 2), audio.Resolve("bus", TrackGroups.ElectricGuitar));
+        Assert.Equal((2, 2), audio.Resolve("cue", TrackGroups.ElectricGuitar));
+        Assert.Equal((7, 1), audio.Resolve("bus:Lead Vox", TrackGroups.Vocals));
+        Assert.Equal(["Lead Vox"], audio.CustomBuses);
+    }
+
+    [Fact]
+    public void A_removed_custom_bus_falls_back_to_the_group_bus()
+    {
+        var audio = new AudioSettings { Buses = [new BusRoute(TrackGroups.Vocals, "3-4")] };
+        Assert.Equal((2, 2), audio.Resolve("bus:Gone", TrackGroups.Vocals));
+    }
+
+    [Fact]
+    public void Pads_follow_their_bus_then_the_pad_output_then_main()
+    {
+        Assert.Equal((0, 2), new AudioSettings().ResolvePad());
+        Assert.Equal((6, 1), new AudioSettings { PadChannel = 6, PadWidth = 1 }.ResolvePad());
+        Assert.Equal((4, 2), new AudioSettings { PadChannel = 6, PadWidth = 1, Buses = [new BusRoute(TrackGroups.Pads, "5-6")] }.ResolvePad());
+    }
+
+    [Fact]
+    public void A_song_saved_before_buses_moves_its_default_outputs_to_the_group_bus()
+    {
+        var song = new Song
+        {
+            Id = "a", Title = "A", Source = new SongSource { Path = "/x" },
+            Tracks =
+            [
+                new Track { Id = "m", Name = "Bass", File = "/x/B.wav", Output = "main" },
+                new Track { Id = "c", Name = "Click", File = "/x/C.wav", Role = TrackRole.Click, Output = "cue" },
+                new Track { Id = "d", Name = "Keys", File = "/x/K.wav", Output = "3-4" },
+            ],
+        }.Normalized();
+        Assert.Equal(["bus", "bus", "3-4"], song.Tracks.Select(t => t.Output));
     }
 
     [Fact]

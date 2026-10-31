@@ -36,11 +36,10 @@ public class ImportRulesTests
     }
 
     [Fact]
-    public void Click_and_guide_default_to_the_cue_output()
+    public void Every_track_defaults_to_its_group_bus()
     {
-        Assert.Equal("cue", ImportRules.Detect("Click.wav").DefaultOutput);
-        Assert.Equal("cue", ImportRules.Detect("Guide.wav").DefaultOutput);
-        Assert.Equal("main", ImportRules.Detect("Bass.wav").DefaultOutput);
+        Assert.Equal("bus", ImportRules.Detect("Click.wav").DefaultOutput);
+        Assert.Equal("bus", ImportRules.Detect("Bass.wav").DefaultOutput);
     }
 
     [Fact]

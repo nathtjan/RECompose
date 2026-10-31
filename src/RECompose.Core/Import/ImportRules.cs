@@ -10,7 +10,7 @@ namespace RECompose.Core.Import;
 public readonly record struct DetectedTrack(TrackRole Role, string Group, bool Recognised)
 {
     /// <summary>Click and guide go to the Cue output, everything else to Main (PB-85).</summary>
-    public string DefaultOutput => Role is TrackRole.Music ? "main" : "cue";
+    public string DefaultOutput => "bus";
 }
 
 /// <summary>Import rules: role and group detection, lane order, BPM and key parsing (SL-52, SL-53).</summary>

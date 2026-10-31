@@ -732,7 +732,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             }
         }
 
-        var review = new ImportReviewViewModel(scan, _device?.OutputChannels.Count ?? 2);
+        var review = new ImportReviewViewModel(scan, _device?.OutputChannels.Count ?? 2, _settings.Audio.CustomBuses);
         while (true)
         {
             if (!await _dialogs.ReviewImportAsync(review))
@@ -1264,7 +1264,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
 
         var initial = new TrackEdit(track.Name, ImportRowViewModel.RoleName(track.Role), track.Group, OutputChoices.ToLabel(track.Output));
-        if (await _dialogs.EditTrackAsync(initial, OutputChoices.For(_device?.OutputChannels.Count ?? 2)) is not { } edit)
+        if (await _dialogs.EditTrackAsync(initial, OutputChoices.For(_device?.OutputChannels.Count ?? 2, _settings.Audio.CustomBuses)) is not { } edit)
             return;
 
         var role = ImportRowViewModel.RoleOf(edit.Role);
@@ -1411,7 +1411,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         var next = vm.ToSettings(_settings.Audio);
         if (next == _settings.Audio)
             return;
-        var previousOutputs = (_settings.Audio.MainChannel, _settings.Audio.MainWidth, _settings.Audio.CueChannel, _settings.Audio.CueWidth);
+        var previous = _settings.Audio;
         _settings = _settings with { Audio = next };
         _store.SaveSettings(_settings);
         Banner = null;
@@ -1419,19 +1419,21 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         await SendFallbackAsync();
         await SendVoiceInputAsync();
 
-        // Re-route every track when Main or Cue moved (demo step 6).
+        // Re-route every track when Main, Cue or a bus moved (demo step 6).
         var a = _settings.Audio;
-        if (_song is not null && previousOutputs != (a.MainChannel, a.MainWidth, a.CueChannel, a.CueWidth) && _engine is { } engine)
+        var routed = (a.MainChannel, a.MainWidth, a.CueChannel, a.CueWidth) != (previous.MainChannel, previous.MainWidth, previous.CueChannel, previous.CueWidth)
+            || !(a.Buses ?? []).SequenceEqual(previous.Buses ?? []);
+        if (_song is not null && routed && _engine is { } engine)
         {
             foreach (var track in _song.Tracks)
             {
-                await engine.SetTrackAsync(track.Id, output: a.Resolve(track.Track.Output));
-                track.OutputLabel = Outputs.Label(track.Track.Output);
+                await engine.SetTrackAsync(track.Id, output: a.Resolve(track.Track.Output, track.Track.Group));
+                track.OutputLabel = Outputs.Label(track.Track.Output, track.Track.Group);
             }
-            await engine.SetTrackAsync(EngineTrack.ClickTrackId, output: a.Resolve("cue"));
-            await engine.SetTrackAsync(EngineTrack.SpeechTrackId, output: a.Resolve("cue"));
+            await engine.SetTrackAsync(EngineTrack.ClickTrackId, output: a.Resolve("bus", TrackGroups.Click));
+            await engine.SetTrackAsync(EngineTrack.SpeechTrackId, output: a.Resolve("bus", TrackGroups.Guide));
             await engine.SetPadAsync(output: a.ResolvePad());
-            ShowToast($"Main on {OutputRef.Direct(a.MainChannel, a.MainWidth).Label}, Cue on {OutputRef.Direct(a.CueChannel, a.CueWidth).Label}");
+            ShowToast("Outputs updated");
         }
     }
 

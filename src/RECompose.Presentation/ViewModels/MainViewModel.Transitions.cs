@@ -63,7 +63,7 @@ public sealed partial class MainViewModel
     {
         var tracks = model.Tracks.Where(t => !t.Hidden).Select(t =>
         {
-            var (channel, width) = _settings.Audio.Resolve(t.Output);
+            var (channel, width) = _settings.Audio.Resolve(t.Output, t.Group);
             var m = mix.For(t.Id);
             return new EngineTrack(t.Id, t.File, channel, width, m.GainDb <= TrackViewModel.MinimumDb ? -100 : m.GainDb, m.Mute, m.Solo, t.IsClickOrGuide)
             {
@@ -72,9 +72,10 @@ public sealed partial class MainViewModel
                 Renders = RendersFor(t), // REL-10: rendered keys and tempos instead of live processing
             };
         }).ToList();
-        var (cueChannel, cueWidth) = _settings.Audio.Resolve("cue");
-        tracks.Add(EngineTrack.Click(cueChannel, cueWidth));
-        tracks.Add(EngineTrack.Speech(cueChannel, cueWidth)); // spoken guide, replaced calls and counts (AUTO-30, AUTO-31, PB-71)
+        var (clickChannel, clickWidth) = _settings.Audio.Resolve("bus", TrackGroups.Click);
+        var (guideChannel, guideWidth) = _settings.Audio.Resolve("bus", TrackGroups.Guide);
+        tracks.Add(EngineTrack.Click(clickChannel, clickWidth));
+        tracks.Add(EngineTrack.Speech(guideChannel, guideWidth)); // spoken guide, replaced calls and counts (AUTO-30, AUTO-31, PB-71)
         return tracks;
     }
 
@@ -193,7 +194,7 @@ public sealed partial class MainViewModel
                 {
                     var nextKey = ServiceText.EntryKey(next, nextEntry.KeyOffset);
                     var bpm = ServiceText.ClickBpm(transition, next.Bpm * nextEntry.TempoFactor);
-                    var (channel, width) = _settings.Audio.Resolve("cue");
+                    var (channel, width) = _settings.Audio.Resolve("bus", TrackGroups.Click);
                     var pad = new PadTransition(ServiceText.PadKey(transition, nextKey).PitchClass, transition.FadePadOutOnNextStart,
                         transition.ClickDuring ? bpm : null, next.BeatsPerBar, channel, width);
                     double? auto = transition.AutoStartNext ? transition.AutoStartAfterBars * next.BeatsPerBar * 60.0 / bpm : null;

@@ -58,6 +58,9 @@ public sealed record CheckContext
     public int CueChannel { get; init; }
     public int CueWidth { get; init; } = 2;
 
+    /// <summary>The channel count the mapped buses need (<see cref="RECompose.Core.Settings.AudioSettings.BusChannelsNeeded"/>).</summary>
+    public int BusChannelsNeeded { get; init; }
+
     public string? FallbackDeviceName { get; init; }
     public bool FallbackPresent { get; init; }
 
@@ -243,9 +246,9 @@ public static class ServiceCheck
         if (c.DeviceName is null)
             return new CheckItem(5, "Audio device", CheckStatus.Error, "No audio device is open.", CheckFix.OpenAudioSettings);
 
-        var needed = Math.Max(c.MainChannel + c.MainWidth, c.CueChannel + c.CueWidth);
+        var needed = Math.Max(Math.Max(c.MainChannel + c.MainWidth, c.CueChannel + c.CueWidth), c.BusChannelsNeeded);
         if (c.OutputChannels > 0 && needed > c.OutputChannels)
-            return new CheckItem(5, "Audio device", CheckStatus.Warning, $"{c.DeviceName} has {c.OutputChannels} outputs, and Main and Cue use up to channel {needed}.", CheckFix.OpenAudioSettings);
+            return new CheckItem(5, "Audio device", CheckStatus.Warning, $"{c.DeviceName} has {c.OutputChannels} outputs, and the outputs use up to channel {needed}.", CheckFix.OpenAudioSettings);
         return new CheckItem(5, "Audio device", CheckStatus.Ok, $"{c.DeviceName}, {c.OutputChannels} outputs.");
     }
 

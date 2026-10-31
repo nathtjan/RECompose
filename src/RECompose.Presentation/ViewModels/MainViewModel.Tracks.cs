@@ -136,7 +136,7 @@ public sealed partial class MainViewModel
             return;
 
         var initial = new TrackEdit(file.Name, ImportRowViewModel.RoleName(file.Detected.Role), file.Detected.Group, OutputChoices.ToLabel(file.Detected.DefaultOutput));
-        if (await _dialogs.EditTrackAsync(initial, OutputChoices.For(_device?.OutputChannels.Count ?? 2), "Add track", "Add") is not { } edit)
+        if (await _dialogs.EditTrackAsync(initial, OutputChoices.For(_device?.OutputChannels.Count ?? 2, _settings.Audio.CustomBuses), "Add track", "Add") is not { } edit)
             return;
 
         var role = ImportRowViewModel.RoleOf(edit.Role);

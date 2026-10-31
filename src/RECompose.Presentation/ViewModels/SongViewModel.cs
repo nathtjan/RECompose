@@ -95,7 +95,7 @@ public sealed class SongViewModel : ObservableObject
 
         foreach (var track in model.Tracks.Where(t => !t.Hidden))
         {
-            var vm = new TrackViewModel(track, outputs.Label(track.Output));
+            var vm = new TrackViewModel(track, outputs.Label(track.Output, track.Group));
             var mix = Mix.For(track.Id);
             var engineTrack = loaded?.Tracks.FirstOrDefault(t => t.Id == track.Id);
             vm.Apply(engineTrack?.GainDb ?? mix.GainDb, engineTrack?.Mute ?? mix.Mute, engineTrack?.Solo ?? mix.Solo);
@@ -361,15 +361,16 @@ public sealed class SongViewModel : ObservableObject
     }
 }
 
-/// <summary>Turns a track's output into the label shown in its lane header ("Main", "Cue", "3–4").</summary>
+/// <summary>Turns a track's output into the label shown in its lane header ("Main 1–2", "Vocals 3–4", "3–4").</summary>
 public sealed class AudioSettingsResolver(Func<Core.Settings.AudioSettings> settings)
 {
-    public string Label(string output)
+    public string Label(string output, string group)
     {
         var o = OutputRef.Parse(output);
         if (o.Kind == OutputKind.Direct)
             return o.Label;
-        var (channel, width) = settings().Resolve(output);
-        return $"{o.Label} {OutputRef.Direct(channel, width).Label}";
+        var (channel, width) = settings().Resolve(output, group);
+        var name = o.Kind == OutputKind.Bus ? o.Bus ?? group : o.Label;
+        return $"{name} {OutputRef.Direct(channel, width).Label}";
     }
 }

@@ -134,9 +134,9 @@ public sealed class MainViewModelTests : IDisposable
         Assert.Equal("Champion - Bb - 72bpm", review.Scan.Title);
         Assert.Equal("B♭", review.KeyText);
         Assert.Equal("72", review.BpmText);
-        Assert.Equal("Cue", review.Rows.Single(r => r.FileName == "Click Track.wav").Output);
+        Assert.Equal("Group bus", review.Rows.Single(r => r.FileName == "Click Track.wav").Output);
         Assert.Equal("Click", review.Rows.Single(r => r.FileName == "Click Track.wav").Role);
-        Assert.Equal("Main", review.Rows.Single(r => r.FileName == "Bass.wav").Output);
+        Assert.Equal("Group bus", review.Rows.Single(r => r.FileName == "Bass.wav").Output);
 
         var item = Assert.Single(vm.Songs);
         Assert.Equal("Champion", item.Title);
@@ -145,7 +145,7 @@ public sealed class MainViewModelTests : IDisposable
         await vm.LoadSongAsync(item.Id);
         Assert.NotNull(vm.Song);
         Assert.Equal(["Click Track", "Guide", "Drums", "Bass", "Keys 2", "Keys 10"], vm.Song!.Tracks.Select(t => t.Name));
-        Assert.Equal("Cue 1–2", vm.Song.Tracks[0].OutputLabel);
+        Assert.Equal("Click 1–2", vm.Song.Tracks[0].OutputLabel);
         Assert.Equal("B♭   72 BPM   3/4", vm.Song.HeaderLine);
 
         // Peaks are computed in the background and arrive on every lane (SL-54).
@@ -598,6 +598,31 @@ public sealed class MainViewModelTests : IDisposable
         // ASIO takes the mic from the device it plays through only.
         audio.SelectedType = "ASIO";
         Assert.Equal([AudioSettingsViewModel.SameDevice], audio.VoiceDevices);
+    }
+
+    [Fact]
+    public void Buses_save_only_what_differs_from_the_defaults_plus_the_custom_ones()
+    {
+        var current = new DeviceInfo("Windows Audio", "Interface", 48000, 256, ["1", "2", "3", "4", "5", "6"], [48000], [256], 0, []);
+        var audio = new AudioSettingsViewModel([new("Windows Audio", ["Interface"])], current, new Core.Settings.AudioSettings());
+
+        Assert.Equal([.. TrackGroups.LaneOrder, TrackGroups.Pads], audio.Buses.Select(b => b.Name));
+        Assert.Null(audio.ToSettings(new Core.Settings.AudioSettings()).Buses);
+        Assert.Equal("Cue", audio.Buses.Single(b => b.Name == TrackGroups.Click).Output);
+
+        audio.Buses.Single(b => b.Name == TrackGroups.Click).Output = "3";
+        audio.NewBusName = "Lead Vox";
+        audio.AddBusCommand.Execute(null);
+        audio.NewBusName = "3rd";
+        audio.AddBusCommand.Execute(null);
+        Assert.NotEqual(string.Empty, audio.BusError);
+
+        var saved = audio.ToSettings(new Core.Settings.AudioSettings());
+        Assert.Equal([new Core.Settings.BusRoute(TrackGroups.Click, "3"), new Core.Settings.BusRoute("Lead Vox", "main")], saved.Buses);
+        Assert.Equal((2, 1), saved.Resolve("bus", TrackGroups.Click));
+
+        audio.Buses.Single(b => b.Name == "Lead Vox").RemoveCommand!.Execute(null);
+        Assert.Equal([new Core.Settings.BusRoute(TrackGroups.Click, "3")], audio.ToSettings(saved).Buses);
     }
 }
 

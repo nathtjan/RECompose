@@ -13,11 +13,13 @@ namespace RECompose.Presentation.ViewModels;
 /// <summary>The choices offered for a track's output (PB-85).</summary>
 public static class OutputChoices
 {
-    /// <summary>"Main", "Cue", then pairs and single channels up to the device's count.</summary>
-    public static IReadOnlyList<string> For(int deviceChannels)
+    /// <summary>"Group bus", the custom buses, "Main", "Cue", then pairs and single channels up to the device's count.</summary>
+    public static IReadOnlyList<string> For(int deviceChannels, IEnumerable<string>? customBuses = null)
     {
         var count = Math.Clamp(deviceChannels, 2, 16);
-        var list = new List<string> { "Main", "Cue" };
+        var list = new List<string> { OutputRef.GroupBusLabel };
+        list.AddRange(customBuses ?? []);
+        list.AddRange(["Main", "Cue"]);
         for (var c = 0; c + 1 < count; c += 2)
             list.Add(OutputRef.Direct(c, 2).Label);
         for (var c = 0; c < count; c++)
@@ -29,6 +31,8 @@ public static class OutputChoices
     {
         if (label == "Main") return "main";
         if (label == "Cue") return "cue";
+        if (label == OutputRef.GroupBusLabel) return "bus";
+        if (label.Length > 0 && !char.IsDigit(label[0])) return $"bus:{label}"; // a custom bus: its name never starts with a digit
         var parts = label.Split('–');
         return parts.Length == 2 ? $"{parts[0]}-{parts[1]}" : label;
     }
@@ -122,14 +126,14 @@ public sealed class ImportReviewViewModel : ObservableObject
     private string _meterText;
     private string? _error;
 
-    public ImportReviewViewModel(ImportScan scan, int deviceChannels)
+    public ImportReviewViewModel(ImportScan scan, int deviceChannels, IEnumerable<string>? customBuses = null)
     {
         Scan = scan;
         _title = scan.Title;
         _keyText = scan.Key is { } k && Key.TryParse(k, out var key) ? key.ToDisplayString() : string.Empty;
         _bpmText = scan.Bpm is { } b ? Format.Bpm(b) : string.Empty;
         _meterText = scan.Meter is { } m ? $"{m.BeatsPerBar}/{m.BeatUnit}" : "4/4";
-        var options = OutputChoices.For(deviceChannels);
+        var options = OutputChoices.For(deviceChannels, customBuses);
         Rows = new ObservableCollection<ImportRowViewModel>(scan.Files.Select(f => new ImportRowViewModel(f, options)));
     }
 

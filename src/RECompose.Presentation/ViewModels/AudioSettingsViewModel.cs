@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+using System.Collections.ObjectModel;
 using System.Globalization;
 using RECompose.Core.Library;
 using RECompose.Core.Settings;
@@ -47,6 +48,7 @@ public sealed class AudioSettingsViewModel : ObservableObject
         OutputOptions = ChannelOptions(current?.OutputChannels.Count ?? 2);
         _mainOutput = OutputRef.Direct(settings.MainChannel, settings.MainWidth).Label;
         _cueOutput = OutputRef.Direct(settings.CueChannel, settings.CueWidth).Label;
+        InitBuses(settings);
         MdOptions = [VoiceOff, .. OutputOptions];
         _mdOutput = settings.MdChannel is { } md ? OutputRef.Direct(md, settings.MdWidth).Label : VoiceOff;
 
@@ -186,6 +188,57 @@ public sealed class AudioSettingsViewModel : ObservableObject
 
     public bool CueSharesMain => _cueOutput == _mainOutput;
 
+    // ---- Buses (PB-85) --------------------------------------------------------------------------
+
+    private string _newBusName = string.Empty;
+    private string _busError = string.Empty;
+
+    /// <summary>The track groups in lane order, Pads, then the buses the user added.</summary>
+    public ObservableCollection<BusRowViewModel> Buses { get; } = [];
+
+    /// <summary>"Main", "Cue", then the device's pairs and channels.</summary>
+    public IReadOnlyList<string> BusOptions { get; private set; } = [];
+
+    public string NewBusName { get => _newBusName; set => Set(ref _newBusName, value ?? string.Empty); }
+
+    public string BusError { get => _busError; private set => Set(ref _busError, value); }
+
+    public RelayCommand AddBusCommand { get; private set; } = null!;
+
+    private void InitBuses(AudioSettings settings)
+    {
+        BusOptions = ["Main", "Cue", .. OutputOptions];
+        AddBusCommand = new RelayCommand(AddBus);
+        foreach (var name in TrackGroups.LaneOrder.Append(TrackGroups.Pads))
+            Buses.Add(NewBusRow(name, settings.BusOutput(name), isCustom: false));
+        foreach (var name in settings.CustomBuses)
+            Buses.Add(NewBusRow(name, settings.BusOutput(name), isCustom: true));
+    }
+
+    private BusRowViewModel NewBusRow(string name, string output, bool isCustom)
+    {
+        var row = new BusRowViewModel(name, OutputChoices.ToLabel(output), isCustom);
+        row.RemoveCommand = new RelayCommand(() => Buses.Remove(row));
+        return row;
+    }
+
+    private void AddBus()
+    {
+        var name = NewBusName.Trim();
+        BusError = name switch
+        {
+            "" => string.Empty,
+            _ when char.IsDigit(name[0]) || name.Contains(':') => "A bus name can't start with a digit or contain a colon.",
+            _ when name is "Main" or "Cue" or OutputRef.GroupBusLabel => $"\"{name}\" is taken.",
+            _ when Buses.Any(b => b.Name.Equals(name, StringComparison.OrdinalIgnoreCase)) => $"\"{name}\" is taken.",
+            _ => string.Empty,
+        };
+        if (name.Length == 0 || BusError.Length > 0)
+            return;
+        Buses.Add(NewBusRow(name, "main", isCustom: true));
+        NewBusName = string.Empty;
+    }
+
     private string _mdOutput;
 
     /// <summary>"Off", then the outputs: where the MD hears spoken confirmations (VC-50).</summary>
@@ -245,6 +298,7 @@ public sealed class AudioSettingsViewModel : ObservableObject
             FallbackDeviceType = _fallbacks.TryGetValue(SelectedFallback, out var f) && f.Type.Length > 0 ? f.Type : null,
             FallbackDeviceName = _fallbacks.TryGetValue(SelectedFallback, out var g) ? g.Name : null,
             AutoSwitchBack = AutoSwitchBack,
+            Buses = BusRoutes(),
             VoiceChannel = VoiceChannel,
             VoiceDevice = _voiceDevice == SameDevice ? null : _voiceDevice,
             MdChannel = MdOutput == VoiceOff ? null : OutputRef.Parse(OutputChoices.ToOutput(MdOutput)).Channel,
@@ -254,6 +308,17 @@ public sealed class AudioSettingsViewModel : ObservableObject
             VoiceGate = VoiceGate,
             VoiceBareNames = VoiceBareNames,
         };
+    }
+
+    /// <summary>The routes that differ from the defaults, plus every custom bus; null when there are none.</summary>
+    private List<BusRoute>? BusRoutes()
+    {
+        var defaults = new AudioSettings();
+        var routes = Buses
+            .Select(b => new BusRoute(b.Name, OutputChoices.ToOutput(b.Output)))
+            .Where(r => Buses.First(b => b.Name == r.Name).IsCustom || r.Output != defaults.BusOutput(r.Name))
+            .ToList();
+        return routes.Count == 0 ? null : routes;
     }
 
     /// <summary>Pairs "1–2", "3–4"… then single channels "1", "2"…</summary>
@@ -307,4 +372,17 @@ public sealed class AudioSettingsViewModel : ObservableObject
         VoiceInputs = inputs;
         VoiceInput = selected;
     }
+}
+
+/// <summary>One bus in Settings › Audio: its name and where it plays ("Main", "Cue", "3–4").</summary>
+public sealed class BusRowViewModel(string name, string output, bool isCustom) : ObservableObject
+{
+    private string _output = output;
+
+    public string Name { get; } = name;
+    public bool IsCustom { get; } = isCustom;
+    public string Output { get => _output; set => Set(ref _output, value); }
+
+    /// <summary>Removes a custom bus; set by the settings view model.</summary>
+    public RelayCommand? RemoveCommand { get; set; }
 }

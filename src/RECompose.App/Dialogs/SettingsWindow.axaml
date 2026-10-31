@@ -50,6 +50,7 @@
               <TextBlock Grid.Row="6" Grid.Column="1" Classes="meta" TextWrapping="Wrap"
                          Text="Channels listed are the open device's outputs. Choose the device first and apply, then pick outputs if it has more than two." />
 
+
               <TextBlock Grid.Row="7" Classes="label" Text="FALLBACK" VerticalAlignment="Center" ToolTip.Tip="Takes over within a second if the main device is lost" />
               <ComboBox Grid.Row="7" Grid.Column="1" ItemsSource="{Binding FallbackOptions}" SelectedItem="{Binding SelectedFallback}" HorizontalAlignment="Stretch"
                         AutomationProperties.Name="Fallback device" />
@@ -59,6 +60,28 @@
                          Text="If the main device is lost, playback moves to the fallback at the same position. Without one, the song keeps time silently for a minute. When the main device returns, RECompose switches back at the next section boundary." />
 
             </Grid>
+
+            <TextBlock Classes="label" Text="BUSES" />
+            <TextBlock Classes="meta" TextWrapping="Wrap"
+                       Text="Each track plays on its group's bus. Send a bus to Main, Cue or its own channels, and every song follows. Pads have their own bus. A track can also be put on a custom bus in its edit dialog." />
+            <ItemsControl x:Name="BusRows" ItemsSource="{Binding Buses}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:BusRowViewModel">
+                  <Grid ColumnDefinitions="140,*,Auto" Margin="0,0,0,8">
+                    <TextBlock Text="{Binding Name}" VerticalAlignment="Center" />
+                    <ComboBox Grid.Column="1" ItemsSource="{Binding $parent[ItemsControl].((vm:AudioSettingsViewModel)DataContext).BusOptions}"
+                              SelectedItem="{Binding Output}" HorizontalAlignment="Stretch" AutomationProperties.Name="{Binding Name}" />
+                    <Button Grid.Column="2" Content="Remove" Command="{Binding RemoveCommand}" IsVisible="{Binding IsCustom}" Margin="8,0,0,0" />
+                  </Grid>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <Grid ColumnDefinitions="140,*,Auto">
+              <TextBlock Classes="label" Text="NEW BUS" VerticalAlignment="Center" />
+              <TextBox Grid.Column="1" Text="{Binding NewBusName}" Watermark="Lead Vox" AutomationProperties.Name="New bus name" />
+              <Button Grid.Column="2" Content="Add bus" Command="{Binding AddBusCommand}" Margin="8,0,0,0" />
+            </Grid>
+            <TextBlock Classes="meta" Text="{Binding BusError}" TextWrapping="Wrap" IsVisible="{Binding BusError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
           </StackPanel>
         </ScrollViewer>
       </TabItem>

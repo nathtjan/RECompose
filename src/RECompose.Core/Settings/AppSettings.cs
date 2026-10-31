@@ -59,22 +59,55 @@ public sealed record AudioSettings
     public int? PadChannel { get; init; }
     public int? PadWidth { get; init; }
 
-    /// <summary>Where pads play: the Pad output, or Main when it isn't set.</summary>
-    public (int Channel, int Width) ResolvePad() =>
-        PadChannel is { } channel ? (channel, PadWidth == 1 ? 1 : 2) : (MainChannel, MainWidth);
+    /// <summary>
+    /// Where each bus plays. The group buses and Pads appear once they are mapped; custom buses always appear.
+    /// A bus not listed plays where it did before buses: Click and Guide on Cue, the rest on Main.
+    /// </summary>
+    public List<BusRoute>? Buses { get; init; }
 
-    /// <summary>Resolves a track output ("main", "cue", "3-4") to device channels.</summary>
-    public (int Channel, int Width) Resolve(string output)
+    /// <summary>The buses the user added; the rest are the track groups and Pads.</summary>
+    public IEnumerable<string> CustomBuses =>
+        (Buses ?? []).Select(b => b.Name).Where(n => !TrackGroups.LaneOrder.Contains(n) && n != TrackGroups.Pads);
+
+    /// <summary>The channel count the mapped buses need: the end of the furthest channel any of them plays on.</summary>
+    public int BusChannelsNeeded =>
+        (Buses ?? []).Select(b => Resolve(b.Output, b.Name)).Select(r => r.Channel + r.Width).DefaultIfEmpty(0).Max();
+
+    /// <summary>The output a bus is mapped to: "main", "cue", "3-4" or "3".</summary>
+    public string BusOutput(string bus) =>
+        Buses?.FirstOrDefault(b => b.Name == bus)?.Output
+        ?? (bus is TrackGroups.Click or TrackGroups.Guide ? "cue" : "main");
+
+    /// <summary>Where pads play: the Pads bus if mapped, else the Pad output, else Main.</summary>
+    public (int Channel, int Width) ResolvePad() =>
+        Buses?.Any(b => b.Name == TrackGroups.Pads) == true ? Resolve(BusOutput(TrackGroups.Pads), TrackGroups.Pads)
+        : PadChannel is { } channel ? (channel, PadWidth == 1 ? 1 : 2)
+        : (MainChannel, MainWidth);
+
+    /// <summary>
+    /// Resolves a track output ("bus", "bus:Name", "main", "cue", "3-4") to device channels; <paramref name="group"/> is the
+    /// track's group, whose bus "bus" means. A named bus that is gone falls back to the group bus.
+    /// </summary>
+    public (int Channel, int Width) Resolve(string output, string group)
     {
         var o = OutputRef.Parse(output);
+        if (o.Kind == OutputKind.Bus)
+        {
+            var bus = o.Bus is { } name && (Buses?.Any(b => b.Name == name) == true) ? name : group;
+            o = OutputRef.Parse(BusOutput(bus));
+        }
+
         return o.Kind switch
         {
-            OutputKind.Main => (MainChannel, MainWidth),
+            OutputKind.Main or OutputKind.Bus => (MainChannel, MainWidth),
             OutputKind.Cue => (CueChannel, CueWidth),
             _ => (o.Channel, o.Width),
         };
     }
 }
+
+/// <summary>One bus and the output it plays on: "main", "cue", "3-4" or "3" (never another bus).</summary>
+public sealed record BusRoute(string Name, string Output);
 
 /// <summary>The pads' own settings (SL-44, SL-45).</summary>
 public sealed record PadSettings

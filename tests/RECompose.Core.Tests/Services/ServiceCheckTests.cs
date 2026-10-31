@@ -134,6 +134,7 @@ public class ServiceCheckTests
 
         Assert.Equal(CheckStatus.Error, Item(ServiceCheck.Run(Context(service, [song]) with { DeviceName = null }), 5).Status);
         Assert.Equal(CheckStatus.Warning, Item(ServiceCheck.Run(Context(service, [song]) with { OutputChannels = 2 }), 5).Status);        // Cue is on 3–4
+        Assert.Equal(CheckStatus.Warning, Item(ServiceCheck.Run(Context(service, [song]) with { BusChannelsNeeded = 6 }), 5).Status);    // a bus is on 5–6 of 4
         Assert.Equal(CheckStatus.Warning, Item(ServiceCheck.Run(Context(service, [song]) with { FreeDiskBytes = 500L * 1024 * 1024 }), 11).Status);
         var battery = Item(ServiceCheck.Run(Context(service, [song]) with { OnBattery = true, BatteryPercent = 15 }), 12);
         Assert.Equal(CheckStatus.Warning, battery.Status);
