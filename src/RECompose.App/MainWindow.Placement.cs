@@ -18,6 +18,7 @@ public partial class MainWindow
 
     private WindowBounds? _normalBounds;
     private bool _maximized;
+    private Size? _normalBorder;
     private DispatcherTimer? _settle;
 
     private void TrackPlacement()
@@ -46,7 +47,10 @@ public partial class MainWindow
         {
             _settle.Stop();
             NoteNormalBounds();
-            if ((SystemNormalBounds() ?? _normalBounds) is { } bounds && ViewModel is { } vm)
+            // A window snapped into a layout is restored but Windows still keeps its place from before the snap, so only a
+            // maximised or minimised window takes the system's record.
+            var bounds = WindowState == WindowState.Normal ? _normalBounds : SystemNormalBounds() ?? _normalBounds;
+            if (bounds is not null && ViewModel is { } vm)
                 vm.SaveWindow(bounds, _maximized);
         };
     }
@@ -56,8 +60,11 @@ public partial class MainWindow
         if (WindowState != WindowState.Normal || !IsVisible)
             return;
         var bounds = new WindowBounds(Position.X, Position.Y, ClientSize.Width, ClientSize.Height);
-        if (!FillsItsScreen(bounds)) // a normal window as big as the screen's free area is a maximise caught half-way
-            _normalBounds = bounds;
+        if (FillsItsScreen(bounds)) // a normal window as big as the screen's free area is a maximise caught half-way
+            return;
+        _normalBounds = bounds;
+        if (FrameSize is { } frame)
+            _normalBorder = new Size(frame.Width - ClientSize.Width, frame.Height - ClientSize.Height); // differs from the maximised one
     }
 
     private bool FillsItsScreen(WindowBounds bounds) =>
@@ -91,11 +98,13 @@ public partial class MainWindow
     /// <summary>
     /// Windows keeps the restored place and size of a window even while it is maximised; null elsewhere or when it can't
     /// be read. Its rectangle is the outer frame in workspace coordinates (offset by a taskbar at the top or left of the
-    /// primary screen), so it is moved to screen coordinates and the frame is taken off the size.
+    /// primary screen), so it is moved to screen coordinates and the restored border is taken off the size.
     /// </summary>
     private WindowBounds? SystemNormalBounds()
     {
-        if (!OperatingSystem.IsWindows() || TryGetPlatformHandle() is not { HandleDescriptor: "HWND" } handle || Screens.Primary is not { } primary)
+        // The border is known only from the window seen restored; until then the place it opened at stands.
+        if (!OperatingSystem.IsWindows() || _normalBorder is not { } border
+            || TryGetPlatformHandle() is not { HandleDescriptor: "HWND" } handle || Screens.Primary is not { } primary)
             return null;
         var placement = new Win32.WindowPlacement { Length = Marshal.SizeOf<Win32.WindowPlacement>() };
         if (!Win32.GetWindowPlacement(handle.Handle, ref placement))
@@ -104,8 +113,6 @@ public partial class MainWindow
         var r = placement.NormalPosition;
         var offset = primary.WorkingArea.Position - primary.Bounds.Position;
         var scaling = Screens.ScreenFromPoint(new PixelPoint(r.Left + offset.X, r.Top + offset.Y))?.Scaling ?? primary.Scaling;
-        // The border, the same maximised or not.
-        var border = FrameSize is { } outer ? new Size(outer.Width - ClientSize.Width, outer.Height - ClientSize.Height) : default;
         return FromPlacement(new PixelRect(r.Left, r.Top, r.Right - r.Left, r.Bottom - r.Top), offset, scaling, border);
     }
 

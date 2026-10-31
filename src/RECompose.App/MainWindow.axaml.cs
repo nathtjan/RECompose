@@ -31,6 +31,7 @@ public partial class MainWindow : Window
         InitializeComponent();
 
         TrackPlacement();
+        LeaveRoomForHiddenTaskbar();
 
         // The top bars are the title bar; macOS keeps its traffic lights over their left end.
         if (OperatingSystem.IsMacOS())
