@@ -49,7 +49,11 @@ public sealed class SectionRowViewModel : ObservableObject
     public string LengthText => Info.LengthBars.ToString(CultureInfo.InvariantCulture);
     public bool NeedsReview => Info.Section.NeedsReview;
     public bool HasCall => Call is not null;
-    public string CallTip => Call is null ? "No guide call for this section" : $"Play the guide call: \"{Call.Text}\"";
+    /// <summary>What the guide said where Detect found this section, and why it can't be played when it can't.</summary>
+    public string CallTip =>
+        Call is null ? "No guide call: this section was added by hand, or the guide said nothing here."
+        : _owner.CanPlayRanges ? $"Play what the guide said here: \"{Call.Text}\". Detect found the section from it."
+        : $"The guide said \"{Call.Text}\" here. Switch to As written to play it.";
 
     /// <summary>The editable name; committed with <see cref="CommitName"/> (Enter or leaving the field).</summary>
     public string Name { get => _name; set => Set(ref _name, value); }

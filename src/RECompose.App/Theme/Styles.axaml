@@ -159,6 +159,12 @@
   <Style Selector="Button.primary:pressed /template/ ContentPresenter#PART_ContentPresenter">
     <Setter Property="Background" Value="{DynamicResource accent-edge}" />
   </Style>
+  <!-- A disabled yellow key looks like any disabled key, not like one that can be pressed. -->
+  <Style Selector="Button.primary:disabled /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource bg-surface}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource key-edge}" />
+    <Setter Property="Foreground" Value="{DynamicResource text-disabled}" />
+  </Style>
   <Style Selector="Button.primary">
     <Setter Property="FontWeight" Value="Bold" />
   </Style>

@@ -359,6 +359,36 @@ public sealed class PerformWindowTests : IDisposable
     }
 
     [Fact]
+    public async Task Without_a_guide_Detect_is_disabled_and_looks_it_and_sections_without_a_call_show_a_dash()
+    {
+        await HeadlessApp.RunAsync(async () =>
+        {
+            var store = SaveLibrary(); // click and keys, no guide
+            var missing = Path.Combine(_root, "no-engine", EnginePaths.ExecutableFileName);
+            await using var vm = new MainViewModel(store, new EngineHostOptions(missing, Path.Combine(_root, "e.sock")), new EngineTools(missing),
+                new AvaloniaDispatcher(), new AcceptingDialogs(), new SpeechModel(store.Root, allowDownload: false));
+
+            var window = new MainWindow { DataContext = vm, Width = 1280, Height = 760 };
+            window.Show();
+            await vm.InitializeAsync();
+            await vm.LoadEntryAsync(vm.Setlist.Rows[0].Id);
+            vm.SelectedTab = MainViewModel.SectionsTab;
+            Dispatcher.UIThread.RunJobs();
+
+            var detect = window.GetVisualDescendants().OfType<Button>().Single(b => b.Name == "DetectButton" && b.IsEffectivelyVisible);
+            Assert.False(detect.IsEffectivelyEnabled);
+            var face = detect.GetVisualDescendants().OfType<Avalonia.Controls.Presenters.ContentPresenter>().First(p => p.Name == "PART_ContentPresenter");
+            window.TryFindResource("accent", window.ActualThemeVariant, out var accent);
+            Assert.NotEqual(((Avalonia.Media.ISolidColorBrush)accent!).Color, ((Avalonia.Media.ISolidColorBrush)face.Background!).Color);
+
+            // No call heard for these sections: a dash with the reason, no play key that does nothing.
+            Assert.DoesNotContain(window.GetVisualDescendants().OfType<Button>(), b => b.IsEffectivelyVisible && Avalonia.Automation.AutomationProperties.GetName(b) == "Play the guide call");
+            var dash = window.GetVisualDescendants().OfType<TextBlock>().First(t => t.IsEffectivelyVisible && t.Text == "–");
+            Assert.StartsWith("No guide call", (string)ToolTip.GetTip(dash)!, StringComparison.Ordinal);
+        }, TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
     public async Task Space_never_also_presses_the_focused_key_and_a_double_clicked_key_takes_typing()
     {
         await HeadlessApp.RunAsync(async () =>

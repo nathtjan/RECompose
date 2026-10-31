@@ -980,7 +980,7 @@
                 <TextBlock Grid.Column="4" Classes="label" Text="START (S)" />
                 <TextBlock Grid.Column="5" Classes="label" Text="CHART BAR" />
                 <TextBlock Grid.Column="6" Classes="label" Text="BARS" />
-                <TextBlock Grid.Column="7" Classes="label" Text="CALL" />
+                <TextBlock Grid.Column="7" Classes="label" Text="CALL" ToolTip.Tip="What the guide said where Detect found the section; play it to check the start" />
               </Grid>
               <TextBlock DockPanel.Dock="Top" Classes="meta" Margin="8" IsVisible="{Binding IsEmpty}" TextWrapping="Wrap"
                          Text="No sections yet. Press Detect from guide, or play the song and press M at each section." />
@@ -1005,10 +1005,12 @@
                                FontFamily="{DynamicResource FontMono}" ToolTip.Tip="Seconds; snaps to the nearest bar" />
                       <TextBlock Grid.Column="5" Classes="mono" Text="{Binding ChartBarText}" VerticalAlignment="Center" />
                       <TextBlock Grid.Column="6" Classes="mono" Text="{Binding LengthText}" VerticalAlignment="Center" />
-                      <Button Grid.Column="7" Classes="ghost cell" Command="{Binding PlayCallCommand}" IsEnabled="{Binding HasCall}"
-                              ToolTip.Tip="{Binding CallTip}" AutomationProperties.Name="Play the guide call">
+                      <Button Grid.Column="7" Classes="ghost cell" Command="{Binding PlayCallCommand}" IsVisible="{Binding HasCall}"
+                              ToolTip.Tip="{Binding CallTip}" ToolTip.ShowOnDisabled="True" AutomationProperties.Name="Play the guide call">
                         <c:Icon Glyph="play" IconSize="14" />
                       </Button>
+                      <TextBlock Grid.Column="7" Classes="meta" Text="–" IsVisible="{Binding !HasCall}" VerticalAlignment="Center" HorizontalAlignment="Center"
+                                 ToolTip.Tip="{Binding CallTip}" />
                       <Button Grid.Column="8" Classes="cell" Content="Playhead" Command="{Binding ToPlayheadCommand}"
                               ToolTip.Tip="Start this section at the playhead (nearest bar)" />
                       <Button Grid.Column="9" Classes="ghost cell" Command="{Binding DeleteCommand}" ToolTip.Tip="Delete this section"
