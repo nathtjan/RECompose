@@ -45,17 +45,35 @@ public sealed partial class MainViewModel
 
     public bool IsProposing => _proposal is not null;
 
-    /// <summary>VC-5: Off, Listening, Hearing…, PTT or Error.</summary>
+    /// <summary>VC-5: Off, Error, Ready (push to talk, Talk not held), Listening or Hearing….</summary>
     public string VoiceIndicator =>
         _settings.Audio.VoiceChannel < 0 ? "Off"
-        : _micDenied || _voiceError is not null || _voiceState is { On: false } ? "Error"
+        : VoiceFailed ? "Error"
+        : !VoiceListening ? "Ready"
         : _voiceState?.Hearing == true ? "Hearing…"
-        : _settings.Audio.VoicePushToTalk && !_talkHeld ? "PTT"
         : "Listening";
 
+    private bool VoiceFailed => _micDenied || _voiceError is not null || _voiceState is { On: false };
+
+    /// <summary>What the mic hears now becomes a command: always listening, or push to talk with Talk held.</summary>
+    private bool VoiceListening => !_settings.Audio.VoicePushToTalk || _talkHeld;
+
     public bool VoiceOn => _settings.Audio.VoiceChannel >= 0;
-    public bool VoiceOk => VoiceIndicator is "Listening" or "Hearing…" or "PTT";
-    public string VoiceToolTip => _micDenied ? $"{MicrophoneAccess.Problem} Click to open it." : _voiceError ?? "Voice control";
+
+    /// <summary>Green: the mic is listened to.</summary>
+    public bool VoiceOk => VoiceIndicator is "Listening" or "Hearing…";
+
+    /// <summary>Yellow: push to talk is waiting for the Talk control.</summary>
+    public bool VoiceReady => VoiceIndicator == "Ready";
+
+    public string VoiceToolTip =>
+        _micDenied ? $"{MicrophoneAccess.Problem} Click to open it."
+        : _voiceError ?? VoiceIndicator switch
+        {
+            "Ready" => "Voice control: ready. Hold Talk to speak.",
+            "Hearing…" => "Voice control: hearing you.",
+            _ => "Voice control: listening.",
+        };
 
     /// <summary>AT-61: with the microphone blocked, the Voice indicator opens the system's privacy page; otherwise Settings › Voice.</summary>
     public RelayCommand VoiceIndicatorCommand => _voiceIndicator ??= new RelayCommand(() =>
@@ -86,6 +104,9 @@ public sealed partial class MainViewModel
 
     /// <summary>The mic's level, 0 to 1 (−60 to 0 dBFS), for the indicator's meter.</summary>
     public double VoiceLevel => Math.Clamp(((_voiceState?.LevelDb ?? -100) + 60) / 60, 0, 1);
+
+    /// <summary>The indicator's meter: the mic's level only while it is listened to, so a still meter means not listening.</summary>
+    public double VoiceMeter => VoiceOk ? VoiceLevel : 0;
 
     private void HookVoice(EngineClient engine)
     {
@@ -137,7 +158,9 @@ public sealed partial class MainViewModel
         OnPropertyChanged(nameof(VoiceIndicator));
         OnPropertyChanged(nameof(VoiceOn));
         OnPropertyChanged(nameof(VoiceOk));
+        OnPropertyChanged(nameof(VoiceReady));
         OnPropertyChanged(nameof(VoiceLevel));
+        OnPropertyChanged(nameof(VoiceMeter));
         OnPropertyChanged(nameof(VoiceToolTip));
     }
 

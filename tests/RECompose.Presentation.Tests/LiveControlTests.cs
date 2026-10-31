@@ -625,6 +625,31 @@ public sealed class LiveControlTests : IDisposable
     }
 
     [Fact]
+    public async Task With_push_to_talk_the_voice_indicator_is_ready_until_Talk_is_held()
+    {
+        var (vm, _) = await StartAsync();
+        try
+        {
+            MicrophoneAccess.Override = () => false;
+            vm.UpdateSettings(s => s with { Audio = s.Audio with { VoiceChannel = 0, VoicePushToTalk = true } });
+            await vm.RunControlAsync(ControlAction.TalkEnd, ActionSource.Keys); // refreshes the indicator
+
+            Assert.Equal(("Ready", true, false, 0.0), (vm.VoiceIndicator, vm.VoiceReady, vm.VoiceOk, vm.VoiceMeter));
+
+            await vm.RunControlAsync(ControlAction.Talk, ActionSource.Keys);
+            Assert.Equal(("Listening", false, true), (vm.VoiceIndicator, vm.VoiceReady, vm.VoiceOk));
+
+            await vm.RunControlAsync(ControlAction.TalkEnd, ActionSource.Keys);
+            Assert.Equal("Ready", vm.VoiceIndicator);
+        }
+        finally
+        {
+            MicrophoneAccess.Override = null;
+            await FinishAsync(vm);
+        }
+    }
+
+    [Fact]
     public async Task VC70_a_voice_jump_shows_on_the_next_card_with_what_was_heard_and_never_mind_vamps_instead()
     {
         var (vm, _) = await StartAsync();
