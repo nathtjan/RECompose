@@ -122,8 +122,11 @@
           </StackPanel>
         </Button>
         <Rectangle DockPanel.Dock="Right" Width="1" Fill="{DynamicResource divider}" Margin="12,10,0,10" />
-        <!-- Only the status lights: the transport state is on NOW, the rehearsal helpers under the rail, Run check in the menu -->
+        <!-- Run check and the status lights: the transport state is on NOW, the rehearsal helpers under the rail -->
         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center" Margin="0,0,4,0">
+          <Button Classes="ghost" Command="{Binding QuickCheckCommand}" ToolTip.Tip="Run check: the quick service check. Playback keeps going." AutomationProperties.Name="Run check">
+            <TextBlock Classes="label" Text="CHECK" VerticalAlignment="Center" />
+          </Button>
           <Button Classes="ghost" Command="{Binding OpenSettingsCommand}" ToolTip.Tip="Audio device. Click for Settings." AutomationProperties.Name="Audio">
             <StackPanel Orientation="Horizontal" Spacing="8">
               <Ellipse Classes="led" Classes.ok="{Binding AudioOk}" VerticalAlignment="Center" />
