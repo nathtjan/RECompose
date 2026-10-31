@@ -905,22 +905,28 @@
           </TabItem>
           <TabItem Header="SECTIONS">
             <DockPanel>
-            <!-- Automatic section cues (AUTO-20) -->
-            <Border DockPanel.Dock="Bottom" Classes="inset" Padding="12,4" Margin="16,4,16,8" IsVisible="{Binding Song, Converter={x:Static ObjectConverters.IsNotNull}}">
-              <StackPanel>
-                <StackPanel Orientation="Horizontal" Spacing="12">
-                  <TextBlock Classes="heading" Text="Automatic section cues" VerticalAlignment="Center" />
-                  <TextBlock Classes="meta" Text="Section jumps, vamps and auto-cues all follow the live arrangement." VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-                </StackPanel>
-                <WrapPanel ItemSpacing="24">
-                  <CheckBox IsChecked="{Binding SectionNotes}" Content="Send a MIDI note per section type (for lighting looks)" />
-                  <CheckBox IsChecked="{Binding SpokenGuide}" Content="Spoken guide (&quot;Chorus&quot; one bar ahead)" />
-                </WrapPanel>
-              </StackPanel>
-            </Border>
             <DockPanel DataContext="{Binding Sections}" x:DataType="vm:SectionsViewModel" Margin="16,12,16,0">
               <!-- Toolbar: Detect, Review, + At playhead, Split (SEC-10, SEC-30, SEC-50, SEC-53) -->
               <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                <!-- Automatic section cues (AUTO-20): what is on, the options in a flyout so they take no room -->
+                <Button x:Name="AutoCuesButton" DockPanel.Dock="Right" Margin="16,0,0,0" AutomationProperties.Name="Automatic section cues"
+                        DataContext="{Binding $parent[TabItem].((vm:MainViewModel)DataContext)}" x:DataType="vm:MainViewModel"
+                        ToolTip.Tip="Automatic section cues: a MIDI note or a spoken call at each section">
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <TextBlock Text="{Binding AutoCuesSummary}" VerticalAlignment="Center" />
+                    <c:Icon Glyph="chevron-down" IconSize="14" VerticalAlignment="Center" TextElement.Foreground="{DynamicResource text-secondary}" />
+                  </StackPanel>
+                  <Button.Flyout>
+                    <Flyout Placement="BottomEdgeAlignedRight">
+                      <StackPanel Spacing="8" MaxWidth="380" x:DataType="vm:MainViewModel">
+                        <TextBlock Classes="heading" Text="Automatic section cues" />
+                        <CheckBox IsChecked="{Binding SectionNotes}" Content="Send a MIDI note per section type (for lighting looks)" />
+                        <CheckBox IsChecked="{Binding SpokenGuide}" Content="Spoken guide (&quot;Chorus&quot; one bar ahead)" />
+                        <TextBlock Classes="meta" TextWrapping="Wrap" Text="Section jumps, vamps and auto-cues all follow the live arrangement." />
+                      </StackPanel>
+                    </Flyout>
+                  </Button.Flyout>
+                </Button>
                 <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Spacing="8">
                   <Button x:Name="DetectButton" Classes="primary" Content="Detect from guide" Command="{Binding DetectCommand}" ToolTip.Tip="{Binding DetectHint}" />
                   <Button Content="{Binding ReviewLabel}" Command="{Binding ReviewCommand}" ToolTip.Tip="Step through the sections that need review" />

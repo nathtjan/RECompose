@@ -51,6 +51,16 @@ public sealed partial class MainViewModel
         set => SetAutomation(a => a with { SpokenGuide = value }, value ? "Spoken guide on" : "Spoken guide off");
     }
 
+    /// <summary>The Sections toolbar's Auto-cues button: "Auto-cues: off", "Auto-cues: MIDI", "Auto-cues: MIDI, spoken".</summary>
+    public string AutoCuesSummary =>
+        (SectionNotes, SpokenGuide) switch
+        {
+            (true, true) => "Auto-cues: MIDI, spoken",
+            (true, false) => "Auto-cues: MIDI",
+            (false, true) => "Auto-cues: spoken",
+            _ => "Auto-cues: off",
+        };
+
     private void SetAutomation(Func<SongAutomation, SongAutomation> change, string description)
     {
         if (_song is not { } song)
@@ -124,6 +134,7 @@ public sealed partial class MainViewModel
             Cues.Add(new CueRowViewModel(this, cue, grid, MidiOut));
         OnPropertyChanged(nameof(SectionNotes));
         OnPropertyChanged(nameof(SpokenGuide));
+        OnPropertyChanged(nameof(AutoCuesSummary));
         OnPropertyChanged(nameof(HasCues));
     }
 

@@ -325,6 +325,40 @@ public sealed class PerformWindowTests : IDisposable
     }
 
     [Fact]
+    public async Task The_automatic_cue_options_fold_into_a_button_that_says_what_is_on()
+    {
+        await HeadlessApp.RunAsync(async () =>
+        {
+            var store = SaveLibrary();
+            var missing = Path.Combine(_root, "no-engine", EnginePaths.ExecutableFileName);
+            await using var vm = new MainViewModel(store, new EngineHostOptions(missing, Path.Combine(_root, "e.sock")), new EngineTools(missing),
+                new AvaloniaDispatcher(), new AcceptingDialogs(), new SpeechModel(store.Root, allowDownload: false));
+
+            var window = new MainWindow { DataContext = vm, Width = 1280, Height = 760 };
+            window.Show();
+            await vm.InitializeAsync();
+            await vm.LoadEntryAsync(vm.Setlist.Rows[0].Id);
+            vm.SelectedTab = MainViewModel.SectionsTab;
+            Dispatcher.UIThread.RunJobs();
+
+            // Folded: no option takes room in the tab, the button says what is on.
+            Assert.DoesNotContain(window.GetVisualDescendants().OfType<CheckBox>(), c => c.IsEffectivelyVisible && c.Content is string s && s.StartsWith("Spoken guide", StringComparison.Ordinal));
+            var button = window.GetVisualDescendants().OfType<Button>().Single(b => b.Name == "AutoCuesButton" && b.IsEffectivelyVisible);
+            Assert.Contains(button.GetVisualDescendants().OfType<TextBlock>(), t => t.Text == "Auto-cues: off");
+
+            // Opened: the options change the song, and the button follows.
+            button.Flyout!.ShowAt(button);
+            Dispatcher.UIThread.RunJobs();
+            var options = (StackPanel)((Flyout)button.Flyout).Content!;
+            options.Children.OfType<CheckBox>().Single(c => c.Content is string s && s.StartsWith("Spoken guide", StringComparison.Ordinal)).IsChecked = true;
+            Dispatcher.UIThread.RunJobs();
+            Assert.True(vm.SpokenGuide);
+            Assert.Contains(button.GetVisualDescendants().OfType<TextBlock>(), t => t.Text == "Auto-cues: spoken");
+            button.Flyout.Hide();
+        }, TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
     public async Task Space_never_also_presses_the_focused_key_and_a_double_clicked_key_takes_typing()
     {
         await HeadlessApp.RunAsync(async () =>
