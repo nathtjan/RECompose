@@ -13,6 +13,9 @@ public partial class MainWindow
     // Kept in a field so the collector can't take it while Windows still calls it.
     private static readonly Taskbar.SubclassProc LeaveTaskbarStrip = OnWindowMessage;
 
+    // The window whose close key the left button went down on; 0 for none.
+    private static nint _closePressed;
+
     private void LeaveRoomForHiddenTaskbar()
     {
         if (OperatingSystem.IsWindows() && TryGetPlatformHandle() is { HandleDescriptor: "HWND" } handle)
@@ -23,6 +26,15 @@ public partial class MainWindow
     // maximised window reaches past the monitor, so both the frame and the client area stop at the strip.
     private static nint OnWindowMessage(nint hwnd, uint msg, nint wParam, nint lParam, nint id, nint data)
     {
+        // The close key reaches the screen's corner when maximised, and Windows reports that pixel as the close key, but
+        // the click there never reached the key. Every click on it closes here: pressed and released on it, as a key does.
+        var (pressed, close, handled) = CloseKeyClick(_closePressed == hwnd, msg, wParam);
+        _closePressed = pressed ? hwnd : 0;
+        if (close)
+            Taskbar.PostMessage(hwnd, Taskbar.WmSysCommand, Taskbar.ScClose, 0);
+        if (handled)
+            return 0;
+
         if (msg == Taskbar.WmWindowPosChanging)
         {
             var result = Taskbar.DefSubclassProc(hwnd, msg, wParam, lParam);
@@ -57,6 +69,18 @@ public partial class MainWindow
         return Taskbar.DefSubclassProc(hwnd, msg, wParam, lParam);
     }
 
+    /// <summary>
+    /// A left button message against the close key: whether the button is now down on it, whether the window closes, and
+    /// whether the message is used up. Down and up both on the key close; down on it and up elsewhere doesn't.
+    /// </summary>
+    internal static (bool Pressed, bool Close, bool Handled) CloseKeyClick(bool pressed, uint msg, nint hit) => msg switch
+    {
+        Taskbar.WmNcLButtonDown when hit == Taskbar.HtClose => (true, false, true),
+        Taskbar.WmNcLButtonUp when hit == Taskbar.HtClose => (false, pressed, true),
+        Taskbar.WmNcLButtonDown or Taskbar.WmNcLButtonUp or Taskbar.WmLButtonUp => (false, false, false),
+        _ => (pressed, false, false),
+    };
+
     /// <summary>A rectangle's edges on the taskbar's sides, kept the strip inside the monitor.</summary>
     private static Taskbar.Rect Pulled(Taskbar.Rect r, Taskbar.Rect monitor, Taskbar.Rect strip) => new()
     {
@@ -89,6 +113,8 @@ public partial class MainWindow
     private static class Taskbar
     {
         public const uint WmWindowPosChanging = 0x0046, WmNcCalcSize = 0x0083;
+        public const uint WmNcLButtonDown = 0x00A1, WmNcLButtonUp = 0x00A2, WmLButtonUp = 0x0202, WmSysCommand = 0x0112;
+        public const nint HtClose = 20, ScClose = 0xF060;
         public const uint SwpNoSize = 0x0001, SwpNoMove = 0x0002;
 
         public delegate nint SubclassProc(nint hwnd, uint msg, nint wParam, nint lParam, nint id, nint data);
@@ -135,6 +161,10 @@ public partial class MainWindow
         [DllImport("user32.dll")]
         [return: MarshalAs(UnmanagedType.Bool)]
         public static extern bool IsZoomed(nint hwnd);
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool PostMessage(nint hwnd, uint msg, nint wParam, nint lParam);
 
         [DllImport("user32.dll")]
         public static extern nint MonitorFromRect(ref Rect rect, uint flags);
