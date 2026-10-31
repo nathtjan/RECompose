@@ -47,14 +47,15 @@ public sealed record DeviceInfo(
         (node as JsonArray)?.Select(n => (string?)n ?? string.Empty).ToList() ?? [];
 }
 
-/// <summary>A driver type and its output devices.</summary>
-/// <summary>A driver type's devices; with <see cref="SeparateInputs"/> the mic can be another device, whose channels are in <see cref="InputChannels"/> (protocol 15).</summary>
+/// <summary>
+/// A driver type's devices; with <see cref="SeparateInputs"/> the mic can be another device (protocol 15), whose channels
+/// <see cref="EngineClient.ListInputChannelsAsync"/> gives.
+/// </summary>
 public sealed record DeviceTypeInfo(
     string Name,
     IReadOnlyList<string> Devices,
     IReadOnlyList<string>? Inputs = null,
-    bool SeparateInputs = false,
-    IReadOnlyDictionary<string, IReadOnlyList<string>>? InputChannels = null);
+    bool SeparateInputs = false);
 
 /// <summary>A track to load: file, device channels and mixer state.</summary>
 public sealed record EngineTrack(string Id, string File, int Channel, int Width, double GainDb, bool Mute, bool Solo, bool SoloSafe)
@@ -349,10 +350,16 @@ public sealed class EngineClient : IAsyncDisposable
         var reply = await Session.Connection.RequestAsync("listDevices", cancellationToken: ct).ConfigureAwait(false);
         var types = (reply["types"] as JsonArray ?? []).OfType<JsonObject>()
             .Select(t => new DeviceTypeInfo((string?)t["name"] ?? string.Empty, DeviceInfo.Strings(t["devices"]), DeviceInfo.Strings(t["inputs"]),
-                (bool?)t["separateInputs"] ?? false,
-                (t["inputChannels"] as JsonObject)?.ToDictionary(p => p.Key, p => (IReadOnlyList<string>)DeviceInfo.Strings(p.Value))))
+                (bool?)t["separateInputs"] ?? false))
             .ToList();
         return (types, DeviceInfo.From(reply["current"]));
+    }
+
+    /// <summary>One input device's channel names (protocol 16), without opening it; slow on WASAPI, so asked for on demand.</summary>
+    public async Task<IReadOnlyList<string>> ListInputChannelsAsync(string type, string device, CancellationToken ct = default)
+    {
+        var reply = await Session.Connection.RequestAsync("listInputChannels", new JsonObject { ["driver"] = type, ["device"] = device }, ct).ConfigureAwait(false);
+        return DeviceInfo.Strings(reply["channels"]);
     }
 
     /// <summary>The MIDI inputs the engine can open.</summary>

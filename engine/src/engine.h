@@ -155,6 +155,7 @@ private:
 
     // Requests.
     juce::var listDevices();
+    juce::var listInputChannels (const juce::var& message);
     juce::var setDevice (const juce::var& message);
     juce::var setFallbackDevice (const juce::var& message);
     juce::var switchToMain();

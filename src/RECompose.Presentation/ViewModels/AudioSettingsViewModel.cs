@@ -30,9 +30,12 @@ public sealed class AudioSettingsViewModel : ObservableObject
     private string _selectedFallback = NoFallback;
     private bool _autoSwitchBack;
 
-    public AudioSettingsViewModel(IReadOnlyList<DeviceTypeInfo> types, DeviceInfo? current, AudioSettings settings)
+    /// <param name="listInputChannels">An input device's channel names by driver type and device (the engine's <c>listInputChannels</c>).</param>
+    public AudioSettingsViewModel(IReadOnlyList<DeviceTypeInfo> types, DeviceInfo? current, AudioSettings settings,
+        Func<string, string, Task<IReadOnlyList<string>>>? listInputChannels = null)
     {
         _types = types;
+        _listInputChannels = listInputChannels;
         _current = current;
         DeviceTypes = types.Select(t => t.Name).ToList();
 
@@ -345,13 +348,22 @@ public sealed class AudioSettingsViewModel : ObservableObject
         VoiceDevices = devices;
     }
 
-    /// <summary>Lists the mic device's inputs and selects <paramref name="channel"/>; one the device lacks stays only with <paramref name="keepMissing"/>.</summary>
+    /// <summary>
+    /// Lists the mic device's inputs and selects <paramref name="channel"/>; one the device lacks stays only with <paramref name="keepMissing"/>.
+    /// Another device's channels are asked for once, in the background (slow on WASAPI); until they arrive the choice stays.
+    /// </summary>
     private void UpdateVoiceInputs(int channel, bool keepMissing)
     {
         var device = _voiceDevice == SameDevice ? _selectedDevice : _voiceDevice;
-        var names = (device is null ? null : _types.FirstOrDefault(t => t.Name == _selectedType)?.InputChannels?.GetValueOrDefault(device))
-            ?? (device == (_openVoiceDevice ?? _current?.Name) ? _current?.InputChannels : null)
-            ?? [];
+        var names = (device == (_openVoiceDevice ?? _current?.Name) && _current?.InputChannels is { Count: > 0 } open ? open : null)
+            ?? (device is null ? null : _inputChannels.GetValueOrDefault(device));
+        if (names is null && device is not null && _voiceDevice != SameDevice && _selectedType is { } type && _listInputChannels is not null)
+        {
+            if (LoadInputChannelsAsync(type, device, channel, keepMissing).IsCompleted)
+                return; // answered at once: the list is already shown
+            keepMissing = true;
+        }
+        names ??= [];
 
         _voiceChannels.Clear();
         var inputs = new List<string> { VoiceOff };
@@ -371,6 +383,26 @@ public sealed class AudioSettingsViewModel : ObservableObject
 
         VoiceInputs = inputs;
         VoiceInput = selected;
+    }
+
+    private readonly Dictionary<string, IReadOnlyList<string>> _inputChannels = [];
+    private readonly Func<string, string, Task<IReadOnlyList<string>>>? _listInputChannels;
+
+    private async Task LoadInputChannelsAsync(string type, string device, int channel, bool keepMissing)
+    {
+        _inputChannels[device] = []; // asked once; a failed query lists no inputs
+        try
+        {
+            _inputChannels[device] = await _listInputChannels!(type, device);
+        }
+        catch (Exception ex) when (ex is EngineErrorException or EngineDisconnectedException or OperationCanceledException)
+        {
+            Services.AppLog.Error("Audio", ex);
+            return;
+        }
+
+        if (_voiceDevice == device && _selectedType == type)
+            UpdateVoiceInputs(VoiceChannel >= 0 ? VoiceChannel : channel, keepMissing);
     }
 }
 

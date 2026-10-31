@@ -573,15 +573,18 @@ public sealed class MainViewModelTests : IDisposable
     {
         var types = new List<DeviceTypeInfo>
         {
-            new("Windows Audio", ["Speakers", "Focusrite USB"], ["USB Mic", "Focusrite USB"], SeparateInputs: true,
-                InputChannels: new Dictionary<string, IReadOnlyList<string>> { ["USB Mic"] = ["Mono"], ["Focusrite USB"] = ["Mic 1", "Mic 2"] }),
+            new("Windows Audio", ["Speakers", "Focusrite USB"], ["USB Mic", "Focusrite USB"], SeparateInputs: true),
             new("ASIO", ["Focusrite USB ASIO"], ["Focusrite USB ASIO"]),
         };
+        var channels = new Dictionary<string, IReadOnlyList<string>> { ["USB Mic"] = ["Mono"], ["Focusrite USB"] = ["Mic 1", "Mic 2"] };
+        var asked = new List<string>();
         var current = new DeviceInfo("Windows Audio", "Speakers", 48000, 256, ["L", "R"], [48000], [256], 0, []);
-        var audio = new AudioSettingsViewModel(types, current, new Core.Settings.AudioSettings { DeviceType = "Windows Audio", DeviceName = "Speakers" });
+        var audio = new AudioSettingsViewModel(types, current, new Core.Settings.AudioSettings { DeviceType = "Windows Audio", DeviceName = "Speakers" },
+            (_, device) => { asked.Add(device); return Task.FromResult(channels[device]); });
 
         Assert.Equal([AudioSettingsViewModel.SameDevice, "USB Mic", "Focusrite USB"], audio.VoiceDevices);
         Assert.Equal([AudioSettingsViewModel.VoiceOff], audio.VoiceInputs);
+        Assert.Empty(asked); // opening Settings queries no input device
 
         audio.VoiceDevice = "Focusrite USB";
         Assert.Equal([AudioSettingsViewModel.VoiceOff, "Input 1 · Mic 1", "Input 2 · Mic 2"], audio.VoiceInputs);
@@ -595,9 +598,30 @@ public sealed class MainViewModelTests : IDisposable
         audio.VoiceDevice = AudioSettingsViewModel.SameDevice;
         Assert.Null(audio.ToSettings(new Core.Settings.AudioSettings()).VoiceDevice);
 
+        // Each device is asked once.
+        audio.VoiceDevice = "Focusrite USB";
+        Assert.Equal(["Focusrite USB", "USB Mic"], asked);
+        audio.VoiceDevice = AudioSettingsViewModel.SameDevice;
+
         // ASIO takes the mic from the device it plays through only.
         audio.SelectedType = "ASIO";
         Assert.Equal([AudioSettingsViewModel.SameDevice], audio.VoiceDevices);
+    }
+
+    [Fact]
+    public void A_saved_mic_channel_stays_while_its_device_is_queried()
+    {
+        var types = new List<DeviceTypeInfo> { new("Windows Audio", ["Speakers"], ["USB Mic"], SeparateInputs: true) };
+        var reply = new TaskCompletionSource<IReadOnlyList<string>>();
+        var current = new DeviceInfo("Windows Audio", "Speakers", 48000, 256, ["L", "R"], [48000], [256], 0, []);
+        var audio = new AudioSettingsViewModel(types, current,
+            new Core.Settings.AudioSettings { DeviceType = "Windows Audio", DeviceName = "Speakers", VoiceDevice = "USB Mic", VoiceChannel = 1 },
+            (_, _) => reply.Task);
+
+        Assert.Equal(1, audio.ToSettings(new Core.Settings.AudioSettings()).VoiceChannel);
+
+        reply.SetResult(["Left", "Right"]);
+        Assert.Equal("Input 2 · Right", audio.VoiceInput);
     }
 
     [Fact]

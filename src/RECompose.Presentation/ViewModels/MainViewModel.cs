@@ -1361,7 +1361,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         if (_engine is { } engine)
         {
             var (types, current) = await engine.ListDevicesAsync();
-            audio = new AudioSettingsViewModel(types, current, _settings.Audio)
+            audio = new AudioSettingsViewModel(types, current, _settings.Audio, (type, device) => engine.ListInputChannelsAsync(type, device))
             {
                 SelectedCacheBudget = $"{_settings.RenderBudgetGb} GB",
                 CacheText = RenderCacheText,

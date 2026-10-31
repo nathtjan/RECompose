@@ -106,6 +106,7 @@ Engine::~Engine()
 juce::var Engine::handle (const juce::String& type, const juce::var& message)
 {
     if (type == "listDevices")  return listDevices();
+    if (type == "listInputChannels") return listInputChannels (message);
     if (type == "setDevice")    return setDevice (message);
     if (type == "setFallbackDevice") return setFallbackDevice (message);
     if (type == "switchToMain") return switchToMain();
@@ -291,6 +292,20 @@ juce::var Engine::deviceInfo()
         .set ("outputLatency", device->getOutputLatencyInSamples());
 }
 
+// Protocol 16: one input device's channel names, for a mic on another device than the music. Creating the device only
+// queries it; nothing is opened. An unknown type or device has no channels.
+juce::var Engine::listInputChannels (const juce::var& message)
+{
+    const auto typeName = text (message, "driver"); // "type" names the request
+    const auto deviceName = text (message, "device");
+    juce::var channels { juce::Array<juce::var>() };
+    for (auto* type : devices_.getAvailableDeviceTypes())
+        if (type->getTypeName() == typeName)
+            if (std::unique_ptr<juce::AudioIODevice> device { type->createDevice ({}, deviceName) })
+                channels = toArray (device->getInputChannelNames());
+    return Obj().set ("type", "inputChannels").set ("channels", channels);
+}
+
 juce::var Engine::listDevices()
 {
     juce::Array<juce::var> types;
@@ -298,16 +313,10 @@ juce::var Engine::listDevices()
     {
         type->scanForDevices();
         auto entry = Obj().set ("name", type->getTypeName()).set ("devices", toArray (type->getDeviceNames (false))).set ("inputs", toArray (type->getDeviceNames (true)));
-        // Protocol 15: where the driver takes the mic from another device, each input device's channel names. Creating a
-        // device only queries it; nothing is opened.
+        // Protocol 15: the driver takes the mic from another device (WASAPI, Core Audio). Its channel names come from
+        // listInputChannels on demand: querying every input device takes seconds on WASAPI.
         if (type->hasSeparateInputsAndOutputs())
-        {
-            auto channels = Obj();
-            for (const auto& name : type->getDeviceNames (true))
-                if (std::unique_ptr<juce::AudioIODevice> device { type->createDevice ({}, name) })
-                    channels.p->setProperty (name, toArray (device->getInputChannelNames()));
-            entry.set ("separateInputs", true).set ("inputChannels", channels);
-        }
+            entry.set ("separateInputs", true);
         types.add (entry);
     }
 
