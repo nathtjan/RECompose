@@ -25,4 +25,8 @@
     <ProjectReference Include="../RECompose.Engine/RECompose.Engine.csproj" />
     <ProjectReference Include="../RECompose.Presentation/RECompose.Presentation.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="RECompose.App.Tests" />
+  </ItemGroup>
 </Project>

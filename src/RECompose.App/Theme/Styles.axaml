@@ -11,6 +11,11 @@
     <Setter Property="FontSize" Value="{DynamicResource type-body-size}" />
   </Style>
 
+  <!-- A tip can open over the button below it; clicks must go through to that button. -->
+  <Style Selector="ToolTip">
+    <Setter Property="IsHitTestVisible" Value="False" />
+  </Style>
+
   <!-- Type styles (design system "Interface" and "Readouts" groups). -->
   <Style Selector="TextBlock.title">
     <Setter Property="FontSize" Value="{DynamicResource type-title-size}" />

@@ -26,6 +26,7 @@ public partial class App : Application
             Tokens.Install(resources);
             FluentMapping.Install(resources);
         }
+        Controls.ClickThroughTips.Install();
     }
 
     private static FileStream? _instanceLock;
