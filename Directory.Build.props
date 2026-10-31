@@ -10,7 +10,8 @@
     <Authors>nathtjan</Authors>
     <Copyright>Copyright (C) 2026 nathtjan</Copyright>
     <PackageLicenseExpression>AGPL-3.0-or-later</PackageLicenseExpression>
-    <Version>0.1.0</Version>
+    <!-- The one version of the app and the engine (engine/CMakeLists.txt reads it); a release tag must match it. -->
+    <Version>0.1.3</Version>
 
     <RepoRoot>$(MSBuildThisFileDirectory)</RepoRoot>
     <!-- Where the engine build script installs recompose-engine (cmake install, component "engine"). -->

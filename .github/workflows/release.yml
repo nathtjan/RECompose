@@ -49,10 +49,21 @@ jobs:
         # A manual run from a branch is a dry run: it packs under a test version and publishes nothing.
         run: echo "VERSION=${{ github.ref_type == 'tag' && '${GITHUB_REF_NAME#v}' || format('0.0.1-dryrun.{0}', github.run_number) }}" >> "$GITHUB_ENV"
 
+      # The app and the engine show the version in Directory.Build.props; a tag that differs would release under another one.
+      - name: Tag matches the code
+        if: github.ref_type == 'tag'
+        shell: bash
+        run: |
+          CODE=$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' Directory.Build.props)
+          if [ "$CODE" != "$VERSION" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME but Directory.Build.props says $CODE. Set <Version>$VERSION</Version> and tag again."
+            exit 1
+          fi
+
       - name: Build engine
         shell: bash
         run: |
-          cmake -S engine -B build/engine -DCMAKE_BUILD_TYPE=Release ${{ matrix.cmake-args }}
+          cmake -S engine -B build/engine -DCMAKE_BUILD_TYPE=Release -DRECOMPOSE_VERSION=$VERSION ${{ matrix.cmake-args }}
           cmake --build build/engine --config Release --parallel
           ctest --test-dir build/engine -C Release --output-on-failure
           cmake --install build/engine --config Release --component engine --prefix artifacts/native

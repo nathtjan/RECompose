@@ -1,6 +1,14 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(REComposeEngine VERSION 0.1.0 LANGUAGES C CXX)
+# The version is the app's, from Directory.Build.props, so the engine reports what the release says. A release build passes
+# the full version (RECOMPOSE_VERSION, which may carry a suffix such as 0.0.1-dryrun.3).
+file(READ "${CMAKE_CURRENT_LIST_DIR}/../Directory.Build.props" REC_PROPS)
+string(REGEX MATCH "<Version>([0-9]+\\.[0-9]+\\.[0-9]+)</Version>" _ "${REC_PROPS}")
+if(NOT CMAKE_MATCH_1)
+  message(FATAL_ERROR "No <Version>x.y.z</Version> in Directory.Build.props")
+endif()
+project(REComposeEngine VERSION ${CMAKE_MATCH_1} LANGUAGES C CXX)
+set(RECOMPOSE_VERSION "${PROJECT_VERSION}" CACHE STRING "The version the engine reports")
 
 # The audio engine runs as its own process (recompose-engine) so a UI crash or freeze
 # can't stop the music (REL-34, ADR 0001). The app talks to it over a local socket
@@ -170,7 +178,7 @@ add_library(recompose_engine_core STATIC
     src/audio/clip_player.cpp)
 
 target_include_directories(recompose_engine_core PUBLIC src)
-target_compile_definitions(recompose_engine_core PUBLIC RECOMPOSE_ENGINE_VERSION="${PROJECT_VERSION}")
+target_compile_definitions(recompose_engine_core PUBLIC RECOMPOSE_ENGINE_VERSION="${RECOMPOSE_VERSION}")
 target_link_libraries(recompose_engine_core PUBLIC recompose_juce r8brain signalsmith-stretch)
 if(WIN32)
     target_link_libraries(recompose_engine_core PUBLIC ws2_32)
