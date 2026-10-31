@@ -115,10 +115,11 @@ public sealed partial class MainViewModel
     /// <summary>
     /// Import service…: adds the service as a new one, matches its songs to the library by their audio, asks for each one
     /// whose copy differs which to use, copies the file's stems where this computer lacks them, and lists any still missing.
+    /// With <paramref name="file"/> (opened from the file manager) there is no file picker.
     /// </summary>
-    public async Task ImportServiceAsync()
+    public async Task ImportServiceAsync(string? file = null)
     {
-        if (await _dialogs.PickOpenFileAsync("Import service", ServiceExchange.Extension, ServiceExchange.OldExtension) is not { } path)
+        if ((file ?? await _dialogs.PickOpenFileAsync("Import service", ServiceExchange.Extension, ServiceExchange.OldExtension)) is not { } path)
             return;
 
         ServiceImport result;

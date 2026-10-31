@@ -3,6 +3,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using RECompose.App.Dialogs;
 using RECompose.App.Theme;
@@ -35,8 +36,16 @@ public partial class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
+            var opened = OpenFiles.FromArgs(desktop.Args ?? []);
             if (!TryTakeInstanceLock())
             {
+                if (opened is not null && OpenFiles.Forward(opened))
+                {
+                    desktop.Shutdown();
+                    base.OnFrameworkInitializationCompleted();
+                    return;
+                }
+
                 desktop.MainWindow = AlreadyRunningWindow();
                 base.OnFrameworkInitializationCompleted();
                 return;
@@ -58,7 +67,20 @@ public partial class App : Application
             window.DataContext = _viewModel;
             desktop.MainWindow = window;
             desktop.ShutdownRequested += (_, _) => Shutdown();
-            window.Opened += async (_, _) => await _viewModel.InitializeAsync();
+            window.Opened += async (_, _) =>
+            {
+                await _viewModel.InitializeAsync();
+                if (opened is not null)
+                    await _viewModel.ImportServiceAsync(opened);
+                OpenFiles.Listen(path => Dispatcher.UIThread.Post(() => OpenService(window, path)));
+                if (TryGetFeature(typeof(IActivatableLifetime)) is IActivatableLifetime lifetime) // macOS delivers opened files here
+                    lifetime.Activated += (_, e) =>
+                    {
+                        if (e is FileActivatedEventArgs { Files: var files })
+                            foreach (var path in files.Select(f => f.TryGetLocalPath()).OfType<string>().Where(OpenFiles.IsService))
+                                OpenService(window, path);
+                    };
+            };
         }
 
         base.OnFrameworkInitializationCompleted();
@@ -85,6 +107,13 @@ public partial class App : Application
         {
             return true; // can't tell; don't block the app
         }
+    }
+
+    private void OpenService(Window window, string path)
+    {
+        window.Activate();
+        if (_viewModel is { } vm)
+            _ = vm.ImportServiceAsync(path);
     }
 
     private static Window AlreadyRunningWindow()

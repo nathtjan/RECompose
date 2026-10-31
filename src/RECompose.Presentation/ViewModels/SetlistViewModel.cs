@@ -138,7 +138,7 @@ public sealed class SetlistViewModel : ObservableObject
         DeleteServiceCommand = new RelayCommand(_main.DeleteServiceAsync, () => HasService);
         RestoreVersionCommand = new RelayCommand(_main.RestoreServiceVersionAsync, () => HasService);
         ExportServiceCommand = new RelayCommand(_main.ExportServiceAsync, () => HasService);
-        ImportServiceCommand = new RelayCommand(_main.ImportServiceAsync);
+        ImportServiceCommand = new RelayCommand(() => _main.ImportServiceAsync());
         LoadSelectedCommand = new RelayCommand(() => _selected is { } row ? _main.LoadEntryAsync(row.Id) : Task.CompletedTask, () => HasSelection);
         RemoveSelectedCommand = new RelayCommand(() => { if (_selected is { } row) _main.RemoveEntry(row.Id); }, () => HasSelection);
         MoveUpCommand = new RelayCommand(() => { if (_selected is { } row) _main.MoveServiceEntry(row.Id, row.Index - 2); }, () => _selected is { Index: > 1 });
