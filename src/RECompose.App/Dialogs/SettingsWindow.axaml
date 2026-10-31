@@ -220,6 +220,8 @@
                        Text="Each provider keeps its own key and model. Switching carries the conversation on." />
             <TextBlock Classes="label" Text="{Binding KeyLabel}" Margin="0,6,0,0" />
             <DockPanel>
+              <Button DockPanel.Dock="Right" Content="Delete" Command="{Binding DeleteKeyCommand}" Margin="6,0,0,0"
+                      ToolTip.Tip="Remove this provider's key from the system's credential store" AutomationProperties.Name="Delete API key" />
               <Button DockPanel.Dock="Right" Content="Save" Command="{Binding SaveKeyCommand}" Margin="6,0,0,0" />
               <TextBox Text="{Binding KeyText}" PasswordChar="•" PlaceholderText="{Binding KeyPlaceholder}" AutomationProperties.Name="API key" />
             </DockPanel>

@@ -131,6 +131,42 @@ public sealed class AssistantTests : IDisposable
     }
 
     [Fact]
+    public async Task A_saved_key_shows_masked_and_can_be_deleted()
+    {
+        var vm = await SundayAsync();
+        var a = vm.Assistant;
+        a.Secrets.Set(AssistantViewModel.KeyName, null);
+        a.SaveKeyCommand.Execute(null);
+        Assert.Equal((null, "sk-ant-…", false), (a.StoredKey, a.KeyPlaceholder, a.DeleteKeyCommand.CanExecute(null)));
+
+        a.KeyText = "sk-ant-api03-abcdefghijklmnop-a1b2";
+        a.SaveKeyCommand.Execute(null);
+
+        // The field empties, but the key it now holds is shown masked, never in full.
+        Assert.Equal(("", "sk-ant-…a1b2", "sk-ant-…a1b2"), (a.KeyText, a.StoredKey, a.KeyPlaceholder));
+        Assert.Contains("sk-ant-…a1b2", a.KeyStatus, StringComparison.Ordinal);
+        Assert.DoesNotContain("abcdefghijklmnop", a.KeyStatus, StringComparison.Ordinal);
+        Assert.True(a.DeleteKeyCommand.CanExecute(null));
+
+        // Each provider has its own: OpenAI's is empty, Delete there has nothing to remove.
+        a.ProviderName = "OpenAI";
+        Assert.Equal((null, false), (a.StoredKey, a.DeleteKeyCommand.CanExecute(null)));
+        a.ProviderName = "Anthropic";
+
+        a.DeleteKeyCommand.Execute(null);
+        Assert.Null(a.Secrets.Get(AssistantViewModel.KeyName));
+        Assert.Equal((null, true, "No key yet."), (a.StoredKey, a.NeedsKey, a.KeyStatus));
+    }
+
+    [Theory]
+    [InlineData("sk-proj-abcdefghijklmnopqrstuvwxyz1234", "sk-proj-…1234")]
+    [InlineData("sk-abcdefghijklmnopqrstuvwxyz9876", "sk-…9876")]
+    [InlineData("abcdefghijklmnopqrstu", "…rstu")]
+    [InlineData("short-key", "…ey")]
+    public void Keys_are_masked_to_their_prefix_and_last_characters(string key, string shown) =>
+        Assert.Equal(shown, AssistantViewModel.Masked(key));
+
+    [Fact]
     public async Task Each_provider_has_its_own_key_model_and_errors()
     {
         var vm = await SundayAsync();

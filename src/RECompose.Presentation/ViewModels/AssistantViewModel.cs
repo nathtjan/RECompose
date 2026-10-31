@@ -96,6 +96,7 @@ public sealed class AssistantViewModel : ObservableObject
         SettingsCommand = new RelayCommand(() => _main.OpenSettingsAsync(SettingsTab.Assistant));
         TestCommand = new RelayCommand(TestAsync);
         SaveKeyCommand = new RelayCommand(SaveKey);
+        DeleteKeyCommand = new RelayCommand(DeleteKey, () => HasKey);
     }
 
     public ObservableCollection<AssistantRow> Rows { get; } = [];
@@ -106,6 +107,7 @@ public sealed class AssistantViewModel : ObservableObject
     public RelayCommand SettingsCommand { get; }
     public RelayCommand TestCommand { get; }
     public RelayCommand SaveKeyCommand { get; }
+    public RelayCommand DeleteKeyCommand { get; }
 
     /// <summary>The OS credential store; tests set a memory one.</summary>
     internal ISecretStore Secrets
@@ -172,7 +174,20 @@ public sealed class AssistantViewModel : ObservableObject
     /// <summary>A new key to store; the stored one is never shown.</summary>
     public string KeyText { get => _keyText; set => Set(ref _keyText, value ?? string.Empty); }
 
-    public string KeyStatus => HasKey ? "A key is stored in the system's credential store." : "No key yet.";
+    public string KeyStatus => StoredKey is { } stored
+        ? $"Key {stored} is stored in the system's credential store. Type a new one to replace it."
+        : "No key yet.";
+
+    /// <summary>The stored key with only its start and last 4 characters shown ("sk-ant-…a1b2"), or null when there is none.</summary>
+    public string? StoredKey => Secrets.Get(ActiveKeyName) is { Length: > 0 } key ? Masked(key) : null;
+
+    internal static string Masked(string key)
+    {
+        if (key.Length <= 12)
+            return "…" + key[^Math.Max(1, key.Length / 4)..]; // a short key shows too little to guess
+        var dash = key[..8].LastIndexOf('-');
+        return $"{key[..(dash + 1)]}…{key[^4..]}"; // "sk-ant-", "sk-proj-", "sk-" or nothing, then the last 4
+    }
 
     public IReadOnlyList<string> Providers { get; } = ["Anthropic", "OpenAI"];
 
@@ -187,7 +202,8 @@ public sealed class AssistantViewModel : ObservableObject
     public bool IsAnthropic => !IsOpenAI;
 
     public string KeyLabel => $"{ProviderName.ToUpperInvariant()} API KEY";
-    public string KeyPlaceholder => IsOpenAI ? "sk-…" : "sk-ant-…";
+    /// <summary>The empty key field shows the stored key, masked, or an example of one.</summary>
+    public string KeyPlaceholder => StoredKey ?? (IsOpenAI ? "sk-…" : "sk-ant-…");
 
     public string WorkspaceId
     {
@@ -222,6 +238,7 @@ public sealed class AssistantViewModel : ObservableObject
         _main.SaveAssistantSettings(change(_main.AssistantSettings));
         _client = null;
         OnPropertyChanged(string.Empty);
+        DeleteKeyCommand.Refresh(); // another provider's key
     }
 
     /// <summary>Stores the typed key; an empty field keeps the stored one.</summary>
@@ -243,7 +260,34 @@ public sealed class AssistantViewModel : ObservableObject
             AppLog.Write("Assistant", $"{ProviderName} API key stored");
         }
 
+        RefreshKey();
+    }
+
+    /// <summary>Removes the current provider's key from the credential store.</summary>
+    private void DeleteKey()
+    {
+        try
+        {
+            Secrets.Set(ActiveKeyName, null);
+        }
+        catch (Exception e) when (e is IOException or InvalidOperationException)
+        {
+            TestResult = e.Message;
+            return;
+        }
+
+        KeyText = string.Empty;
+        TestResult = string.Empty;
+        AppLog.Write("Assistant", $"{ProviderName} API key deleted");
+        RefreshKey();
+    }
+
+    private void RefreshKey()
+    {
         _client = null;
+        OnPropertyChanged(nameof(StoredKey));
+        OnPropertyChanged(nameof(KeyPlaceholder));
+        DeleteKeyCommand.Refresh();
         OnPropertyChanged(nameof(HasKey));
         OnPropertyChanged(nameof(NeedsKey));
         OnPropertyChanged(nameof(KeyStatus));
