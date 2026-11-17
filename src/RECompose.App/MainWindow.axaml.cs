@@ -19,11 +19,10 @@ namespace RECompose.App;
 
 public partial class MainWindow : Window
 {
-    // Drags inside the app: a library song onto the service (SL-5), a service row to a new place (SL-4).
-    private static readonly DataFormat<string> SongFormat = DataFormat.CreateInProcessFormat<string>("recompose-song");
-    private static readonly DataFormat<string> EntryFormat = DataFormat.CreateInProcessFormat<string>("recompose-entry");
-
-    private (PointerPressedEventArgs Args, Avalonia.Point At, DataFormat<string> Format, string Id)? _dragStart;
+    // Drags inside the app: a library song onto the service (SL-5), a service row to a new place (SL-4). They follow
+    // the pointer in the window, not the OS drag: on macOS 26 AppKit aborts the app when Avalonia starts a drag session
+    // for in-process data.
+    private (ListBox List, Avalonia.Point At, string Id, bool Started)? _dragStart;
     private Key? _shortcutKey;
 
     public MainWindow()
@@ -85,7 +84,7 @@ public partial class MainWindow : Window
         Library.DoubleTapped += (_, _) => ViewModel?.LoadSelectedCommand.Execute(null);
         Library.ContextRequested += OpenLibraryMenu;
         PadSetList.ContextRequested += OpenPadSetMenu;
-        WatchDragStart(Library, SongFormat, item => (item as SongItemViewModel)?.Id);
+        WatchDrag(Library, item => (item as SongItemViewModel)?.Id);
 
         // The service (SL-4): double-click or Enter loads, right-click for the menu, drag to reorder, drop songs in.
         ServiceRows.DoubleTapped += (_, _) => ViewModel?.Setlist.LoadSelectedCommand.Execute(null);
@@ -111,10 +110,7 @@ public partial class MainWindow : Window
             e.Handled = true;
         };
         ServiceRows.ContextRequested += OpenServiceRowMenu;
-        WatchDragStart(ServiceRows, EntryFormat, item => (item as SetlistRowViewModel)?.Id);
-        // The whole service block takes drops (the list, the empty hint and the gaps around them); off a row it appends.
-        ServiceBlock.AddHandler(DragDrop.DragOverEvent, OnServiceDragOver);
-        ServiceBlock.AddHandler(DragDrop.DropEvent, OnServiceDrop);
+        WatchDrag(ServiceRows, item => (item as SetlistRowViewModel)?.Id);
         Library.KeyDown += (_, e) =>
         {
             if (e.Key == Key.Enter)
@@ -648,74 +644,80 @@ public partial class MainWindow : Window
 
     // ---- Drag and drop between the library and the service (SL-4, SL-5) -----------------------------------------
 
-    /// <summary>Starts a drag of the item under the pointer once it has moved a few pixels.</summary>
-    private void WatchDragStart(ListBox list, DataFormat<string> format, Func<object?, string?> idOf)
+    /// <summary>Drags the item under the pointer once it has moved a few pixels; the release drops it.</summary>
+    private void WatchDrag(ListBox list, Func<object?, string?> idOf)
     {
+        // The pressed row keeps the pointer, so the moves and the release come back through this list.
         list.AddHandler(PointerPressedEvent, (_, e) =>
         {
-            _dragStart = null;
+            EndDrag();
             if (!e.GetCurrentPoint(list).Properties.IsLeftButtonPressed)
                 return;
             if ((e.Source as Control)?.FindAncestorOfType<Button>() is not null)
                 return; // a chip or a button in the row, not a drag
             if (idOf((e.Source as Control)?.FindAncestorOfType<ListBoxItem>()?.DataContext) is { } id)
-                _dragStart = (e, e.GetPosition(this), format, id);
+                _dragStart = (list, e.GetPosition(this), id, false);
         }, RoutingStrategies.Tunnel, handledEventsToo: true);
 
-        list.AddHandler(PointerMovedEvent, async (_, e) =>
+        list.AddHandler(PointerMovedEvent, (_, e) =>
         {
-            if (_dragStart is not { } start || start.Format != format)
+            if (_dragStart is not { Started: false } start || start.List != list)
                 return;
             var delta = e.GetPosition(this) - start.At;
             if (Math.Abs(delta.X) + Math.Abs(delta.Y) < 6)
                 return;
-            _dragStart = null;
-            var data = new DataTransfer();
-            data.Add(DataTransferItem.Create(format, start.Id));
-            await DragDrop.DoDragDropAsync(start.Args, data, format == SongFormat ? DragDropEffects.Copy : DragDropEffects.Move);
+            _dragStart = start with { Started = true };
+            Cursor = new Cursor(list == Library ? StandardCursorType.DragCopy : StandardCursorType.DragMove);
         }, RoutingStrategies.Tunnel, handledEventsToo: true);
 
-        list.AddHandler(PointerReleasedEvent, (_, _) => _dragStart = null, RoutingStrategies.Tunnel, handledEventsToo: true);
+        list.AddHandler(PointerReleasedEvent, (_, e) =>
+        {
+            if (_dragStart is { Started: true } drag && drag.List == list)
+                DropOnService(drag.List, drag.Id, e.GetPosition(this));
+            EndDrag();
+        }, RoutingStrategies.Tunnel, handledEventsToo: true);
+
+        list.AddHandler(PointerCaptureLostEvent, (_, _) =>
+        {
+            if (_dragStart?.List == list)
+                EndDrag();
+        }, RoutingStrategies.Bubble, handledEventsToo: true);
     }
 
-    private void OnServiceDragOver(object? sender, DragEventArgs e)
+    private void EndDrag()
     {
-        if (ViewModel?.CurrentService is null)
-            return;
-        if (e.DataTransfer.Contains(SongFormat))
-            e.DragEffects = DragDropEffects.Copy;
-        else if (e.DataTransfer.Contains(EntryFormat))
-            e.DragEffects = DragDropEffects.Move;
-        else
-            return; // files: the window imports them
-        e.Handled = true;
+        _dragStart = null;
+        Cursor = null;
     }
 
-    private void OnServiceDrop(object? sender, DragEventArgs e)
+    /// <summary>
+    /// Drops a dragged song or service row at a point in the window. The whole service block takes drops (the list, the
+    /// empty hint and the gaps around them); off a row it appends.
+    /// </summary>
+    private void DropOnService(ListBox from, string id, Avalonia.Point at)
     {
-        if (ViewModel is not { } vm || vm.CurrentService is null)
+        if (ViewModel is not { CurrentService: { } service } vm)
             return;
-        var index = DropIndex(e);
-        if (e.DataTransfer.TryGetValue(SongFormat) is { } songId)
+        if (this.InputHitTest(at) is not Control target || (target != ServiceBlock && !ServiceBlock.IsVisualAncestorOf(target)))
+            return;
+        var index = DropIndex(target, at);
+        if (from == Library)
         {
-            vm.AddSongToService(songId, index);
-            e.Handled = true;
+            vm.AddSongToService(id, index);
+            return;
         }
-        else if (e.DataTransfer.TryGetValue(EntryFormat) is { } entryId)
-        {
-            var from = vm.CurrentService.IndexOf(entryId);
-            var to = index ?? vm.Setlist.Rows.Count;
-            vm.MoveServiceEntry(entryId, from >= 0 && to > from ? to - 1 : to);
-            e.Handled = true;
-        }
+
+        var was = service.IndexOf(id);
+        var to = index ?? vm.Setlist.Rows.Count;
+        vm.MoveServiceEntry(id, was >= 0 && to > was ? to - 1 : to);
     }
 
     /// <summary>The 0-based position a drop lands at: before the row under the pointer, or after it on its lower half.</summary>
-    private int? DropIndex(DragEventArgs e)
+    private int? DropIndex(Control target, Avalonia.Point at)
     {
-        if ((e.Source as Control)?.FindAncestorOfType<ListBoxItem>(includeSelf: true) is not { DataContext: SetlistRowViewModel row } item)
+        if (target.FindAncestorOfType<ListBoxItem>(includeSelf: true) is not { DataContext: SetlistRowViewModel row } item)
             return null;
-        var lower = e.GetPosition(item).Y > item.Bounds.Height / 2;
+        var lower = this.TranslatePoint(at, item) is { } local && local.Y > item.Bounds.Height / 2;
         return row.Index - 1 + (lower ? 1 : 0);
     }
 
@@ -778,6 +780,13 @@ public partial class MainWindow : Window
 
     private void OnKeyDownTunnel(object? sender, KeyEventArgs e)
     {
+        if (e.Key == Key.Escape && _dragStart is { Started: true })
+        {
+            EndDrag(); // Esc cancels a drag: nothing is added or moved
+            e.Handled = true;
+            return;
+        }
+
         if (e.Key == Key.Escape && _trackDrag is { Started: true } dragging)
         {
             EndTrackDrag(dragging); // Esc cancels a track drag: nothing moves

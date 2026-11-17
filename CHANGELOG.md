@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Dragging a song into the service, or a service row to a new place, no longer closes the app on macOS 26.
+
 ## 0.2.0
 
 ### New

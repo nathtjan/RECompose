@@ -81,6 +81,58 @@ public sealed class ServiceWindowTests : IDisposable
         return store;
     }
 
+    // SL-4, SL-5: a song dragged from the library lands where it is dropped and a row drags to a new place. The drag stays
+    // in the window: on macOS 26 an OS drag session for in-process data aborts the app inside AppKit.
+    [Fact]
+    public async Task Dragging_a_song_into_the_service_and_a_row_within_it_stays_in_the_window()
+    {
+        await HeadlessApp.RunAsync(async () =>
+        {
+            var store = SaveLibrary();
+            var missing = Path.Combine(_root, "no-engine", EnginePaths.ExecutableFileName);
+            await using var vm = new MainViewModel(store, new EngineHostOptions(missing, Path.Combine(_root, "e.sock")), new EngineTools(missing),
+                new AvaloniaDispatcher(), new AcceptingDialogs(), new SpeechModel(store.Root, allowDownload: false));
+            var window = new MainWindow { DataContext = vm, Width = 1280, Height = 760 };
+            window.Show();
+            await vm.InitializeAsync();
+            Dispatcher.UIThread.RunJobs();
+            string[] Songs() => vm.CurrentService!.Entries.Select(e => e.SongId).ToArray();
+            Point At(Control control, double x, double y) => control.TranslatePoint(new Point(x, y), window)!.Value;
+            void Drag(Point from, Point to, bool cancel = false)
+            {
+                window.MouseDown(from, MouseButton.Left);
+                window.MouseMove(from + new Point(4, 4));
+                window.MouseMove(to);
+                if (cancel)
+                    window.KeyPressQwerty(PhysicalKey.Escape, RawInputModifiers.None);
+                window.MouseUp(to, MouseButton.Left);
+                Dispatcher.UIThread.RunJobs();
+            }
+
+            var library = window.FindControl<ListBox>("Library")!;
+            var rows = window.FindControl<ListBox>("ServiceRows")!;
+            var champion = library.ContainerFromIndex(0)!;
+
+            // The first row dragged onto the lower half of the second goes after it.
+            var second = rows.ContainerFromIndex(1)!;
+            Drag(At(rows.ContainerFromIndex(0)!, 40, 8), At(second, 40, second.Bounds.Height - 3));
+            Assert.Equal(["goodness", "champion"], Songs());
+
+            // A library song onto the upper half of the first row goes first.
+            Drag(At(champion, 20, 8), At(rows.ContainerFromIndex(0)!, 40, 3));
+            Assert.Equal(["champion", "goodness", "champion"], Songs());
+
+            // Esc cancels: nothing is added.
+            Drag(At(champion, 20, 8), At(rows.ContainerFromIndex(0)!, 40, 3), cancel: true);
+            Assert.Equal(3, Songs().Length);
+
+            // Dropped outside the service: nothing changes.
+            Drag(At(champion, 20, 8), At(library, 20, library.Bounds.Height - 5));
+            Assert.Equal(3, Songs().Length);
+            window.Close();
+        }, TestContext.Current.CancellationToken);
+    }
+
     [Fact]
     public async Task The_service_sidebar_entry_settings_and_mixer_presets_render()
     {
