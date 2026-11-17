@@ -67,4 +67,48 @@ public static class AppLog
     }
 
     public static void Error(string context, Exception ex) => Write("Errors", $"{context}: {ex}");
+
+    private static string? CrashPath => _folder is null ? null : Path.Combine(_folder, "last-error.txt");
+
+    /// <summary>
+    /// Logs an error that ends the app and keeps its details for the next start, which shows them: no window can open
+    /// while the process ends.
+    /// </summary>
+    public static void Crash(string details)
+    {
+        Write("Errors", $"Unhandled: {details}");
+        if (CrashPath is not { } path)
+            return;
+        try
+        {
+            File.WriteAllText(path, details, Encoding.UTF8);
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
+    }
+
+    /// <summary>The details kept by <see cref="Crash"/> at the last run, once: they are removed when read.</summary>
+    public static string? TakeCrash()
+    {
+        if (CrashPath is not { } path || !File.Exists(path))
+            return null;
+        try
+        {
+            var details = File.ReadAllText(path, Encoding.UTF8);
+            File.Delete(path);
+            return details;
+        }
+        catch (IOException)
+        {
+            return null;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
 }

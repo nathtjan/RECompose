@@ -5,6 +5,7 @@ using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
+using Avalonia.Input.Platform;
 using Avalonia.Layout;
 using Avalonia.Markup.Xaml;
 using Avalonia.Platform.Storage;
@@ -113,6 +114,68 @@ public static class AboutDialog
 
         window.Content = new StackPanel { Margin = new Thickness(20), Spacing = 12, Children = { heading, details, github, close } };
         return window.ShowDialog(owner);
+    }
+}
+
+/// <summary>
+/// An error the app did not expect: what happened in one line, and the details (version, system, the exception) to copy
+/// into a bug report. While the band plays it opens without taking the keys from the main window.
+/// </summary>
+public static class ErrorDialog
+{
+    public static DialogWindow Create(string title, string message, string details)
+    {
+        var window = new DialogWindow
+        {
+            Title = title,
+            Width = 560,
+            SizeToContent = SizeToContent.Height,
+            CanResize = false,
+            ShowInTaskbar = false,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+        };
+
+        var text = new TextBlock { Text = message, TextWrapping = Avalonia.Media.TextWrapping.Wrap };
+        var log = new TextBlock
+        {
+            Text = AppLog.Folder is { } folder ? $"The log is in {folder}." : "The log is off.",
+            TextWrapping = Avalonia.Media.TextWrapping.Wrap,
+        };
+        log.Classes.Add("meta");
+
+        var detailsText = new SelectableTextBlock { Name = "Details", Text = details, TextWrapping = Avalonia.Media.TextWrapping.Wrap };
+        detailsText.Bind(TextBlock.FontFamilyProperty, detailsText.GetResourceObservable("FontMono"));
+        var detailsBox = new ScrollViewer { Content = detailsText, MaxHeight = 240, IsVisible = false };
+
+        var show = new Button { Content = "Show details" };
+        show.Click += (_, _) =>
+        {
+            detailsBox.IsVisible = !detailsBox.IsVisible;
+            show.Content = detailsBox.IsVisible ? "Hide details" : "Show details";
+        };
+        var copy = new Button { Name = "CopyDetails", Content = "Copy details" };
+        copy.Click += async (_, _) =>
+        {
+            if (window.Clipboard is { } clipboard)
+            {
+                await clipboard.SetTextAsync(details);
+                copy.Content = "Copied";
+            }
+        };
+        var open = new Button { Content = "Open log folder", IsVisible = AppLog.Folder is not null };
+        open.Click += (_, _) => SystemShell.Open(AppLog.Folder!);
+        var close = new Button { Content = "Close", Classes = { "primary" }, IsDefault = true, IsCancel = true };
+        close.Click += (_, _) => window.Close();
+        var buttons = new DockPanel { LastChildFill = false, Children = { show, copy, open, close } };
+        foreach (var button in new[] { show, copy, open })
+        {
+            DockPanel.SetDock(button, Dock.Left);
+            button.Margin = new Thickness(0, 0, 8, 0);
+        }
+        DockPanel.SetDock(close, Dock.Right);
+
+        window.Content = new StackPanel { Margin = new Thickness(20), Spacing = 12, Children = { text, log, detailsBox, buttons } };
+        return window;
     }
 }
 

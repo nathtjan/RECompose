@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+using System.Globalization;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
@@ -31,6 +32,33 @@ public partial class App : Application
     }
 
     private static FileStream? _instanceLock;
+    private bool _showingError;
+
+    /// <summary>What a bug report needs: the version, the system, when, and the exception with its stack.</summary>
+    internal static string ErrorDetails(object error) => string.Join(Environment.NewLine,
+        $"RECompose {typeof(App).Assembly.GetName().Version?.ToString(3)} on {System.Runtime.InteropServices.RuntimeInformation.OSDescription}",
+        DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture),
+        string.Empty,
+        error.ToString());
+
+    /// <summary>One error window at a time: an error that repeats is only logged. While the band plays it opens without taking the keys.</summary>
+    private void ShowError(Window owner, string title, string message, string details)
+    {
+        if (_showingError)
+            return;
+        _showingError = true;
+        var dialog = ErrorDialog.Create(title, message, details);
+        dialog.Closed += (_, _) => _showingError = false;
+        if (!owner.IsVisible)
+            dialog.Show();
+        else if (_viewModel is { IsPlaying: true } or { IsPerform: true })
+        {
+            dialog.ShowActivated = false;
+            dialog.Show(owner);
+        }
+        else
+            _ = dialog.ShowDialog(owner);
+    }
 
     public override void OnFrameworkInitializationCompleted()
     {
@@ -56,7 +84,16 @@ public partial class App : Application
             var store = DataStore.Default();
             AppLog.Start(store.Root);
             AppLog.Write("App", $"RECompose {typeof(App).Assembly.GetName().Version?.ToString(3)} started on {System.Runtime.InteropServices.RuntimeInformation.OSDescription}");
-            AppDomain.CurrentDomain.UnhandledException += (_, e) => AppLog.Write("Errors", $"Unhandled: {e.ExceptionObject}");
+            // An error on the UI thread is logged and shown and the app goes on; one that ends the app is shown at the next start.
+            Dispatcher.UIThread.UnhandledException += (_, e) =>
+            {
+                e.Handled = true;
+                AppLog.Error("Unhandled", e.Exception);
+                var details = ErrorDetails(e.Exception);
+                Dispatcher.UIThread.Post(() => ShowError(window, "Something went wrong",
+                    $"{e.Exception.Message}{Environment.NewLine}{Environment.NewLine}RECompose keeps running. Restart it if something looks wrong.", details));
+            };
+            AppDomain.CurrentDomain.UnhandledException += (_, e) => AppLog.Crash(ErrorDetails(e.ExceptionObject));
             TaskScheduler.UnobservedTaskException += (_, e) =>
             {
                 AppLog.Error("Unobserved task", e.Exception);
@@ -70,6 +107,9 @@ public partial class App : Application
             window.Opened += async (_, _) =>
             {
                 await _viewModel.InitializeAsync();
+                if (AppLog.TakeCrash() is { } last)
+                    ShowError(window, "RECompose closed after an error",
+                        "RECompose closed last time because of an error it did not expect. The details help to find the cause.", last);
                 if (opened is not null)
                     await _viewModel.ImportServiceAsync(opened);
                 OpenFiles.Listen(path => Dispatcher.UIThread.Post(() => OpenService(window, path)));

@@ -5,6 +5,7 @@
 ### Fixed
 
 - Dragging a song into the service, or a service row to a new place, no longer closes the app on macOS 26.
+- An error the app did not expect opens a window with its details, which can be copied for a bug report, and the app keeps running. An error that closes the app is shown the next time it starts. While the band plays, the window opens without taking the keys.
 
 ## 0.2.0
 
