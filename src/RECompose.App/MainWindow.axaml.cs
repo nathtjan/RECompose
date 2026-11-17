@@ -22,7 +22,19 @@ public partial class MainWindow : Window
     // Drags inside the app: a library song onto the service (SL-5), a service row to a new place (SL-4). They follow
     // the pointer in the window, not the OS drag: on macOS 26 AppKit aborts the app when Avalonia starts a drag session
     // for in-process data.
-    private (ListBox List, Avalonia.Point At, string Id, bool Started)? _dragStart;
+    private sealed class ListDrag(ListBox list, Control row, string id, Avalonia.Point pressedAt, Avalonia.Point grab)
+    {
+        public ListBox List { get; } = list;
+        public Control Row { get; } = row;
+        public string Id { get; } = id;
+        public Avalonia.Point PressedAt { get; } = pressedAt; // in the window
+        public Avalonia.Point Grab { get; } = grab;           // where in the row it was taken
+        public bool Started { get; set; }
+        public Image? Ghost { get; set; }
+        public AdornerLayer? GhostLayer { get; set; }
+    }
+
+    private ListDrag? _dragStart;
     private Key? _shortcutKey;
 
     public MainWindow()
@@ -510,20 +522,25 @@ public partial class MainWindow : Window
 
     private static Thickness ThicknessAt(Vector p) => new(p.X, p.Y, 0, 0);
 
+    /// <summary>A see-through picture of a dragged row, on the window content's adorner layer, that follows the pointer.</summary>
+    private static (Image? Ghost, AdornerLayer? Layer) AddGhost(Control row, Control surface)
+    {
+        var scale = TopLevel.GetTopLevel(row)?.RenderScaling ?? 1;
+        var size = new PixelSize((int)Math.Ceiling(row.Bounds.Width * scale), (int)Math.Ceiling(row.Bounds.Height * scale));
+        if (size.Width <= 0 || size.Height <= 0 || AdornerLayer.GetAdornerLayer(surface) is not { } layer)
+            return (null, null);
+        var picture = new RenderTargetBitmap(size, new Vector(96 * scale, 96 * scale));
+        picture.Render(row);
+        var ghost = new Image { Source = picture, Width = row.Bounds.Width, Height = row.Bounds.Height, Opacity = 0.75, IsHitTestVisible = false, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
+        AdornerLayer.SetAdornedElement(ghost, surface);
+        layer.Children.Add(ghost);
+        return (ghost, layer);
+    }
+
     private void StartTrackDrag(TrackDrag drag, Control surface, PointerEventArgs e)
     {
         drag.Started = true;
-        var scale = TopLevel.GetTopLevel(drag.Root)?.RenderScaling ?? 1;
-        var size = new PixelSize((int)Math.Ceiling(drag.Root.Bounds.Width * scale), (int)Math.Ceiling(drag.Root.Bounds.Height * scale));
-        if (size.Width > 0 && size.Height > 0 && AdornerLayer.GetAdornerLayer(surface) is { } layer)
-        {
-            var picture = new RenderTargetBitmap(size, new Vector(96 * scale, 96 * scale));
-            picture.Render(drag.Root);
-            drag.Ghost = new Image { Source = picture, Width = drag.Root.Bounds.Width, Height = drag.Root.Bounds.Height, Opacity = 0.75, IsHitTestVisible = false, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
-            AdornerLayer.SetAdornedElement(drag.Ghost, surface);
-            layer.Children.Add(drag.Ghost);
-            drag.GhostLayer = layer;
-        }
+        (drag.Ghost, drag.GhostLayer) = AddGhost(drag.Root, surface);
 
         drag.Root.Opacity = 0; // its place stays, blank
         ToolTip.SetIsOpen(drag.Root, false); // the hint about dragging is not shown while dragging
@@ -655,19 +672,27 @@ public partial class MainWindow : Window
                 return;
             if ((e.Source as Control)?.FindAncestorOfType<Button>() is not null)
                 return; // a chip or a button in the row, not a drag
-            if (idOf((e.Source as Control)?.FindAncestorOfType<ListBoxItem>()?.DataContext) is { } id)
-                _dragStart = (list, e.GetPosition(this), id, false);
+            if ((e.Source as Control)?.FindAncestorOfType<ListBoxItem>(includeSelf: true) is { } row && idOf(row.DataContext) is { } id)
+                _dragStart = new ListDrag(list, row, id, e.GetPosition(this), e.GetPosition(row));
         }, RoutingStrategies.Tunnel, handledEventsToo: true);
 
         list.AddHandler(PointerMovedEvent, (_, e) =>
         {
-            if (_dragStart is not { Started: false } start || start.List != list)
+            if (_dragStart is not { } drag || drag.List != list || Content is not Control surface)
                 return;
-            var delta = e.GetPosition(this) - start.At;
-            if (Math.Abs(delta.X) + Math.Abs(delta.Y) < 6)
-                return;
-            _dragStart = start with { Started = true };
-            Cursor = new Cursor(list == Library ? StandardCursorType.DragCopy : StandardCursorType.DragMove);
+            if (!drag.Started)
+            {
+                var delta = e.GetPosition(this) - drag.PressedAt;
+                if (Math.Abs(delta.X) + Math.Abs(delta.Y) < 6)
+                    return;
+                drag.Started = true;
+                (drag.Ghost, drag.GhostLayer) = AddGhost(drag.Row, surface);
+                Cursor = new Cursor(list == Library ? StandardCursorType.DragCopy : StandardCursorType.DragMove);
+            }
+
+            if (drag.Ghost is { } ghost)
+                ghost.Margin = ThicknessAt(e.GetPosition(surface) - drag.Grab);
+            ShowServiceDropLine(e.GetPosition(this));
         }, RoutingStrategies.Tunnel, handledEventsToo: true);
 
         list.AddHandler(PointerReleasedEvent, (_, e) =>
@@ -686,8 +711,40 @@ public partial class MainWindow : Window
 
     private void EndDrag()
     {
+        if (_dragStart?.Ghost is { } ghost)
+            _dragStart.GhostLayer?.Children.Remove(ghost);
+        if (_dragStart is { Started: true })
+            HideDropLine();
         _dragStart = null;
         Cursor = null;
+    }
+
+    /// <summary>The service row a point in the window is over, or null off the rows; false when it is not over the service.</summary>
+    private bool OverService(Avalonia.Point at, out ListBoxItem? item)
+    {
+        item = null;
+        if (this.InputHitTest(at) is not Control target || (target != ServiceBlock && !ServiceBlock.IsVisualAncestorOf(target)))
+            return false;
+        item = target.FindAncestorOfType<ListBoxItem>(includeSelf: true) is { DataContext: SetlistRowViewModel } row ? row : null;
+        return true;
+    }
+
+    /// <summary>On a row, before it or after it on its lower half.</summary>
+    private bool IsLowerHalf(ListBoxItem item, Avalonia.Point at) => this.TranslatePoint(at, item) is { } local && local.Y > item.Bounds.Height / 2;
+
+    /// <summary>The line at the gap a drop lands in: at the row under the pointer, or after the last row off the rows.</summary>
+    private void ShowServiceDropLine(Avalonia.Point at)
+    {
+        if (ServiceRows.ItemsPanelRoot is not { } panel || !OverService(at, out var item)
+            || (item ?? ServiceRows.ContainerFromIndex(ServiceRows.ItemCount - 1)) is not { } row)
+        {
+            HideDropLine();
+            return;
+        }
+
+        var bottom = item is null || IsLowerHalf(item, at);
+        if (row.TranslatePoint(new Avalonia.Point(0, bottom ? row.Bounds.Height : 0), panel) is { } edge)
+            ShowDropLine(panel, edge.Y, strip: false);
     }
 
     /// <summary>
@@ -696,11 +753,9 @@ public partial class MainWindow : Window
     /// </summary>
     private void DropOnService(ListBox from, string id, Avalonia.Point at)
     {
-        if (ViewModel is not { CurrentService: { } service } vm)
+        if (ViewModel is not { CurrentService: { } service } vm || !OverService(at, out var item))
             return;
-        if (this.InputHitTest(at) is not Control target || (target != ServiceBlock && !ServiceBlock.IsVisualAncestorOf(target)))
-            return;
-        var index = DropIndex(target, at);
+        int? index = item is { DataContext: SetlistRowViewModel row } ? row.Index - 1 + (IsLowerHalf(item, at) ? 1 : 0) : null;
         if (from == Library)
         {
             vm.AddSongToService(id, index);
@@ -710,15 +765,6 @@ public partial class MainWindow : Window
         var was = service.IndexOf(id);
         var to = index ?? vm.Setlist.Rows.Count;
         vm.MoveServiceEntry(id, was >= 0 && to > was ? to - 1 : to);
-    }
-
-    /// <summary>The 0-based position a drop lands at: before the row under the pointer, or after it on its lower half.</summary>
-    private int? DropIndex(Control target, Avalonia.Point at)
-    {
-        if (target.FindAncestorOfType<ListBoxItem>(includeSelf: true) is not { DataContext: SetlistRowViewModel row } item)
-            return null;
-        var lower = this.TranslatePoint(at, item) is { } local && local.Y > item.Bounds.Height / 2;
-        return row.Index - 1 + (lower ? 1 : 0);
     }
 
     /// <summary>A section button in the ENTRY palette: add that section to the variant (ARR-20).</summary>

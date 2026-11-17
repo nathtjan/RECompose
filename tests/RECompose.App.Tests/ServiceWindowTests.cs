@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 using Avalonia.Controls;
+using AdornerLayer = Avalonia.Controls.Primitives.AdornerLayer;
 using Avalonia.Headless;
 using Avalonia.Input;
 using Avalonia.Logging;
@@ -98,11 +99,15 @@ public sealed class ServiceWindowTests : IDisposable
             Dispatcher.UIThread.RunJobs();
             string[] Songs() => vm.CurrentService!.Entries.Select(e => e.SongId).ToArray();
             Point At(Control control, double x, double y) => control.TranslatePoint(new Point(x, y), window)!.Value;
+            var adorners = AdornerLayer.GetAdornerLayer((Control)window.Content!)!;
             void Drag(Point from, Point to, bool cancel = false)
             {
                 window.MouseDown(from, MouseButton.Left);
                 window.MouseMove(from + new Point(4, 4));
                 window.MouseMove(to);
+                Dispatcher.UIThread.RunJobs();
+                // A picture of the row follows the pointer while it is dragged (UI-8).
+                Assert.Single(adorners.Children.OfType<Image>());
                 if (cancel)
                     window.KeyPressQwerty(PhysicalKey.Escape, RawInputModifiers.None);
                 window.MouseUp(to, MouseButton.Left);
@@ -118,7 +123,19 @@ public sealed class ServiceWindowTests : IDisposable
             Drag(At(rows.ContainerFromIndex(0)!, 40, 8), At(second, 40, second.Bounds.Height - 3));
             Assert.Equal(["goodness", "champion"], Songs());
 
-            // A library song onto the upper half of the first row goes first.
+            // A library song onto the upper half of the first row goes first; a line marks the gap while dragging.
+            window.MouseDown(At(champion, 20, 8), MouseButton.Left);
+            window.MouseMove(At(rows.ContainerFromIndex(0)!, 40, 3));
+            Dispatcher.UIThread.RunJobs();
+            var line = adorners.Children.OfType<Border>().Single();
+            Assert.Equal(At(rows.ContainerFromIndex(0)!, 0, 0).Y - 1, line.TranslatePoint(new Point(0, 0), window)!.Value.Y, 1);
+            window.MouseMove(At(library, 20, library.Bounds.Height - 5));
+            Dispatcher.UIThread.RunJobs();
+            Assert.Empty(adorners.Children.OfType<Border>()); // not over the service: no line
+            window.KeyPressQwerty(PhysicalKey.Escape, RawInputModifiers.None);
+            window.MouseUp(At(library, 20, library.Bounds.Height - 5), MouseButton.Left);
+            Dispatcher.UIThread.RunJobs();
+            Assert.Empty(adorners.Children.OfType<Image>());
             Drag(At(champion, 20, 8), At(rows.ContainerFromIndex(0)!, 40, 3));
             Assert.Equal(["champion", "goodness", "champion"], Songs());
 
@@ -129,6 +146,8 @@ public sealed class ServiceWindowTests : IDisposable
             // Dropped outside the service: nothing changes.
             Drag(At(champion, 20, 8), At(library, 20, library.Bounds.Height - 5));
             Assert.Equal(3, Songs().Length);
+            Assert.Empty(adorners.Children.OfType<Image>());
+            Assert.Empty(adorners.Children.OfType<Border>());
             window.Close();
         }, TestContext.Current.CancellationToken);
     }
