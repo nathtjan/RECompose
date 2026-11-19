@@ -320,6 +320,23 @@ public sealed class EngineClient : IAsyncDisposable
             }).ToArray()),
         }, ct);
 
+    /// <summary>The controller's own output for feedback (protocol 18); null closes it. True when it opened.</summary>
+    public async Task<bool> SetControlOutputAsync(string? name, CancellationToken ct = default)
+    {
+        var request = new JsonObject();
+        if (!string.IsNullOrEmpty(name))
+            request["name"] = name;
+        var reply = await Session.Connection.RequestAsync("setControlOutput", request, ct).ConfigureAwait(false);
+        return (bool?)reply["open"] ?? false;
+    }
+
+    /// <summary>Feedback to the controller (protocol 18): each message <c>[status, data…]</c>.</summary>
+    public Task SendControlMidiAsync(IEnumerable<byte[]> messages, CancellationToken ct = default) =>
+        Session.Connection.RequestAsync("sendControlMidi", new JsonObject
+        {
+            ["messages"] = new JsonArray(messages.Select(m => (JsonNode)new JsonArray(m.Select(b => (JsonNode?)JsonValue.Create((int)b)).ToArray())).ToArray()),
+        }, ct);
+
     /// <summary>
     /// The talkback mic: <paramref name="channel"/> (0-based) of the playing device's input, or of <paramref name="device"/>
     /// where the driver allows another input device; −1 switches it off. True when the input is open.

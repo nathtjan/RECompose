@@ -458,6 +458,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         _ = OpenMidiAsync(engine);
         engine.MidiSent += OnMidiSent;
         _ = OpenMidiOutAsync(engine);
+        _ = OpenControlOutputAsync(engine);
         engine.DeviceChanged += d => _ui.Post(() => ShowDevice(d));
         engine.DeviceError += m => _ui.Post(() => Banner = $"The audio device reported a problem: {m}");
         HookDeviceEvents(engine);

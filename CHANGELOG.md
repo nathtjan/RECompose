@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### New
+
+- MIDI controls go beyond presses. A button can jump to the next Verse, Chorus or any section type, or to a tile of the Perform strip, optionally only while Perform is open.
+- Pads from a keyboard: learn the lowest and highest note of a range and each key starts or stops the pad in its key, or sounds it while held. Single pad keys and Pads play or stop can be bound too.
+- MIDI faders: a controller sets the master, the pads or every track of a group, keeping the group's balance. Soft takeover keeps a fader from jumping, a whole move is one undo, and in Service lock a fader can't take a track below −40 dB.
+- Control profiles: each profile keeps its own bindings, and a button can switch to the next profile or to a named one. Panic and the profile buttons work in every profile.
+- Controller feedback: choose the controller's output in Settings › MIDI and its buttons light for the section, tile, pad and profile in force, and motorised faders follow the mix.
+- When a new binding shares an input with another one, Settings says which one acts. Less common rows are under More.
+
 ## 0.2.1
 
 ### New

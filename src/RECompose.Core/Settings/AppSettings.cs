@@ -168,8 +168,19 @@ public sealed record AppSettings
     /// <summary>The render cache may grow to this many gigabytes before the oldest renders go (REL-15, SET-60).</summary>
     public int RenderBudgetGb { get; init; } = 30;
 
-    /// <summary>Keys, pedals and controllers (LIVE-51); null = the page-turner profile.</summary>
+    /// <summary>Keys, pedals and controllers before profiles (LIVE-51); read once into the Default profile.</summary>
     public List<RECompose.Core.Controls.ControlBinding>? Bindings { get; init; }
+
+    /// <summary>The control profiles; null = one Default profile made from <see cref="Bindings"/> or the page-turner keys.</summary>
+    public List<RECompose.Core.Controls.ControlProfile>? ControlProfiles { get; init; }
+
+    /// <summary>The bindings every profile shares: Panic and the profile switches.</summary>
+    public List<RECompose.Core.Controls.ControlBinding>? GlobalBindings { get; init; }
+
+    public string? ActiveControlProfile { get; init; }
+
+    /// <summary>The controller's own MIDI output: lit buttons and moving faders follow the app. Null = no feedback.</summary>
+    public string? ControlOutput { get; init; }
     public string? LastSongId { get; init; }
 
     /// <summary>The main window was maximised when the app last closed; it opens that way again.</summary>

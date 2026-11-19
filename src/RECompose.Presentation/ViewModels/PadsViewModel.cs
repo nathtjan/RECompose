@@ -147,7 +147,7 @@ public sealed class PadsViewModel : ObservableObject
     public Task PressAsync(int pitchClass) => _playing == pitchClass ? StopAsync() : PlayAsync(pitchClass);
 
     /// <summary>Play/stop (SL-43): the last key, or the song's key when Follow song is on.</summary>
-    private Task PlayStopAsync()
+    internal Task PlayStopAsync()
     {
         if (IsPlaying)
             return StopAsync();

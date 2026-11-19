@@ -125,6 +125,8 @@ juce::var Engine::handle (const juce::String& type, const juce::var& message)
     if (type == "injectMidi")   return injectMidi (message);
     if (type == "setMidiOutput") return setMidiOutput (message);
     if (type == "sendMidi")     return sendMidi (message);
+    if (type == "setControlOutput") return setControlOutput (message);
+    if (type == "sendControlMidi")  return sendControlMidi (message);
     if (type == "go")           return go();
     if (type == "panic")        return panic();
     if (type == "setTrack")     return setTrack (message);
@@ -377,6 +379,46 @@ juce::var Engine::sendMidi (const juce::var& message)
         }
     }
     sendMidiNow (messages);
+    return Obj().set ("type", "ok");
+}
+
+// Protocol 18: the controller's own output, apart from the plan's MIDI out, so feedback never reaches lighting software
+// and the plan's notes never light the controller. Opening fails when the port is gone or (Windows) another app has it.
+juce::var Engine::setControlOutput (const juce::var& message)
+{
+    const auto name = text (message, "name");
+    std::unique_ptr<juce::MidiOutput> port;
+    if (name.isNotEmpty())
+        for (const auto& device : juce::MidiOutput::getAvailableDevices())
+            if (device.name == name && port == nullptr)
+                port = juce::MidiOutput::openDevice (device.identifier);
+
+    const bool open = port != nullptr;
+    {
+        const std::lock_guard lock (controlOutMutex_);
+        controlOut_ = std::move (port);
+    }
+    return Obj().set ("type", "controlOutput").set ("name", open ? name : juce::String()).set ("open", open);
+}
+
+// Protocol 18: feedback sent now to the controller output; not reported in `midiOut` and not silenced by panic.
+juce::var Engine::sendControlMidi (const juce::var& message)
+{
+    const std::lock_guard lock (controlOutMutex_);
+    if (const auto* list = message.getProperty ("messages", {}).getArray(); list != nullptr && controlOut_ != nullptr)
+    {
+        for (const auto& m : *list)
+        {
+            std::uint8_t bytes[3] {};
+            int size = 0;
+            if (const auto* values = m.getArray())
+                for (const auto& b : *values)
+                    if (size < 3)
+                        bytes[size++] = static_cast<std::uint8_t> (juce::jlimit (0, 255, static_cast<int> (b)));
+            if (size > 0)
+                controlOut_->sendMessageNow (juce::MidiMessage (bytes, size));
+        }
+    }
     return Obj().set ("type", "ok");
 }
 

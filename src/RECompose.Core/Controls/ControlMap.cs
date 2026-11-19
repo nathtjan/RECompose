@@ -30,7 +30,28 @@ public enum ControlAction
 
     /// <summary>The Talk input was let go. Not bindable: the router sends it on release.</summary>
     TalkEnd,
+
+    /// <summary>The next section of the binding's type (<see cref="ControlBinding.Target"/> "Chorus"), else the last one.</summary>
+    JumpToSection,
+
+    /// <summary>The Perform strip's tile at that position (<see cref="ControlBinding.Target"/> "1"…"8").</summary>
+    JumpToTile,
+
+    /// <summary>A pad key: the binding's pitch class (<see cref="ControlBinding.Target"/> "0"…"11"), else the note played.</summary>
+    PadKey,
+    PadPlayStop,
+
+    /// <summary>A continuous controller sets a level: "Master", "Pads" or a track group (<see cref="ControlBinding.Target"/>).</summary>
+    Fader,
+
+    NextProfile,
+
+    /// <summary>The profile named in <see cref="ControlBinding.Target"/>.</summary>
+    SelectProfile,
 }
+
+/// <summary>What the router passes on: the action, the binding that matched, and for MIDI the note number and value.</summary>
+public readonly record struct ControlEvent(ControlAction Action, ControlBinding? Binding = null, int Number = 0, int Value = 0);
 
 public enum ControlKind
 {
@@ -66,6 +87,9 @@ public sealed record ControlInput
 
     public int Number { get; init; }
 
+    /// <summary>A range of notes from <see cref="Number"/> up to this one (pads from a keyboard); null is one note.</summary>
+    public int? NumberTo { get; init; }
+
     /// <summary>A controller counts as pressed at or above this value (a sustain pedal sends 127 and 0).</summary>
     public int Threshold { get; init; } = 64;
 
@@ -75,12 +99,23 @@ public sealed record ControlInput
     public static ControlInput Learned(MidiMessage m) => new() { Kind = m.Kind, Channel = m.Channel, Number = m.Number };
 
     public bool Matches(MidiMessage m) =>
-        Kind == m.Kind && Kind != ControlKind.Key && (Channel == 0 || Channel == m.Channel) && Number == m.Number;
+        Kind == m.Kind && Kind != ControlKind.Key && (Channel == 0 || Channel == m.Channel) && m.Number >= Number && m.Number <= Top;
+
+    private int Top => NumberTo ?? Number;
+
+    /// <summary>When two bindings take the same message, the narrower acts: one note over a range, one channel over any.</summary>
+    public int Specificity => (Top == Number ? 2 : 0) + (Channel == 0 ? 0 : 1);
+
+    /// <summary>The two inputs can take the same key or message.</summary>
+    public bool Overlaps(ControlInput other) => Kind == other.Kind && (Kind == ControlKind.Key
+        ? string.Equals(Key, other.Key, StringComparison.OrdinalIgnoreCase)
+        : (Channel == 0 || other.Channel == 0 || Channel == other.Channel) && Number <= other.Top && other.Number <= Top);
 
     /// <summary>"PageDown", "Note 60 ch 1", "CC 64 ch 1 ≥ 64", "Program 5 ch 2".</summary>
     public string Display => Kind switch
     {
         ControlKind.Key => Key ?? string.Empty,
+        ControlKind.Note when Top != Number => $"Notes {Number.ToString(CultureInfo.InvariantCulture)}–{Top.ToString(CultureInfo.InvariantCulture)}{ChannelText}",
         ControlKind.Note => $"Note {Number.ToString(CultureInfo.InvariantCulture)}{ChannelText}",
         ControlKind.ControlChange => $"CC {Number.ToString(CultureInfo.InvariantCulture)}{ChannelText} ≥ {Threshold.ToString(CultureInfo.InvariantCulture)}",
         _ => $"Program {Number.ToString(CultureInfo.InvariantCulture)}{ChannelText}",
@@ -93,7 +128,25 @@ public sealed record ControlInput
 /// One row of Settings › Controls. With <see cref="Long"/> the binding has two meanings: a short press does
 /// <see cref="Action"/> (when the key comes up) and holding it for the long-press time does <see cref="Long"/> (LIVE-54).
 /// </summary>
-public sealed record ControlBinding(ControlAction Action, ControlInput Input, ControlAction? Long = null);
+public sealed record ControlBinding(ControlAction Action, ControlInput Input, ControlAction? Long = null)
+{
+    /// <summary>What the action applies to: a section type, a tile number, a pitch class, a fader target or a profile.</summary>
+    public string? Target { get; init; }
+
+    /// <summary>Pads: the pad sounds while the note is held instead of each press starting or stopping it.</summary>
+    public bool Hold { get; init; }
+
+    /// <summary>Jumps: only while Perform is open.</summary>
+    public bool PerformOnly { get; init; }
+
+    /// <summary>Faders: the level moves only once the controller passes where it already is, so it never jumps.</summary>
+    public bool SoftTakeover { get; init; } = true;
+
+    /// <summary>A fader's controller has no press threshold to show.</summary>
+    public string Display => Action == ControlAction.Fader && Input.Kind == ControlKind.ControlChange
+        ? Input.Display[..Input.Display.IndexOf(" ≥", StringComparison.Ordinal)]
+        : Input.Display;
+}
 
 /// <summary>The bindings in force (LIVE-50, LIVE-51). The default is the page-turner profile.</summary>
 public static class ControlDefaults
@@ -111,6 +164,11 @@ public static class ControlDefaults
         new(ControlAction.MoveOn, ControlInput.FromKey("M")),
         new(ControlAction.End, ControlInput.FromKey("E")),
         new(ControlAction.LoopSection, ControlInput.FromKey("L")),
+    ];
+
+    /// <summary>The bindings every profile has: Panic and the profile switches.</summary>
+    public static IReadOnlyList<ControlBinding> Global { get; } =
+    [
         new(ControlAction.Panic, ControlInput.FromKey("Ctrl+Shift+Space")),
     ];
 
@@ -132,8 +190,31 @@ public static class ControlDefaults
         ControlAction.RestartSection => "Restart section",
         ControlAction.LoopSection => "Loop section",
         ControlAction.Talk => "Push to talk",
+        ControlAction.JumpToSection => "Jump to section",
+        ControlAction.JumpToTile => "Jump to tile",
+        ControlAction.PadKey => "Pads from a keyboard",
+        ControlAction.PadPlayStop => "Pads play or stop",
+        ControlAction.Fader => "Fader",
+        ControlAction.NextProfile => "Next profile",
+        ControlAction.SelectProfile => "Profile",
         _ => action.ToString(),
     };
+
+    /// <summary>"Chorus", "Tile 3", "Pad B♭", "Fader Drums", "Profile Band"; the action's name without a target.</summary>
+    public static string Name(ControlAction action, string? target)
+    {
+        if (string.IsNullOrEmpty(target))
+            return Name(action);
+        return action switch
+        {
+            ControlAction.JumpToSection when Enum.TryParse<Sections.SectionType>(target, out var type) => Sections.SectionTypes.DisplayName(type),
+            ControlAction.JumpToTile => $"Tile {target}",
+            ControlAction.PadKey when int.TryParse(target, CultureInfo.InvariantCulture, out var pc) => $"Pad {new Music.Key(pc).ToDisplayString()}",
+            ControlAction.Fader => $"Fader {target}",
+            ControlAction.SelectProfile => $"Profile {target}",
+            _ => $"{Name(action)} {target}",
+        };
+    }
 }
 
 /// <summary>
@@ -155,25 +236,43 @@ public sealed class ControlRouter(IReadOnlyList<ControlBinding> bindings, double
     public IReadOnlyList<ControlBinding> Bindings { get; } = bindings;
 
     /// <summary>A computer key went down or up.</summary>
-    public IReadOnlyList<ControlAction> Key(string key, bool down, double nowSec) =>
+    public IReadOnlyList<ControlEvent> Key(string key, bool down, double nowSec) =>
         Handle(Bindings.Where(b => b.Input.Kind == ControlKind.Key && string.Equals(b.Input.Key, key, StringComparison.OrdinalIgnoreCase)), down, nowSec);
 
-    /// <summary>A MIDI message arrived from the engine.</summary>
-    public IReadOnlyList<ControlAction> Midi(MidiMessage message, double nowSec)
+    /// <summary>
+    /// A MIDI message arrived from the engine. Faders and pad keys pass on every message as it is (a fader's value, a
+    /// key's note on and off); the rest are presses.
+    /// </summary>
+    public IReadOnlyList<ControlEvent> Midi(MidiMessage message, double nowSec)
     {
         var matches = Bindings.Where(b => b.Input.Matches(message)).ToList();
         if (matches.Count == 0)
             return [];
-        var down = matches.Any(b => message.IsDown(b.Input.Threshold));
-        return Handle(matches, down, nowSec);
+        var narrowest = matches.Max(b => b.Input.Specificity);
+        matches.RemoveAll(b => b.Input.Specificity < narrowest);
+
+        var events = new List<ControlEvent>();
+        var value = message.Kind == ControlKind.ProgramChange ? 127 : message.Value;
+        foreach (var binding in matches.Where(b => IsDirect(b.Action)))
+            events.Add(new ControlEvent(binding.Action, binding, message.Number, value));
+        var presses = matches.Where(b => !IsDirect(b.Action)).ToList();
+        if (presses.Count > 0)
+            events.AddRange(Handle(presses, presses.Any(b => message.IsDown(b.Input.Threshold)), nowSec));
+        return events;
     }
 
-    private IReadOnlyList<ControlAction> Handle(IEnumerable<ControlBinding> matches, bool down, double now)
+    private static bool IsDirect(ControlAction action) => action is ControlAction.Fader or ControlAction.PadKey;
+
+    private List<ControlEvent> Handle(IEnumerable<ControlBinding> matches, bool down, double now)
     {
-        var actions = new List<ControlAction>();
+        var actions = new List<ControlEvent>();
         foreach (var binding in matches)
         {
-            if (down)
+            if (IsDirect(binding.Action))
+            {
+                actions.Add(new ControlEvent(binding.Action, binding, Value: down ? 127 : 0)); // a key on the computer keyboard
+            }
+            else if (down)
             {
                 // A repeating key (auto-repeat while held) or a bouncing pedal counts once (LIVE-55).
                 if (_held.Any(h => h.Binding == binding))
@@ -183,19 +282,19 @@ public sealed class ControlRouter(IReadOnlyList<ControlBinding> bindings, double
                 _lastAccepted[binding] = now;
 
                 if (binding.Long is null)
-                    actions.Add(binding.Action);
+                    actions.Add(new ControlEvent(binding.Action, binding));
                 else
                     _held.Add(new Held { Binding = binding, Since = now });
             }
             else if (binding.Action == ControlAction.Talk)
             {
-                actions.Add(ControlAction.TalkEnd);
+                actions.Add(new ControlEvent(ControlAction.TalkEnd, binding));
             }
             else if (_held.FirstOrDefault(h => h.Binding == binding) is { } held)
             {
                 _held.Remove(held);
                 if (!held.LongFired)
-                    actions.Add(binding.Action); // let go before the long-press time: the short action
+                    actions.Add(new ControlEvent(binding.Action, binding)); // let go before the long-press time: the short action
             }
         }
 
@@ -203,15 +302,15 @@ public sealed class ControlRouter(IReadOnlyList<ControlBinding> bindings, double
     }
 
     /// <summary>The long actions whose hold time has now passed.</summary>
-    public IReadOnlyList<ControlAction> Tick(double nowSec)
+    public IReadOnlyList<ControlEvent> Tick(double nowSec)
     {
-        var actions = new List<ControlAction>();
+        var actions = new List<ControlEvent>();
         foreach (var held in _held)
         {
             if (!held.LongFired && nowSec - held.Since >= longPressSec && held.Binding.Long is { } action)
             {
                 held.LongFired = true;
-                actions.Add(action);
+                actions.Add(new ControlEvent(action, held.Binding));
             }
         }
 

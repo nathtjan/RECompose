@@ -162,24 +162,40 @@
                         Content="Carry on as written instead of returning to the arrangement" />
             </Grid>
             <DockPanel Margin="0,12,0,0">
-              <Button DockPanel.Dock="Right" Content="Restore defaults" Command="{Binding RestoreDefaultsCommand}" />
+              <Button DockPanel.Dock="Right" Content="Restore defaults" Command="{Binding RestoreDefaultsCommand}"
+                      ToolTip.Tip="The profile in force goes back to the page-turner keys" />
               <TextBlock Classes="title" Text="Controls" />
             </DockPanel>
+            <Grid ColumnDefinitions="180,*,Auto,Auto,Auto" ColumnSpacing="8">
+              <TextBlock Classes="label" Text="PROFILE" VerticalAlignment="Center" />
+              <ComboBox x:Name="ProfileSelect" Grid.Column="1" ItemsSource="{Binding ProfileNames}" SelectedItem="{Binding ActiveProfile}" HorizontalAlignment="Stretch"
+                        AutomationProperties.Name="Control profile" ToolTip.Tip="Panic and the profile buttons work in every profile" />
+              <Button Grid.Column="2" Content="New…" Command="{Binding NewProfileCommand}" AutomationProperties.Name="New control profile" />
+              <Button Grid.Column="3" Content="Rename…" Command="{Binding RenameProfileCommand}" AutomationProperties.Name="Rename control profile" />
+              <Button Grid.Column="4" Content="Delete" Command="{Binding DeleteProfileCommand}" AutomationProperties.Name="Delete control profile" />
+            </Grid>
             <TextBlock Classes="meta" TextWrapping="Wrap"
-                       Text="Press Learn, then a key, a note, a controller or a foot pedal. Two presses within 250 ms count once. A pedal acts when it is pressed." />
+                       Text="Press Learn, then a key, a note, a controller or a foot pedal. Two presses within 250 ms count once. A pedal acts when it is pressed. For pads from a keyboard, press the lowest note and then the highest." />
             <TextBlock Classes="mono" Text="{Binding LastInput}" Foreground="{DynamicResource state-playing}" />
+            <TextBlock x:Name="OverlapText" Text="{Binding Overlap}" TextWrapping="Wrap" Foreground="{DynamicResource state-warning}"
+                       IsVisible="{Binding Overlap, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+            <CheckBox x:Name="ShowMoreBox" IsChecked="{Binding ShowMore}" Content="More: every section type, tiles, single pad keys, every fader, each profile" />
           </StackPanel>
 
           <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="0,8,0,0">
             <ItemsControl x:Name="ControlRows" ItemsSource="{Binding Rows}">
               <ItemsControl.ItemTemplate>
                 <DataTemplate x:DataType="vm:ControlRow">
-                  <Grid ColumnDefinitions="150,*,Auto,Auto" Margin="0,3" ColumnSpacing="8">
-                    <TextBlock Grid.Column="0" Text="{Binding Name}" VerticalAlignment="Center" FontWeight="SemiBold" />
-                    <TextBlock Grid.Column="1" Classes="mono" Text="{Binding Inputs}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-                    <Button Grid.Column="2" Content="{Binding LearnLabel}" Command="{Binding LearnCommand}" MinWidth="150" AutomationProperties.Name="Learn" />
-                    <Button Grid.Column="3" Content="Clear" Command="{Binding ClearCommand}" />
-                  </Grid>
+                  <StackPanel>
+                    <TextBlock Classes="label" Text="{Binding Header}" IsVisible="{Binding HasHeader}" Margin="0,10,0,2" />
+                    <Grid ColumnDefinitions="150,*,Auto,Auto,Auto" Margin="0,3" ColumnSpacing="8">
+                      <TextBlock Grid.Column="0" Text="{Binding Name}" VerticalAlignment="Center" FontWeight="SemiBold" />
+                      <TextBlock Grid.Column="1" Classes="mono" Text="{Binding Inputs}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                      <CheckBox Grid.Column="2" Content="{Binding OptionLabel}" IsChecked="{Binding Option}" IsVisible="{Binding HasOption}" />
+                      <Button Grid.Column="3" Content="{Binding LearnLabel}" Command="{Binding LearnCommand}" MinWidth="170" AutomationProperties.Name="Learn" />
+                      <Button Grid.Column="4" Content="Clear" Command="{Binding ClearCommand}" />
+                    </Grid>
+                  </StackPanel>
                 </DataTemplate>
               </ItemsControl.ItemTemplate>
             </ItemsControl>
@@ -202,6 +218,15 @@
                 <ComboBox ItemsSource="{Binding MiddleCChoices}" SelectedItem="{Binding MiddleC}" MinWidth="80" AutomationProperties.Name="Middle C is"
                           ToolTip.Tip="What MIDI note 60 is called" />
               </StackPanel>
+            </Grid>
+            <TextBlock Classes="title" Text="Controller feedback" Margin="0,12,0,0" />
+            <Grid ColumnDefinitions="180,*" RowDefinitions="Auto,Auto" RowSpacing="6">
+              <TextBlock Classes="label" Text="CONTROLLER OUTPUT" VerticalAlignment="Center" />
+              <ComboBox x:Name="ControlOutputSelect" Grid.Column="1" ItemsSource="{Binding MidiPorts}" SelectedItem="{Binding ControlOutput}" HorizontalAlignment="Stretch"
+                        AutomationProperties.Name="Controller output"
+                        ToolTip.Tip="Usually the controller's own port. Its buttons light for the section, pad and profile in force, and motorised faders follow the mix" />
+              <TextBlock Grid.Row="1" Grid.Column="1" Classes="meta" Text="{Binding ControlOutputStatus}" TextWrapping="Wrap" Foreground="{DynamicResource state-warning}"
+                         IsVisible="{Binding ControlOutputStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
             </Grid>
             <TextBlock Classes="title" Text="Guide calls" Margin="0,12,0,0" />
             <CheckBox IsChecked="{Binding ReplaceGuideCalls}" Content="Replace guide calls that announce the wrong section"

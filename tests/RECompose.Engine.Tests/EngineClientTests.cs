@@ -197,6 +197,11 @@ public class EngineClientTests : IAsyncDisposable
         // Listening to inputs that do not exist opens nothing and is not an error.
         Assert.Empty(await client.SetMidiInputsAsync(["No such controller"], ct));
         _ = await client.ListMidiInputsAsync(ct);
+
+        // Protocol 18: a controller output that does not exist does not open, and feedback with none open is dropped.
+        Assert.False(await client.SetControlOutputAsync("No such controller", ct));
+        await client.SendControlMidiAsync([[0x90, 40, 127], [0xB0, 7, 100]], ct);
+        Assert.False(await client.SetControlOutputAsync(null, ct));
     }
 
     [Fact]

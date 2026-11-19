@@ -57,7 +57,7 @@ public sealed class LiveControlTests : IDisposable
             w.Write((short)(Level(i / (double)rate) * 32767));
     }
 
-    private async Task<(MainViewModel Vm, Song Song)> StartAsync(string? arrangementOrder = null, Func<Song, Song>? change = null)
+    private async Task<(MainViewModel Vm, Song Song)> StartAsync(string? arrangementOrder = null, Func<Song, Song>? change = null, ServiceDialogs? dialogs = null)
     {
         Environment.SetEnvironmentVariable("RECOMPOSE_NO_DEVICE", "1"); // time passes only when the test renders
         var executable = Path.Combine(AppContext.BaseDirectory, EnginePaths.ExecutableFileName);
@@ -101,7 +101,7 @@ public sealed class LiveControlTests : IDisposable
         store.SaveSong(song);
         store.SaveLibrary(new LibraryIndex { Songs = [SongSummary.From(song)] });
 
-        var vm = Open(store, new ServiceDialogs(), executable);
+        var vm = Open(store, dialogs ?? new ServiceDialogs(), executable);
         await vm.InitializeAsync();
         await vm.LoadSongAsync("live");
         if (arrangementOrder is not null)
@@ -296,6 +296,102 @@ public sealed class LiveControlTests : IDisposable
             Assert.Equal(LiveOutcome.Queued, move.Outcome);
             await RenderAsync(vm, 8); // the second pass ends at 24 s of the plan, then Verse 2
             await Eventually(() => vm.NextState != NextState.Repeating);
+        }
+        finally
+        {
+            await FinishAsync(vm);
+        }
+    }
+
+    [Fact]
+    public async Task LIVE50_a_section_button_jumps_to_the_next_section_of_its_type()
+    {
+        var (vm, _) = await StartAsync();
+        try
+        {
+            var ct = TestContext.Current.CancellationToken;
+            var verse = vm.Controls.Rows.First(r => r is { Action: ControlAction.JumpToSection, Target: "Verse" });
+            vm.Controls.BeginLearn(verse);
+            await vm.EngineForTests!.InjectMidiAsync("note", 10, 40, 100, ct);
+            await Eventually(() => verse.Inputs == "Note 40 ch 10");
+
+            await vm.EngineForTests.PlayAsync(ct);
+            await RenderAsync(vm, 4);
+            await vm.EngineForTests.InjectMidiAsync("note", 10, 40, 100, ct);
+            await Eventually(() => vm.CanCancel); // Verse 2 is queued for the end of Verse 1, past the Chorus
+
+            await RenderAsync(vm, 4.5);
+            Assert.Equal(0.6, await RenderAsync(vm, 0.5), 2);
+        }
+        finally
+        {
+            await FinishAsync(vm);
+        }
+    }
+
+    [Fact]
+    public async Task LIVE52_a_midi_fader_moves_its_group_with_soft_takeover_one_undo_per_gesture_and_a_floor_in_service_lock()
+    {
+        var (vm, _) = await StartAsync(change: s => s with { Tracks = [s.Tracks[0] with { Group = TrackGroups.Drums }] });
+        try
+        {
+            var ct = TestContext.Current.CancellationToken;
+            var engine = vm.EngineForTests!;
+            var fader = vm.Controls.Rows.First(r => r is { Action: ControlAction.Fader, Target: TrackGroups.Drums });
+            Assert.True(fader.Option); // soft takeover is on by default
+            vm.Controls.BeginLearn(fader);
+            await engine.InjectMidiAsync("note", 1, 60, 100, ct); // not a controller: still learning
+            await engine.InjectMidiAsync("cc", 1, 7, 0, ct);
+            await Eventually(() => fader.Inputs == "CC 7 ch 1");
+            var track = vm.Song!.Tracks.Single();
+            Assert.Equal(0, track.GainDb);
+
+            // The controller is at the bottom and the strip at 0 dB: nothing moves until it gets there.
+            await engine.InjectMidiAsync("cc", 1, 7, 40, ct);
+            await Task.Delay(200, ct);
+            Assert.Equal(0, track.GainDb);
+            foreach (var value in new[] { 116, 110, 100 })
+                await engine.InjectMidiAsync("cc", 1, 7, value, ct);
+            await Eventually(() => Math.Abs(track.GainDb - ControlProfiles.FaderDb(100, -60, 6)) < 0.05);
+            vm.UndoCommand.Execute(null);
+            Assert.Equal(0, track.GainDb); // the whole gesture in one step
+
+            // In Service lock the fader can't take the track below −40 dB.
+            vm.IsServiceLock = true;
+            foreach (var value in new[] { 116, 60, 0 })
+                await engine.InjectMidiAsync("cc", 1, 7, value, ct);
+            await Eventually(() => track.GainDb == -40);
+        }
+        finally
+        {
+            await FinishAsync(vm);
+        }
+    }
+
+    [Fact]
+    public async Task LIVE51_a_midi_button_changes_the_control_profile_and_each_profile_keeps_its_own_bindings()
+    {
+        var dialogs = new ServiceDialogs { Name = "Band" };
+        var (vm, _) = await StartAsync(dialogs: dialogs);
+        try
+        {
+            var ct = TestContext.Current.CancellationToken;
+            var controls = vm.Controls;
+            Assert.Equal([ControlProfiles.DefaultName], controls.ProfileNames);
+            controls.BeginLearn(controls.Rows.First(r => r.Action == ControlAction.NextProfile));
+            await vm.EngineForTests!.InjectMidiAsync("pc", 16, 1, 0, ct);
+            await Eventually(() => !controls.IsLearning);
+
+            controls.NewProfileCommand.Execute(null);
+            await Eventually(() => controls.ActiveProfile == "Band");
+            controls.Clear(ControlAction.Next); // only in Band
+            Assert.DoesNotContain(controls.Bindings, b => b.Action == ControlAction.Next);
+
+            await vm.EngineForTests.InjectMidiAsync("pc", 16, 1, 0, ct);
+            await Eventually(() => controls.ActiveProfile == ControlProfiles.DefaultName);
+            Assert.Contains(controls.Bindings, b => b.Action == ControlAction.Next);
+            Assert.Equal(ControlProfiles.DefaultName, vm.Settings.ActiveControlProfile);
+            Assert.Equal(2, vm.Settings.ControlProfiles!.Count);
         }
         finally
         {

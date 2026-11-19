@@ -180,6 +180,8 @@ private:
     void pushMidi (const juce::String& kind, int channel, int number, int value);
     juce::var setMidiOutput (const juce::var& message);
     juce::var sendMidi (const juce::var& message);
+    juce::var setControlOutput (const juce::var& message);
+    juce::var sendControlMidi (const juce::var& message);
     void sendMidiNow (const std::vector<audio::PlanMidi>& messages); // any thread: sends and reports `midiOut`
     void runMidiOut();
     juce::var setTrack (const juce::var& message);
@@ -295,6 +297,8 @@ private:
     audio::MidiOutQueue midiQueue_;
     std::mutex midiOutMutex_;
     std::unique_ptr<juce::MidiOutput> midiOut_;
+    std::mutex controlOutMutex_;
+    std::unique_ptr<juce::MidiOutput> controlOut_; // protocol 18: lit buttons and moving faders on the controller
     std::atomic<std::uint32_t> midiChannels_ { 0 }; // bit per channel used, for panic (REL-40)
     std::atomic<bool> midiStop_ { false };
     std::thread midiThread_;

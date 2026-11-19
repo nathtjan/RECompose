@@ -13,10 +13,10 @@ public class ControlMapTests
     {
         var router = new ControlRouter(ControlDefaults.PageTurner);
 
-        Assert.Equal([ControlAction.Next], router.Key("PageDown", true, 0));
-        Assert.Equal([ControlAction.Back], router.Key("PageUp", true, 0));
-        Assert.Equal([ControlAction.Next], router.Key("right", true, 1));   // case does not matter
-        Assert.Equal([ControlAction.Back], router.Key("Left", true, 1));
+        Assert.Equal([ControlAction.Next], router.Key("PageDown", true, 0).Acts());
+        Assert.Equal([ControlAction.Back], router.Key("PageUp", true, 0).Acts());
+        Assert.Equal([ControlAction.Next], router.Key("right", true, 1).Acts());   // case does not matter
+        Assert.Equal([ControlAction.Back], router.Key("Left", true, 1).Acts());
         Assert.Empty(router.Key("F9", true, 2));
     }
 
@@ -39,12 +39,12 @@ public class ControlMapTests
         Assert.Equal("CC 64 ch 1 ≥ 64", pedal.Display);
         var router = Router(new ControlBinding(ControlAction.Go, pedal));
 
-        Assert.Equal([ControlAction.Go], router.Midi(new MidiMessage(ControlKind.ControlChange, 1, 64, 127), 0));
+        Assert.Equal([ControlAction.Go], router.Midi(new MidiMessage(ControlKind.ControlChange, 1, 64, 127), 0).Acts());
         Assert.Empty(router.Midi(new MidiMessage(ControlKind.ControlChange, 1, 64, 0), 0.1));     // the release is not a press
         Assert.Empty(router.Midi(new MidiMessage(ControlKind.ControlChange, 2, 64, 127), 1));     // another channel
         Assert.Empty(router.Midi(new MidiMessage(ControlKind.ControlChange, 1, 65, 127), 1));     // another controller
         Assert.Empty(router.Midi(new MidiMessage(ControlKind.ControlChange, 1, 64, 30), 2));      // below the threshold
-        Assert.Equal([ControlAction.Go], router.Midi(new MidiMessage(ControlKind.ControlChange, 1, 64, 100), 3));
+        Assert.Equal([ControlAction.Go], router.Midi(new MidiMessage(ControlKind.ControlChange, 1, 64, 100), 3).Acts());
     }
 
     [Fact]
@@ -54,9 +54,9 @@ public class ControlMapTests
             new ControlBinding(ControlAction.Vamp, ControlInput.Learned(new MidiMessage(ControlKind.Note, 3, 60, 100))),
             new ControlBinding(ControlAction.End, ControlInput.Learned(new MidiMessage(ControlKind.ProgramChange, 2, 5, 0))));
 
-        Assert.Equal([ControlAction.Vamp], router.Midi(new MidiMessage(ControlKind.Note, 3, 60, 90), 0));
+        Assert.Equal([ControlAction.Vamp], router.Midi(new MidiMessage(ControlKind.Note, 3, 60, 90), 0).Acts());
         Assert.Empty(router.Midi(new MidiMessage(ControlKind.Note, 3, 60, 0), 0.05));
-        Assert.Equal([ControlAction.End], router.Midi(new MidiMessage(ControlKind.ProgramChange, 2, 5, 0), 1));
+        Assert.Equal([ControlAction.End], router.Midi(new MidiMessage(ControlKind.ProgramChange, 2, 5, 0), 1).Acts());
         Assert.Equal("Program 5 ch 2", router.Bindings[1].Input.Display);
     }
 
@@ -69,12 +69,12 @@ public class ControlMapTests
         // A tap: nothing on the press, the short action on the release.
         Assert.Empty(router.Key("F5", true, 0));
         Assert.Empty(router.Tick(0.3));
-        Assert.Equal([ControlAction.Next], router.Key("F5", false, 0.35));
+        Assert.Equal([ControlAction.Next], router.Key("F5", false, 0.35).Acts());
 
         // A hold: the long action once when the time passes; the release then does nothing more.
         Assert.Empty(router.Key("F5", true, 5));
         Assert.Empty(router.Tick(5.4));
-        Assert.Equal([ControlAction.Panic], router.Tick(5.65));
+        Assert.Equal([ControlAction.Panic], router.Tick(5.65).Acts());
         Assert.Empty(router.Tick(6));
         Assert.Empty(router.Key("F5", false, 6.2));
     }
@@ -86,15 +86,20 @@ public class ControlMapTests
 
         Assert.Single(router.Key("PageDown", true, 0));
         for (var t = 0.5; t < 3; t += 0.03)
-            Assert.DoesNotContain(ControlAction.Go, router.Key("F6", true, t)); // never the short action while held
+            Assert.DoesNotContain(ControlAction.Go, router.Key("F6", true, t).Acts()); // never the short action while held
     }
 
     [Fact]
     public void VC1_the_talk_control_says_when_it_goes_down_and_when_it_is_let_go()
     {
         var router = new ControlRouter([new ControlBinding(ControlAction.Talk, ControlInput.FromKey("T"))]);
-        Assert.Equal([ControlAction.Talk], router.Key("T", true, 0));
+        Assert.Equal([ControlAction.Talk], router.Key("T", true, 0).Acts());
         Assert.Empty(router.Key("T", true, 0.1)); // auto-repeat while held
-        Assert.Equal([ControlAction.TalkEnd], router.Key("T", false, 2));
+        Assert.Equal([ControlAction.TalkEnd], router.Key("T", false, 2).Acts());
     }
+}
+
+internal static class ControlEvents
+{
+    public static List<ControlAction> Acts(this IReadOnlyList<ControlEvent> events) => [.. events.Select(e => e.Action)];
 }
