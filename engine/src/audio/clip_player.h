@@ -25,6 +25,13 @@ struct Clip
 std::unique_ptr<Clip> loadClip (const juce::File& file, double rate, juce::AudioFormatManager& formats, juce::String& problem,
                                 double fromSec = -1.0, double lengthSec = 0.0);
 
+struct PadLoopSpec;
+
+// The loop seam of a pad file as it will sound (protocol 19): `contextSec` before the crossfade, the crossfade from the
+// loop end into the loop start, and `contextSec` after it.
+std::unique_ptr<Clip> loadSeamClip (const juce::File& file, double rate, juce::AudioFormatManager& formats, juce::String& problem,
+                                    const PadLoopSpec& loop, double contextSec = 3.0);
+
 class ClipPlayer
 {
 public:

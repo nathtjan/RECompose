@@ -83,6 +83,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         HookLog();
 
         ImportCommand = new RelayCommand(ImportAsync);
+        ImportPadSetCommand = new RelayCommand(ImportPadSetAsync);
         PlayPauseCommand = new RelayCommand(PlayPauseAsync, () => _song is not null);
         StopCommand = new RelayCommand(StopAsync, () => _song is not null);
         ToStartCommand = new RelayCommand(ToStartAsync, () => _song is not null);
@@ -367,7 +368,11 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     public AppSettings Settings => _settings;
 
-    public RelayCommand ImportCommand { get; }    public RelayCommand PlayPauseCommand { get; }
+    public RelayCommand ImportCommand { get; }
+
+    /// <summary>Import pad set…: a folder as a pad set, whatever its names say (SL-47).</summary>
+    public RelayCommand ImportPadSetCommand { get; }
+    public RelayCommand PlayPauseCommand { get; }
     public RelayCommand StopCommand { get; }
     public RelayCommand ToStartCommand { get; }
     public RelayCommand OpenSettingsCommand { get; }
@@ -649,7 +654,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     }
 
     /// <summary>Deletes a song from the library (its stem files stay on disk); undo puts it back. Service entries of it show as missing.</summary>
-    public async Task DeleteSongAsync(SongItemViewModel? item)
+    public async Task DeleteSongAsync(SongItemViewModel? item, bool confirm = true)
     {
         if (item is null || _store.LoadSong(item.Id) is not { } song)
             return;
@@ -661,38 +666,40 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
         var uses = _services.Count(s => s.Entries.Any(e => e.SongId == song.Id));
         var inServices = uses == 0 ? string.Empty : $" It is in {(uses == 1 ? "1 service" : $"{uses} services")}; those entries will show as missing.";
-        if (!await _dialogs.ConfirmAsync("Delete song", $"Delete {song.Title} from the library? Its stem files stay where they are.{inServices}", "Delete"))
+        if (confirm && !await _dialogs.ConfirmAsync("Delete song", $"Delete {song.Title} from the library? Its stem files stay where they are.{inServices}", "Delete"))
             return;
 
         var summary = item.Summary;
-        void Apply(bool remove)
-        {
-            var library = _store.LoadLibrary();
-            library.Songs.RemoveAll(s => s.Id == song.Id);
-            _allSongs.RemoveAll(s => s.Id == song.Id);
-            if (remove)
-            {
-                _store.DeleteSong(song.Id);
-                if (SelectedSong?.Id == song.Id)
-                    SelectedSong = null;
-            }
-            else
-            {
-                _store.SaveSong(song);
-                library.Songs.Add(summary);
-                _allSongs.Add(new SongItemViewModel(summary));
-                _allSongs.Sort((a, b) => NaturalComparer.Instance.Compare(a.Title, b.Title));
-            }
-
-            _store.SaveLibrary(library);
-            RefreshLibrary();
-            Setlist.Refresh();
-        }
-
+        void Apply(bool remove) => SetSongInLibrary(song, summary, remove);
         Apply(remove: true);
         _undo.Push(new UndoableChange($"Deleted {song.Title}", () => Apply(remove: false), () => Apply(remove: true)));
         AppLog.Write("Library", $"Deleted {song.Title}");
         ShowToast($"Deleted {song.Title}", canUndo: true);
+    }
+
+    /// <summary>Takes a song out of the library or puts it back (delete, and the undo of an import).</summary>
+    private void SetSongInLibrary(Song song, SongSummary summary, bool remove)
+    {
+        var library = _store.LoadLibrary();
+        library.Songs.RemoveAll(s => s.Id == song.Id);
+        _allSongs.RemoveAll(s => s.Id == song.Id);
+        if (remove)
+        {
+            _store.DeleteSong(song.Id);
+            if (SelectedSong?.Id == song.Id)
+                SelectedSong = null;
+        }
+        else
+        {
+            _store.SaveSong(song);
+            library.Songs.Add(summary);
+            _allSongs.Add(new SongItemViewModel(summary));
+            _allSongs.Sort((a, b) => NaturalComparer.Instance.Compare(a.Title, b.Title));
+        }
+
+        _store.SaveLibrary(library);
+        RefreshLibrary();
+        Setlist.Refresh();
     }
 
     private async Task ImportAsync()
@@ -717,9 +724,17 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             return;
         }
 
-        if (TryImportPadSet(folder, audioFiles))
-            return; // SL-47: twelve key-named files are a pad set, not a song
+        // SL-47: key-named files are a pad set, not a song; the person always reviews the guess and can import either way.
+        var scan = PadImport.Classify(folder, audioFiles);
+        if (scan.Guess != PadGuess.Song && await ReviewPadImportAsync(scan) != PadReviewChoice.ImportAsSong)
+            return;
 
+        await ImportSongAsync(folder);
+    }
+
+    /// <summary>Imports a folder as a song: scan, review, save, compute peaks (SL-50…55). Null when nothing was imported.</summary>
+    private async Task<Song?> ImportSongAsync(string folder)
+    {
         ShowToast($"Reading {Path.GetFileName(folder)}…");
         var scan = await _import.ScanAsync(folder, _allSongs.Select(s => s.Summary));
 
@@ -730,9 +745,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                 case DuplicateChoice.OpenExisting:
                     SelectedSong = _allSongs.FirstOrDefault(s => s.Id == duplicate.Id);
                     await LoadSongAsync(duplicate.Id);
-                    return;
+                    return null;
                 case DuplicateChoice.Cancel:
-                    return;
+                    return null;
             }
         }
 
@@ -740,7 +755,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         while (true)
         {
             if (!await _dialogs.ReviewImportAsync(review))
-                return;
+                return null;
             if (review.TryGetValues(out var bpm, out var key, out var beats, out var unit))
             {
                 var song = _import.CreateSong(scan, review.Title, bpm, key, beats, unit, review.Choices());
@@ -752,7 +767,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                 ShowToast($"Imported {song.Title} · {song.Tracks.Count} tracks");
                 AppLog.Write("Library", $"Imported {song.Title} from {folder}: {song.Tracks.Count} tracks");
                 _ = AnalyseAfterImportAsync(song);
-                return;
+                return song;
             }
         }
     }

@@ -81,6 +81,9 @@ public interface IDialogs
     /// <summary>Render audio…: the files to make and how they follow the mixer. True = Render.</summary>
     Task<bool> EditRenderAsync(RenderAudioViewModel render);
 
+    /// <summary>The pad set review on import and the pad set editor (SL-47).</summary>
+    Task<PadReviewChoice> EditPadSetAsync(PadSetEditViewModel edit);
+
     /// <summary>All services…: the service to open, or null = Cancel.</summary>
     Task<ServiceChoice?> BrowseServicesAsync(ServiceBrowserViewModel browser);
 }

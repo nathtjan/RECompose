@@ -376,4 +376,5 @@ internal sealed class AcceptingDialogs : IDialogs
     public Task<TrackEdit?> EditTrackAsync(TrackEdit initial, IReadOnlyList<string> outputs, string title = "Edit track", string confirmLabel = "Save") => Task.FromResult<TrackEdit?>(null);
     public Task<bool> EditTransitionAsync(TransitionViewModel transition) => Task.FromResult(false);
     public Task<bool> EditRenderAsync(RenderAudioViewModel render) => Task.FromResult(false);
+    public Task<PadReviewChoice> EditPadSetAsync(PadSetEditViewModel edit) => Task.FromResult(PadReviewChoice.Save);
 }

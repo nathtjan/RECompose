@@ -4,6 +4,7 @@ using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
+using Avalonia.Data.Converters;
 using Avalonia.Input;
 using Avalonia.Input.Platform;
 using Avalonia.Layout;
@@ -35,6 +36,26 @@ public partial class TransitionWindow : DialogWindow
         this.FindControl<Button>("CancelButton")!.Click += (_, _) => Close(false);
         this.FindControl<Button>("SaveButton")!.Click += (_, _) => Close(true);
         this.FindControl<Button>("ClearButton")!.Click += (_, _) => (DataContext as TransitionViewModel)?.Clear();
+    }
+}
+
+public partial class PadSetWindow : DialogWindow
+{
+    /// <summary>"OB Pad Db.wav" for a full path, in the file picker of a key with two files.</summary>
+    public static FuncValueConverter<string?, string> FileName { get; } = new(path => Path.GetFileName(path) ?? string.Empty);
+
+    public PadSetWindow()
+    {
+        AvaloniaXamlLoader.Load(this);
+        this.FindControl<Button>("CancelButton")!.Click += (_, _) => Close(PadReviewChoice.Cancel);
+        this.FindControl<Button>("SongButton")!.Click += (_, _) => Close(PadReviewChoice.ImportAsSong);
+        this.FindControl<Button>("SaveButton")!.Click += (_, _) =>
+        {
+            // Stays open with the error shown until the values are right.
+            if ((DataContext as PadSetEditViewModel)?.TryGetResult(out _, out _) == true)
+                Close(PadReviewChoice.Save);
+        };
+        Opened += (_, _) => this.FindControl<TextBox>("NameBox")?.Focus();
     }
 }
 
@@ -396,6 +417,12 @@ public sealed class AvaloniaDialogs(Window owner) : IDialogs
     {
         var window = new RenderAudioWindow { DataContext = render };
         return await window.ShowDialog<bool>(owner);
+    }
+
+    public async Task<PadReviewChoice> EditPadSetAsync(PadSetEditViewModel edit)
+    {
+        var window = new PadSetWindow { DataContext = edit };
+        return await window.ShowDialog<PadReviewChoice>(owner);
     }
 
     /// <summary>SL-2: name, date and time of a service. An empty date makes an undated service.</summary>

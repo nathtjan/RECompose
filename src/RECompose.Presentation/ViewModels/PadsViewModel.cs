@@ -13,8 +13,20 @@ public sealed class PadKeyViewModel(int pitchClass) : ObservableObject
 {
     private bool _isPlaying;
     private bool _isSongKey;
+    private bool _hasFile = true;
 
     public int PitchClass { get; } = pitchClass;
+
+    /// <summary>False when the current set has no file for this key: the key is off and says why.</summary>
+    public bool HasFile
+    {
+        get => _hasFile;
+        set
+        {
+            if (Set(ref _hasFile, value))
+                OnPropertyChanged(nameof(AccessibleName));
+        }
+    }
 
     /// <summary>"C", "D♭" … "B" with real accidentals.</summary>
     public string Label { get; } = new Key(pitchClass).ToDisplayString();
@@ -25,7 +37,7 @@ public sealed class PadKeyViewModel(int pitchClass) : ObservableObject
     public bool IsSongKey { get => _isSongKey; set => Set(ref _isSongKey, value); }
 
     /// <summary>"D♭, playing, the song's key".</summary>
-    public string AccessibleName => string.Join(", ", new[] { Label, IsPlaying ? "playing" : null, IsSongKey ? "the song's key" : null }.OfType<string>());
+    public string AccessibleName => string.Join(", ", new[] { Label, HasFile ? null : "no file in this pad set", IsPlaying ? "playing" : null, IsSongKey ? "the song's key" : null }.OfType<string>());
 }
 
 public sealed record PadFadeChoice(double Seconds)
@@ -64,11 +76,11 @@ public sealed class PadsViewModel : ObservableObject
     public IEnumerable<PadKeyViewModel> FirstRow => Keys.Take(6);
     public IEnumerable<PadKeyViewModel> SecondRow => Keys.Skip(6);
 
-    public ObservableCollection<PadSetItem> Sets => _main.PadSets;
+    public ObservableCollection<PadSetItem> Sets => _main.AllPadSets;
 
     public PadSetItem? CurrentSet
     {
-        get => _main.PadSets.FirstOrDefault(s => s.Id == _main.CurrentPadSetId);
+        get => _main.AllPadSets.FirstOrDefault(s => s.Id == _main.CurrentPadSetId);
         set
         {
             if (!_loading && value is not null && value.Id != _main.CurrentPadSetId)
@@ -76,7 +88,7 @@ public sealed class PadsViewModel : ObservableObject
         }
     }
 
-    public bool HasSet => _main.PadSets.Count > 0;
+    public bool HasSet => _main.AllPadSets.Count > 0;
 
     public RelayCommand KeyCommand { get; }
     public RelayCommand PlayStopCommand { get; }
@@ -116,7 +128,7 @@ public sealed class PadsViewModel : ObservableObject
             if (_loading || Math.Abs(db - Settings.GainDb) < 1e-9)
                 return;
             _main.SavePadSettings(Settings with { GainDb = db });
-            _ = _main.SendToEngineAsync(e => e.SetPadAsync(gainDb: db <= -40 ? -100 : db));
+            _ = _main.SendToEngineAsync(e => e.SetPadAsync(gainDb: _main.PadGainDb(db)));
             OnPropertyChanged();
             OnPropertyChanged(nameof(VolumeText));
         }
@@ -219,6 +231,9 @@ public sealed class PadsViewModel : ObservableObject
 
     internal void Refresh()
     {
+        var set = _main.CurrentPadSet;
+        foreach (var key in Keys)
+            key.HasFile = set?.FileFor(key.PitchClass) is not null;
         _loading = true;
         try
         {

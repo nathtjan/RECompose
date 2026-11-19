@@ -1,0 +1,98 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<!-- The pad set review on import and the pad set editor (SL-47, SL-46): the name, each key's file with Play, Loop,
+     Replace and Clear, making missing keys from the nearest key, the loop points and the set's own volume. -->
+<d:DialogWindow xmlns="https://github.com/avaloniaui"
+        xmlns:d="using:RECompose.App.Dialogs"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:RECompose.Presentation.ViewModels"
+        x:Class="RECompose.App.Dialogs.PadSetWindow"
+        x:DataType="vm:PadSetEditViewModel"
+        Title="{Binding Title}"
+        Width="820" Height="720" MinWidth="680" MinHeight="520"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False">
+  <DockPanel Margin="20">
+    <StackPanel DockPanel.Dock="Top" Spacing="10">
+      <TextBlock Classes="title" Text="{Binding Title}" />
+      <TextBlock Classes="mono" Foreground="{DynamicResource text-secondary}" Text="{Binding Folder}" TextTrimming="CharacterEllipsis" />
+      <TextBlock Classes="meta" Text="{Binding Guess}" TextWrapping="Wrap" IsVisible="{Binding Guess, Converter={x:Static ObjectConverters.IsNotNull}}" />
+
+      <Grid ColumnDefinitions="*,12,Auto">
+        <StackPanel Grid.Column="0" Spacing="4">
+          <TextBlock Classes="label" Text="NAME" />
+          <TextBox x:Name="NameBox" Text="{Binding Name}" AutomationProperties.Name="Pad set name" />
+        </StackPanel>
+        <Button Grid.Column="2" VerticalAlignment="Bottom" Content="Make every missing key" Command="{Binding FillAllCommand}"
+                ToolTip.Tip="Make each missing key by transposing the nearest key that has a file" />
+      </Grid>
+
+      <TextBlock Classes="meta" Text="{Binding Summary}" />
+      <TextBlock Classes="meta" Text="{Binding ConflictNotice}" TextWrapping="Wrap" IsVisible="{Binding ConflictNotice, Converter={x:Static ObjectConverters.IsNotNull}}" />
+      <TextBlock Classes="meta" Text="{Binding UnkeyedNotice}" TextWrapping="Wrap" IsVisible="{Binding UnkeyedNotice, Converter={x:Static ObjectConverters.IsNotNull}}" />
+    </StackPanel>
+
+    <StackPanel DockPanel.Dock="Bottom" Spacing="10" Margin="0,12,0,0">
+      <!-- Loop points (SL-46) and the set's own volume -->
+      <Grid ColumnDefinitions="Auto,12,*,12,Auto,12,Auto,12,Auto,12,Auto" RowDefinitions="Auto,Auto" RowSpacing="4">
+        <TextBlock Grid.Column="0" Classes="label" Text="LOOP" />
+        <ComboBox Grid.Row="1" Grid.Column="0" ItemsSource="{Binding LoopModes}" SelectedItem="{Binding LoopMode}" MinWidth="240" AutomationProperties.Name="Loop points" />
+        <TextBlock Grid.Column="4" Classes="label" Text="START S" IsVisible="{Binding IsCustomLoop}" />
+        <TextBox Grid.Row="1" Grid.Column="4" Text="{Binding LoopStartText}" Width="80" IsVisible="{Binding IsCustomLoop}" AutomationProperties.Name="Loop start in seconds" />
+        <TextBlock Grid.Column="6" Classes="label" Text="END S" IsVisible="{Binding IsCustomLoop}" />
+        <TextBox Grid.Row="1" Grid.Column="6" Text="{Binding LoopEndText}" Width="80" IsVisible="{Binding IsCustomLoop}" AutomationProperties.Name="Loop end in seconds" />
+        <TextBlock Grid.Column="8" Classes="label" Text="CROSSFADE S" />
+        <TextBox Grid.Row="1" Grid.Column="8" Text="{Binding CrossfadeText}" Width="80" AutomationProperties.Name="Loop crossfade in seconds" />
+        <TextBlock Grid.Column="10" Classes="label" Text="VOLUME DB" />
+        <TextBox Grid.Row="1" Grid.Column="10" Text="{Binding GainText}" Width="80" AutomationProperties.Name="Pad set volume in dB"
+                 ToolTip.Tip="Added to the pad volume, from −20 to +6" />
+      </Grid>
+
+      <TextBlock Classes="error" Text="{Binding Error}" IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}" TextWrapping="Wrap" />
+      <DockPanel>
+        <Button x:Name="SongButton" DockPanel.Dock="Left" Content="Import as song instead" IsVisible="{Binding CanImportAsSong}" />
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+          <Button x:Name="CancelButton" Content="Cancel" IsCancel="True" />
+          <Button x:Name="SaveButton" Classes="primary" Content="{Binding ConfirmLabel}" IsDefault="True" />
+        </StackPanel>
+      </DockPanel>
+    </StackPanel>
+
+    <Border Classes="inset" Padding="8">
+      <ScrollViewer>
+        <ItemsControl ItemsSource="{Binding Rows}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:PadKeyRowViewModel">
+              <Grid ColumnDefinitions="48,*,Auto" Margin="0,3" AutomationProperties.Name="{Binding AccessibleName}">
+                <TextBlock Grid.Column="0" Text="{Binding Label}" FontWeight="SemiBold" VerticalAlignment="Center" />
+
+                <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center" Margin="0,0,8,0">
+                  <ComboBox ItemsSource="{Binding Files}" SelectedItem="{Binding File}" IsVisible="{Binding HasChoices}" HorizontalAlignment="Stretch"
+                            AutomationProperties.Name="{Binding Label, StringFormat='File for {0}'}">
+                    <ComboBox.ItemTemplate>
+                      <DataTemplate x:DataType="x:String">
+                        <TextBlock Text="{Binding Converter={x:Static d:PadSetWindow.FileName}}" TextTrimming="CharacterEllipsis" />
+                      </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                  </ComboBox>
+                  <TextBlock Text="{Binding FileName}" IsVisible="{Binding !HasChoices}" TextTrimming="CharacterEllipsis"
+                             Classes.meta="{Binding IsMissing}" ToolTip.Tip="{Binding File}" />
+                  <TextBlock Classes="meta" Text="{Binding MadeFromText}" IsVisible="{Binding MadeFromText, Converter={x:Static ObjectConverters.IsNotNull}}" />
+                  <CheckBox Content="{Binding FillLabel}" IsChecked="{Binding Fill}" IsVisible="{Binding CanFill}" />
+                </StackPanel>
+
+                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                  <Button Content="Play" Command="{Binding PlayCommand}" ToolTip.Tip="Play the first 8 s on the pad output"
+                          AutomationProperties.Name="{Binding Label, StringFormat='Play {0}'}" />
+                  <Button Content="Loop" Command="{Binding LoopCommand}" ToolTip.Tip="Play the loop seam as the pad plays it"
+                          AutomationProperties.Name="{Binding Label, StringFormat='Play the loop of {0}'}" />
+                  <Button Content="Replace…" Command="{Binding ReplaceCommand}" AutomationProperties.Name="{Binding Label, StringFormat='Replace the file for {0}'}" />
+                  <Button Content="Clear" Command="{Binding ClearCommand}" AutomationProperties.Name="{Binding Label, StringFormat='Clear {0}'}" />
+                </StackPanel>
+              </Grid>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </ScrollViewer>
+    </Border>
+  </DockPanel>
+</d:DialogWindow>

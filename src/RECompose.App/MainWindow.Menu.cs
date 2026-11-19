@@ -14,7 +14,7 @@ public partial class MainWindow
 {
     internal static IReadOnlyList<(string Header, (string Header, ICommand? Command)[] Items)> MenuGroups(MainViewModel vm, Window window) =>
     [
-        ("File", [("Import stems folder…", vm.ImportCommand), ("-", null), ("Settings…", vm.OpenSettingsCommand), ("Keys and pedals…", vm.OpenControlsCommand)]),
+        ("File", [("Import stems folder…", vm.ImportCommand), ("Import pad set…", vm.ImportPadSetCommand), ("-", null), ("Settings…", vm.OpenSettingsCommand), ("Keys and pedals…", vm.OpenControlsCommand)]),
         ("Edit", [("Undo", vm.UndoCommand), ("Redo", vm.RedoCommand)]),
         ("Song", [("Load", vm.LoadSelectedCommand), ("Mark section", vm.MarkCommand), ("Add cue", vm.AddCueCommand), ("-", null),
             ("Key up", vm.KeyUpCommand), ("Key down", vm.KeyDownCommand), ("Tempo up", vm.TempoUpCommand), ("Tempo down", vm.TempoDownCommand), ("-", null),

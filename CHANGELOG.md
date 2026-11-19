@@ -10,6 +10,12 @@
 - Control profiles: each profile keeps its own bindings, and a button can switch to the next profile or to a named one. Panic and the profile buttons work in every profile.
 - Controller feedback: choose the controller's output in Settings › MIDI and its buttons light for the section, tile, pad and profile in force, and motorised faders follow the mix.
 - When a new binding shares an input with another one, Settings says which one acts. Less common rows are under More.
+- Importing a folder of pads always opens a review: each key's file, the keys that are missing, and the files that name the same key, with Play for each key. A folder the app isn't sure about can be imported either way, and a folder of pad set folders is reviewed set by set.
+- Pad names are read more widely: lower case, "F sharp", "B-flat", "Gb Major", "Ebm". A pad folder with a few keys missing imports as a pad set instead of a song.
+- Edit a pad set from Library › Pads (double-click, or right-click › Edit): replace or clear a key's file, choose the loop points and crossfade with a preview of the loop seam, and give the set its own volume.
+- A missing key can be made from the nearest key by transposing it, when you choose to, in the review or the editor. Keys without a file are off in the sidebar.
+- File › Import pad set imports a folder as a pad set whatever its names say. A song can be turned into a pad set, and a pad set imported as a song, each in one undo.
+- Library › Pads gets a search field from six pad sets.
 
 ## 0.2.1
 

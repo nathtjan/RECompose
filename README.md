@@ -9,7 +9,7 @@ All ten milestones of the build order are in:
 - **M1:** the engine, import, mixer, routing, transport and timeline.
 - **M2:** sections and analysis.
 - **M3:** arrangements.
-- **M4:** services, key and tempo, count-ins, pads and transitions.
+- **M4:** services, key and tempo, count-ins, pads and transitions. Pad folders are reviewed on import, and a pad set's keys, loop and volume can be edited.
 - **M5:** the Perform view and live control. Ctrl+P turns the window into the Perform screen with NOW, NEXT, the plan strip, the mini timeline and a key deck. Jumps, vamps, repeats, move on, end and cancel change the song while it plays with no gap; holds wait for GO; Service lock guards the keys; a page-turner, keys or a MIDI foot pedal drive it, with Learn, and MIDI controllers jump to sections, play pads, move faders and switch profiles; Rehearsal loops a section with a count-in.
 - **M6:** a service check before the service, rendered keys and tempos, a fallback audio device and a silent clock when the interface is lost, resume after a crash or PANIC, version history, and service export and import.
 - **M7:** voice control. The MD talks into a talkback mic and RECompose acts on band directions as it does on a key or a pedal.

@@ -665,6 +665,16 @@ internal sealed class ServiceDialogs : IDialogs
 
     public Task<bool> EditTransitionAsync(TransitionViewModel transition) => Task.FromResult(EditTransition?.Invoke(transition) ?? false);
     public Task<bool> EditRenderAsync(RenderAudioViewModel render) => Task.FromResult(false);
+
+    /// <summary>The pad review and editor: answers with this (default: save as shown), after letting a test change the dialog.</summary>
+    public Func<PadSetEditViewModel, PadReviewChoice>? EditPads { get; set; }
+    public List<PadSetEditViewModel> PadEdits { get; } = [];
+
+    public Task<PadReviewChoice> EditPadSetAsync(PadSetEditViewModel edit)
+    {
+        PadEdits.Add(edit);
+        return Task.FromResult(EditPads?.Invoke(edit) ?? PadReviewChoice.Save);
+    }
     public Task<string?> PickAudioFileAsync(string title) => Task.FromResult<string?>(null);
     public Task<TrackEdit?> EditTrackAsync(TrackEdit initial, IReadOnlyList<string> outputs, string title = "Edit track", string confirmLabel = "Save") => Task.FromResult<TrackEdit?>(null);
 }
@@ -717,6 +727,146 @@ public sealed class PadImportTests : IDisposable
         Assert.True(vm.ShowSongs);
         vm.SongsKey = false;
         Assert.True(vm.ShowSongs);
+    }
+
+    private static readonly string[] Flats = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"];
+
+    private string PadFolder(string name, IEnumerable<string> keys, string prefix = "OB Pad")
+    {
+        var folder = Path.Combine(_root, name);
+        Directory.CreateDirectory(folder);
+        foreach (var key in keys)
+            File.WriteAllBytes(Path.Combine(folder, $"{prefix} {key}.wav"), [0]);
+        return folder;
+    }
+
+    private async Task<(MainViewModel Vm, DataStore Store)> StartAsync(ServiceDialogs dialogs)
+    {
+        var store = new DataStore(Path.Combine(_root, "data"));
+        var missing = Path.Combine(_root, "no-engine", EnginePaths.ExecutableFileName);
+        var vm = new MainViewModel(store, new EngineHostOptions(missing, Path.Combine(_root, "e.sock")), new EngineTools(missing), new LockedDispatcher(),
+            dialogs, new SpeechModel(store.Root, allowDownload: false));
+        await vm.InitializeAsync();
+        return (vm, store);
+    }
+
+    [Fact]
+    public async Task SL47_eleven_keys_import_as_a_pad_set_after_review_and_the_missing_key_is_off()
+    {
+        var dialogs = new ServiceDialogs();
+        var (vm, store) = await StartAsync(dialogs);
+        await using var _ = vm;
+
+        await vm.ImportFolderAsync(PadFolder("OB Pads", Flats[..11]));
+        var review = Assert.Single(dialogs.PadEdits);
+        Assert.True(review.IsImport);
+        Assert.True(review.CanImportAsSong);
+        Assert.Equal("This looks like a pad set. 11 of the twelve keys have a file.", review.Guess);
+        Assert.True(review.Rows[11].IsMissing);
+        Assert.Equal("Make from C, a semitone down", review.Rows[11].FillLabel);
+        Assert.Equal("11 keys · B silent", review.Summary);
+
+        Assert.Empty(vm.Songs);
+        Assert.Equal("11 keys · B missing", Assert.Single(vm.PadSets).MetaLine);
+        Assert.False(vm.Pads.Keys[11].HasFile);
+        Assert.Contains("no file", vm.Pads.Keys[11].AccessibleName);
+        Assert.True(vm.Pads.Keys[0].HasFile);
+        Assert.Single(store.LoadPads().PadSets);
+    }
+
+    [Fact]
+    public async Task Cancelling_the_review_imports_nothing_and_two_spellings_let_the_person_choose()
+    {
+        var dialogs = new ServiceDialogs { EditPads = _ => PadReviewChoice.Cancel };
+        var (vm, store) = await StartAsync(dialogs);
+        await using var _ = vm;
+        var folder = PadFolder("OB Pads", [.. Flats, "C#"]);
+
+        await vm.ImportFolderAsync(folder);
+        Assert.True(vm.PadsEmpty);
+        Assert.Empty(vm.Songs);
+
+        dialogs.EditPads = edit =>
+        {
+            Assert.Equal("Two files name D♭. Choose the one to use.", edit.ConflictNotice);
+            edit.Rows[1].File = edit.Rows[1].Files.Single(f => f.EndsWith("C#.wav", StringComparison.Ordinal));
+            return PadReviewChoice.Save;
+        };
+        await vm.ImportFolderAsync(folder);
+        Assert.EndsWith("OB Pad C#.wav", store.LoadPads().PadSets[0].Samples[1], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_folder_of_pad_set_folders_is_reviewed_set_by_set()
+    {
+        var dialogs = new ServiceDialogs();
+        var (vm, _) = await StartAsync(dialogs);
+        await using var __ = vm;
+        PadFolder(Path.Combine("Pads", "Warm"), Flats, "Warm");
+        PadFolder(Path.Combine("Pads", "Shimmer"), Flats, "Shimmer");
+
+        await vm.ImportFolderAsync(Path.Combine(_root, "Pads"));
+        Assert.Equal(2, dialogs.PadEdits.Count);
+        Assert.All(dialogs.PadEdits, e => Assert.False(e.CanImportAsSong));
+        Assert.Equal(["Shimmer", "Warm"], vm.PadSets.Select(p => p.Name));
+    }
+
+    [Fact]
+    public async Task The_editor_changes_keys_loop_and_volume_and_undo_puts_them_back()
+    {
+        var dialogs = new ServiceDialogs();
+        var (vm, store) = await StartAsync(dialogs);
+        await using var owned = vm;
+        await vm.ImportFolderAsync(PadFolder("OB Pads", Flats));
+        var id = vm.PadSets[0].Id;
+
+        dialogs.EditPads = edit =>
+        {
+            Assert.False(edit.IsImport);
+            Assert.Equal("Save", edit.ConfirmLabel);
+            edit.Rows[2].ClearCommand.Execute(null);
+            edit.GainText = "-3";
+            edit.LoopMode = PadLoopModeChoice.All.Single(m => m.Mode == PadLoopMode.Custom);
+            edit.LoopStartText = "8";
+            edit.LoopEndText = "4"; // the end before the start
+            Assert.False(edit.TryGetResult(out _, out _));
+            Assert.NotNull(edit.Error);
+            edit.LoopEndText = "40 s";
+            return PadReviewChoice.Save;
+        };
+        await vm.EditPadSetAsync(id);
+
+        var saved = store.LoadPads().PadSets[0];
+        Assert.False(saved.Samples.ContainsKey(2));
+        Assert.Equal(-3, saved.GainDb);
+        Assert.Equal(new PadLoop { Mode = PadLoopMode.Custom, StartSec = 8, EndSec = 40, CrossfadeSec = 2 }, saved.Loop);
+        Assert.False(vm.Pads.Keys[2].HasFile);
+        Assert.Equal("11 keys · D missing", vm.PadSets[0].MetaLine);
+
+        vm.UndoCommand.Execute(null);
+        saved = store.LoadPads().PadSets[0];
+        Assert.True(saved.Samples.ContainsKey(2));
+        Assert.Null(saved.Loop);
+        Assert.Equal(0, saved.GainDb);
+    }
+
+    [Fact]
+    public async Task Six_pad_sets_or_more_get_a_search_field()
+    {
+        var dialogs = new ServiceDialogs();
+        var (vm, _) = await StartAsync(dialogs);
+        await using var _ = vm;
+        foreach (var name in new[] { "Warm", "Shimmer", "Strings", "Air", "Glass" })
+            await vm.ImportFolderAsync(PadFolder(name, Flats, name));
+        Assert.False(vm.ShowPadSearch);
+
+        await vm.ImportFolderAsync(PadFolder("Deep", Flats, "Deep"));
+        Assert.True(vm.ShowPadSearch);
+        vm.PadSearch = "s";
+        Assert.Equal(["Glass", "Shimmer", "Strings"], vm.PadSets.Select(p => p.Name));
+        Assert.Equal(6, vm.AllPadSets.Count); // the sidebar's picker keeps every set
+        vm.PadSearch = string.Empty;
+        Assert.Equal(6, vm.PadSets.Count);
     }
 
     [Fact]

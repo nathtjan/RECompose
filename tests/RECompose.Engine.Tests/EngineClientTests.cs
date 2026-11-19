@@ -365,6 +365,10 @@ public class EngineClientTests : IAsyncDisposable
 
         await using var client = await StartAsync();
         await client.LoadSongAsync("song-pad", [new EngineTrack("keys", music, 0, 1, 0, false, false, false)], 0, 0, ct);
+        // Protocol 19: the set's own loop points, a key preview and the loop seam.
+        Assert.Empty(await client.LoadPadSetAsync("pads", files, ct, new PadLoopRequest("custom", 1, 3, 0.5)));
+        Assert.Equal(2, await client.PlayClipAsync(files[0], 0, 2, -140, (0, 2), null, ct), 2);
+        Assert.Equal(5.5, await client.PlayClipAsync(files[0], 0, 2, -140, null, new PadLoopRequest("custom", 1, 3, 0.5), ct), 2);
         Assert.Empty(await client.LoadPadSetAsync("pads", files, ct));
         await client.SetPadAsync(gainDb: 0, fadeSec: 0.1, output: (0, 2), ct: ct);
 

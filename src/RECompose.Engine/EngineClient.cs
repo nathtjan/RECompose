@@ -351,9 +351,24 @@ public sealed class EngineClient : IAsyncDisposable
     }
 
     /// <summary>Plays a spoken clip once on the given channels (VC-50), replacing one that sounds. Returns its length in seconds.</summary>
-    public async Task<double> PlayClipAsync(string file, int channel, int width, double gainDb = -12, CancellationToken ct = default)
+    public Task<double> PlayClipAsync(string file, int channel, int width, double gainDb = -12, CancellationToken ct = default) =>
+        PlayClipAsync(file, channel, width, gainDb, null, null, ct);
+
+    /// <summary>
+    /// Plays a part of a file once (protocol 19): from <paramref name="part"/>'s seconds for its length, or, with
+    /// <paramref name="seam"/>, a pad file's loop seam as the pad plays it.
+    /// </summary>
+    public async Task<double> PlayClipAsync(string file, int channel, int width, double gainDb, (double FromSec, double LengthSec)? part,
+        PadLoopRequest? seam, CancellationToken ct = default)
     {
         var request = new JsonObject { ["file"] = file, ["output"] = new JsonObject { ["channel"] = channel, ["width"] = width }, ["gainDb"] = gainDb };
+        if (part is { } p)
+        {
+            request["fromSec"] = p.FromSec;
+            request["lengthSec"] = p.LengthSec;
+        }
+        if (seam is not null)
+            request["seam"] = seam.ToJson();
         var reply = await Session.Connection.RequestAsync("playClip", request, ct).ConfigureAwait(false);
         return (double?)reply["durationSec"] ?? 0;
     }
@@ -637,12 +652,15 @@ public sealed class EngineClient : IAsyncDisposable
     }
 
     /// <summary>Opens a pad set (protocol 6, SL-47): one file per pitch class. Returns the pitch classes whose file is missing.</summary>
-    public async Task<IReadOnlyList<int>> LoadPadSetAsync(string id, IReadOnlyDictionary<int, string> samples, CancellationToken ct = default)
+    public async Task<IReadOnlyList<int>> LoadPadSetAsync(string id, IReadOnlyDictionary<int, string> samples, CancellationToken ct = default, PadLoopRequest? loop = null)
     {
         var list = new JsonArray();
         foreach (var (pitchClass, file) in samples)
             list.Add(new JsonObject { ["pitchClass"] = pitchClass, ["file"] = file });
-        var reply = await Session.Connection.RequestAsync("loadPadSet", new JsonObject { ["id"] = id, ["samples"] = list }, ct).ConfigureAwait(false);
+        var request = new JsonObject { ["id"] = id, ["samples"] = list };
+        if (loop is not null)
+            request["loop"] = loop.ToJson();
+        var reply = await Session.Connection.RequestAsync("loadPadSet", request, ct).ConfigureAwait(false);
         return (reply["keys"] as JsonArray ?? []).OfType<JsonObject>()
             .Where(k => (bool?)k["missing"] ?? false)
             .Select(k => (int?)k["pitchClass"] ?? -1)
@@ -778,4 +796,10 @@ public sealed class EngineClient : IAsyncDisposable
     }
 
     public ValueTask DisposeAsync() => Session.DisposeAsync();
+}
+
+/// <summary>A pad set's loop points (protocol 19): mode "file", "default" or "custom", in seconds.</summary>
+public sealed record PadLoopRequest(string Mode, double StartSec, double EndSec, double CrossfadeSec)
+{
+    internal JsonObject ToJson() => new() { ["mode"] = Mode, ["startSec"] = StartSec, ["endSec"] = EndSec, ["crossfadeSec"] = CrossfadeSec };
 }

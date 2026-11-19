@@ -257,6 +257,7 @@ private:
     std::vector<std::unique_ptr<audio::PadBank>> padBanks_; // the one sounding and any still fading out
     std::string padSetId_;
     std::array<std::string, audio::kPadKeys> padFiles_;
+    audio::PadLoopSpec padLoop_;
 
     std::unique_ptr<juce::AudioFormatWriter> bounceWriter_; // the file `bounce` is writing (protocol 17)
 

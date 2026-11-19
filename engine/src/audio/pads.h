@@ -48,10 +48,33 @@ struct PadBank
     std::array<PadKey, kPadKeys> keys;
 };
 
+// Where a pad set's loop points come from (protocol 19).
+struct PadLoopSpec
+{
+    enum class Mode
+    {
+        file,    // the file's own (WAV `smpl`), else 25 % to 90 % of it (SL-46)
+        standard, // 25 % to 90 %, ignoring the file's own
+        custom,  // startSec to endSec, kept inside the file
+    };
+
+    Mode mode = Mode::file;
+    double startSec = 0.0, endSec = 0.0;
+    double crossfadeSec = 2.0; // SL-46
+};
+
+struct PadLoopFrames
+{
+    std::int64_t start = 0, end = 0, crossfade = 0; // source frames
+};
+
+// The loop points of one file, in its own frames (message thread).
+PadLoopFrames padLoopPoints (const juce::AudioFormatReader& reader, const PadLoopSpec& spec);
+
 // Opens the files of a pad set (message thread). Missing files make silent keys.
 // `files` is indexed by pitch class (0 = C); an empty name leaves that key silent.
 std::unique_ptr<PadBank> loadPadBank (std::string id, const std::array<std::string, kPadKeys>& files, double engineRate,
-                                      juce::AudioFormatManager& formats);
+                                      juce::AudioFormatManager& formats, const PadLoopSpec& loop = {});
 
 // Disk thread: keeps the sounding keys' queues filled. Returns the blocks written.
 int fillPads (PadBank& bank, int maxBlocks);

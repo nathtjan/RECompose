@@ -184,7 +184,7 @@ void Engine::post (Slot& s, const audio::Command& command)
 // Pads (protocol 6, SL-40…46): a pad set is opened here and sounds on its own player.
 void Engine::openPadBank (double rate)
 {
-    auto bank = audio::loadPadBank (padSetId_, padFiles_, rate, formats_);
+    auto bank = audio::loadPadBank (padSetId_, padFiles_, rate, formats_, padLoop_);
     disk_->addPads (bank.get());
     audio::PadCommand command;
     command.type = audio::PadCommand::Type::setBank;
@@ -194,6 +194,22 @@ void Engine::openPadBank (double rate)
     disk_->wake();
 }
 
+// A pad set's loop points (protocol 19): {mode: "file" | "default" | "custom", startSec, endSec, crossfadeSec}.
+static audio::PadLoopSpec padLoopSpec (const juce::var& loop)
+{
+    audio::PadLoopSpec spec;
+    if (! loop.isObject())
+        return spec;
+    const auto mode = loop.getProperty ("mode", "file").toString();
+    spec.mode = mode == "custom" ? audio::PadLoopSpec::Mode::custom
+              : mode == "default" ? audio::PadLoopSpec::Mode::standard
+                                  : audio::PadLoopSpec::Mode::file;
+    spec.startSec = static_cast<double> (loop.getProperty ("startSec", 0.0));
+    spec.endSec = static_cast<double> (loop.getProperty ("endSec", 0.0));
+    spec.crossfadeSec = static_cast<double> (loop.getProperty ("crossfadeSec", 2.0));
+    return spec;
+}
+
 juce::var Engine::loadPadSet (const juce::var& message)
 {
     const auto* samples = message.getProperty ("samples", {}).getArray();
@@ -201,6 +217,7 @@ juce::var Engine::loadPadSet (const juce::var& message)
         return makeError ({}, "badMessage", "loadPadSet needs samples.");
 
     padSetId_ = text (message, "id").toStdString();
+    padLoop_ = padLoopSpec (message.getProperty ("loop", {}));
     padFiles_ = {};
     for (const auto& s : *samples)
     {
@@ -833,7 +850,10 @@ juce::var Engine::injectVoice (const juce::var& message)
 juce::var Engine::playClip (const juce::var& message)
 {
     juce::String problem;
-    auto clip = audio::loadClip (juce::File (text (message, "file")), engineRate(), formats_, problem);
+    const juce::File file (text (message, "file"));
+    const auto seam = message.getProperty ("seam", {});
+    auto clip = seam.isObject() ? audio::loadSeamClip (file, engineRate(), formats_, problem, padLoopSpec (seam))
+                                : audio::loadClip (file, engineRate(), formats_, problem, number (message, "fromSec", -1.0), number (message, "lengthSec", 0.0));
     if (clip == nullptr)
         return makeError ({}, "badMessage", problem);
     const auto output = message.getProperty ("output", {});

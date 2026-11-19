@@ -96,6 +96,11 @@ public partial class MainWindow : Window
         Library.DoubleTapped += (_, _) => ViewModel?.LoadSelectedCommand.Execute(null);
         Library.ContextRequested += OpenLibraryMenu;
         PadSetList.ContextRequested += OpenPadSetMenu;
+        PadSetList.DoubleTapped += (_, _) =>
+        {
+            if (PadSetList.SelectedItem is PadSetItem set)
+                _ = ViewModel?.EditPadSetAsync(set.Id);
+        };
         WatchDrag(Library, item => (item as SongItemViewModel)?.Id);
 
         // The service (SL-4): double-click or Enter loads, right-click for the menu, drag to reorder, drop songs in.
@@ -400,11 +405,12 @@ public partial class MainWindow : Window
         var service = vm.CurrentService;
         menu.Items.Add(Item(service is null ? "Add to a service" : $"Add to {service.Name}", () => vm.AddSongToService(song.Id), service is not null));
         menu.Items.Add(new Separator());
+        menu.Items.Add(Item("Turn into pad set…", () => _ = vm.TurnSongIntoPadSetAsync(song)));
         menu.Items.Add(Item("Delete…", () => _ = vm.DeleteSongAsync(song)));
         menu.Open(Library);
     }
 
-    /// <summary>Right-click on a pad set in Library › Pads: Rename, Delete.</summary>
+    /// <summary>Right-click on a pad set in Library › Pads: Edit, Rename, Import as song, Delete.</summary>
     private void OpenPadSetMenu(object? sender, ContextRequestedEventArgs e)
     {
         if (ViewModel is not { } vm || (e.Source as Control)?.FindAncestorOfType<ListBoxItem>()?.DataContext is not PadSetItem set)
@@ -412,7 +418,9 @@ public partial class MainWindow : Window
         e.Handled = true;
         PadSetList.SelectedItem = set;
         var menu = new ContextMenu();
+        menu.Items.Add(Item("Edit…", () => _ = vm.EditPadSetAsync(set.Id)));
         menu.Items.Add(Item("Rename…", () => _ = vm.RenamePadSetAsync(set.Id)));
+        menu.Items.Add(Item("Import as song…", () => _ = vm.ImportPadSetAsSongAsync(set.Id)));
         menu.Items.Add(new Separator());
         menu.Items.Add(Item("Delete…", () => _ = vm.DeletePadSetAsync(set.Id)));
         menu.Open(PadSetList);

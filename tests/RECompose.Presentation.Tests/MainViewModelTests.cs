@@ -350,6 +350,78 @@ public sealed class MainViewModelTests : IDisposable
         return path;
     }
 
+    // SL-47: a song taken for one can become a pad set and back, each in one undo; a missing key is made from the nearest.
+    [Fact]
+    public async Task A_song_turns_into_a_pad_set_with_a_made_key_and_back_into_a_song()
+    {
+        await using var vm = NewViewModel();
+        await vm.InitializeAsync();
+        await vm.ImportFolderAsync(StemsFolder());
+        var store = new DataStore(Path.Combine(_root, "data"));
+        var pad = ExtraWav("Warm Pad Bb.wav", 3);
+        _dialogs.EditPads = edit =>
+        {
+            Assert.False(edit.CanImportAsSong);
+            edit.Name = "Warm";
+            edit.Rows[10].File = pad;
+            Assert.Equal("Make from B♭, 2 semitones up", edit.Rows[0].FillLabel);
+            edit.Rows[0].Fill = true;
+            return PadReviewChoice.Save;
+        };
+
+        await vm.TurnSongIntoPadSetAsync(vm.Songs[0]);
+        Assert.Empty(vm.Songs);
+        var set = Assert.Single(store.LoadPads().PadSets);
+        Assert.Equal("Warm", set.Name);
+        Assert.Equal(pad, set.Samples[10]);
+        Assert.Equal(10, set.Made[0]); // C made from B♭
+        Assert.True(File.Exists(set.Samples[0]));
+        Assert.StartsWith(Path.Combine(store.MediaFolder, "pads", set.Id), set.Samples[0], StringComparison.Ordinal);
+
+        vm.UndoCommand.Execute(null); // one step: the song is back and the pad set gone
+        await WaitForAsync(() => vm.PadsEmpty);
+        Assert.Single(vm.Songs);
+
+        vm.RedoCommand.Execute(null);
+        await WaitForAsync(() => !vm.PadsEmpty);
+        Assert.Empty(vm.Songs);
+
+        await vm.ImportPadSetAsSongAsync(set.Id);
+        Assert.Single(vm.Songs);
+        Assert.True(vm.PadsEmpty);
+        vm.UndoCommand.Execute(null);
+        await WaitForAsync(() => !vm.PadsEmpty);
+        Assert.Empty(vm.Songs);
+    }
+
+    [Fact]
+    public async Task An_unsure_folder_can_be_imported_as_a_song_from_the_pad_review()
+    {
+        await using var vm = NewViewModel();
+        await vm.InitializeAsync();
+        var pad = ExtraWav("Warm Pad.wav", 3); // one file with "pad" in its name: maybe a pad, maybe a song
+        PadSetEditViewModel? review = null;
+        _dialogs.EditPads = edit =>
+        {
+            review = edit;
+            return PadReviewChoice.ImportAsSong;
+        };
+
+        await vm.ImportFolderAsync(Path.GetDirectoryName(pad)!);
+        Assert.NotNull(review);
+        Assert.StartsWith("This may be a pad set or a song.", review.Guess, StringComparison.Ordinal);
+        Assert.Single(vm.Songs);
+        Assert.True(vm.PadsEmpty);
+    }
+
+    private static async Task WaitForAsync(Func<bool> condition)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (!condition() && DateTime.UtcNow < deadline)
+            await Task.Delay(20);
+        Assert.True(condition());
+    }
+
     [Fact]
     public async Task Adding_a_track_puts_it_after_its_group_and_reloads_the_song()
     {
@@ -762,6 +834,10 @@ internal sealed class ScriptedDialogs : IDialogs
     public Task<int?> ChooseAsync(string title, string message, IReadOnlyList<string> choices, string confirmLabel) => Task.FromResult<int?>(0);
     public Task<bool> EditTransitionAsync(TransitionViewModel transition) => Task.FromResult(false);
     public Task<bool> EditRenderAsync(RenderAudioViewModel render) => Task.FromResult(false);
+    /// <summary>The pad review and editor: a test changes the dialog and answers; default: save as shown.</summary>
+    public Func<PadSetEditViewModel, PadReviewChoice>? EditPads { get; set; }
+
+    public Task<PadReviewChoice> EditPadSetAsync(PadSetEditViewModel edit) => Task.FromResult(EditPads?.Invoke(edit) ?? PadReviewChoice.Save);
 
     /// <summary>What the Edit track dialog returns; null cancels it.</summary>
     public TrackEdit? Track { get; set; }

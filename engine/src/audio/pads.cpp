@@ -14,41 +14,63 @@ namespace rec::audio
 namespace
 {
     constexpr double kHalfPi = 1.5707963267948966;
-    constexpr double kLoopCrossfadeSec = 2.0; // SL-46
     constexpr int kChunk = 1024;
     constexpr float kMinusThreeDb = 0.70710678f;
 
-    // Loop points in engine frames: the file's own (WAV `smpl`), else 25 % to 90 % of it (SL-46).
-    void setLoop (PadKey& key, std::int64_t length, double engineRate)
+    // Loop points in engine frames (SL-46).
+    void setLoop (PadKey& key, double engineRate, const PadLoopSpec& spec)
     {
         auto& track = *key.track;
-        std::int64_t start = static_cast<std::int64_t> (static_cast<double> (length) * 0.25);
-        std::int64_t end = static_cast<std::int64_t> (static_cast<double> (length) * 0.90);
-
-        if (track.reader != nullptr)
-        {
-            const auto& meta = track.reader->metadataValues;
-            if (meta.getValue ("NumSampleLoops", "0").getIntValue() > 0)
-            {
-                const auto scale = engineRate / track.sourceRate;
-                const auto s = static_cast<std::int64_t> (meta.getValue ("Loop0Start", "0").getLargeIntValue() * scale);
-                const auto e = static_cast<std::int64_t> (meta.getValue ("Loop0End", "0").getLargeIntValue() * scale);
-                if (e > s && e <= length)
-                {
-                    start = s;
-                    end = e;
-                }
-            }
-        }
-
-        key.loopStart = start;
-        key.loopEnd = end;
-        key.crossfade = std::min<std::int64_t> (static_cast<std::int64_t> (kLoopCrossfadeSec * engineRate), (end - start) / 2);
+        if (track.reader == nullptr || track.sourceRate <= 0.0)
+            return;
+        const auto points = padLoopPoints (*track.reader, spec);
+        const auto scale = engineRate / track.sourceRate;
+        key.loopStart = static_cast<std::int64_t> (static_cast<double> (points.start) * scale);
+        key.loopEnd = static_cast<std::int64_t> (static_cast<double> (points.end) * scale);
+        key.crossfade = static_cast<std::int64_t> (static_cast<double> (points.crossfade) * scale);
     }
 } // namespace
 
+PadLoopFrames padLoopPoints (const juce::AudioFormatReader& reader, const PadLoopSpec& spec)
+{
+    const auto length = reader.lengthInSamples;
+    const auto rate = reader.sampleRate;
+    PadLoopFrames f;
+    f.start = static_cast<std::int64_t> (static_cast<double> (length) * 0.25);
+    f.end = static_cast<std::int64_t> (static_cast<double> (length) * 0.90);
+
+    if (spec.mode == PadLoopSpec::Mode::file)
+    {
+        const auto& meta = reader.metadataValues;
+        if (meta.getValue ("NumSampleLoops", "0").getIntValue() > 0)
+        {
+            const auto s = meta.getValue ("Loop0Start", "0").getLargeIntValue();
+            const auto e = meta.getValue ("Loop0End", "0").getLargeIntValue();
+            if (e > s && e <= length)
+            {
+                f.start = s;
+                f.end = e;
+            }
+        }
+    }
+    else if (spec.mode == PadLoopSpec::Mode::custom)
+    {
+        const auto s = std::clamp<std::int64_t> (static_cast<std::int64_t> (spec.startSec * rate), 0, length);
+        const auto e = std::clamp<std::int64_t> (static_cast<std::int64_t> (spec.endSec * rate), 0, length);
+        if (e > s)
+        {
+            f.start = s;
+            f.end = e;
+        }
+    }
+
+    const auto fade = static_cast<std::int64_t> (std::max (0.0, spec.crossfadeSec) * rate);
+    f.crossfade = std::min<std::int64_t> (fade, (f.end - f.start) / 2);
+    return f;
+}
+
 std::unique_ptr<PadBank> loadPadBank (std::string id, const std::array<std::string, kPadKeys>& files, double engineRate,
-                                      juce::AudioFormatManager& formats)
+                                      juce::AudioFormatManager& formats, const PadLoopSpec& loop)
 {
     auto bank = std::make_unique<PadBank>();
     bank->id = std::move (id);
@@ -62,10 +84,11 @@ std::unique_ptr<PadBank> loadPadBank (std::string id, const std::array<std::stri
         spec.file = files[static_cast<std::size_t> (k)];
         auto& key = bank->keys[static_cast<std::size_t> (k)];
         key.track = std::make_unique<Track> (spec, capacity);
-        const auto length = spec.file.empty() ? 0 : openTrackFile (*key.track, engineRate, formats);
         if (spec.file.empty())
             key.track->missing = true;
-        setLoop (key, length, engineRate);
+        else
+            openTrackFile (*key.track, engineRate, formats);
+        setLoop (key, engineRate, loop);
     }
 
     return bank;

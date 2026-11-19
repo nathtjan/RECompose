@@ -4,6 +4,7 @@
 // Each key of the generated set is a sine at its own frequency, so the output says which key sounds.
 #include "check.h"
 
+#include "audio/clip_player.h"
 #include "audio/disk_streamer.h"
 #include "audio/pads.h"
 
@@ -171,6 +172,33 @@ TEST ("pads: a short file loops from 90 % back to 25 % with no gap (SL-46)")
         noGap = noGap && rms (out, at, 960) > 0.25f;
     CHECK (noGap);
     CHECK (near (frequency (out, 96000, 48000), keyHz (0), 4.0));
+}
+
+TEST ("pads: a set's own loop points and crossfade, kept inside each file (protocol 19)")
+{
+    juce::AudioFormatManager formats;
+    formats.registerBasicFormats();
+    const auto file = padFolder (4).getChildFile ("Pad 0.wav");
+    std::unique_ptr<juce::AudioFormatReader> reader (formats.createReaderFor (file));
+
+    PadLoopSpec custom;
+    custom.mode = PadLoopSpec::Mode::custom;
+    custom.startSec = 1.0;
+    custom.endSec = 9.0; // past the end: the loop ends with the file
+    custom.crossfadeSec = 0.5;
+    auto f = padLoopPoints (*reader, custom);
+    CHECK (f.start == 48000 && f.end == 192000 && f.crossfade == 24000);
+
+    custom.endSec = 3.0;
+    f = padLoopPoints (*reader, custom);
+    CHECK (f.start == 48000 && f.end == 144000 && f.crossfade == 24000);
+
+    // The seam preview: up to 3 s each side of the crossfade, inside the file: here 2 s, 1 s, 2 s.
+    juce::String problem;
+    custom.crossfadeSec = 1.0;
+    const auto clip = loadSeamClip (file, kRate, formats, problem, custom);
+    CHECK (clip != nullptr);
+    CHECK (clip != nullptr && clip->samples.size() == static_cast<std::size_t> (48000 * (2 + 1 + 2)));
 }
 
 TEST ("pads: Follow song takes the key heard; pad bars start and end a pad (SL-44, ARR-39)")

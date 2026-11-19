@@ -370,10 +370,18 @@
               <ToggleButton Content="Pads" IsChecked="{Binding PadsKey}" />
             </StackPanel>
             <TextBox x:Name="Search" PlaceholderText="Search title or key" Text="{Binding SearchText}" IsVisible="{Binding ShowSongs}" />
+            <TextBox x:Name="PadSearchBox" PlaceholderText="Search pad sets" Text="{Binding PadSearch}" AutomationProperties.Name="Search pad sets">
+              <TextBox.IsVisible>
+                <MultiBinding Converter="{x:Static BoolConverters.And}">
+                  <Binding Path="ShowPads" />
+                  <Binding Path="ShowPadSearch" />
+                </MultiBinding>
+              </TextBox.IsVisible>
+            </TextBox>
           </StackPanel>
 
           <TextBlock DockPanel.Dock="Top" Classes="meta" TextWrapping="Wrap" Margin="16"
-                     Text="No pad sets yet. Import a folder of twelve pad files named by key (C, D♭ … B).">
+                     Text="No pad sets yet. Drag a folder of pad files named by key (C, D♭ … B) onto this window, or use File › Import pad set.">
             <TextBlock.IsVisible>
               <MultiBinding Converter="{x:Static BoolConverters.And}">
                 <Binding Path="ShowPads" />
@@ -381,9 +389,9 @@
               </MultiBinding>
             </TextBlock.IsVisible>
           </TextBlock>
-          <!-- Pad sets, listed like the songs: right-click to rename or delete -->
+          <!-- Pad sets, listed like the songs: double-click to edit, right-click for more -->
           <ListBox DockPanel.Dock="Top" x:Name="PadSetList" ItemsSource="{Binding PadSets}" Background="Transparent" IsVisible="{Binding ShowPads}"
-                   ToolTip.Tip="Right-click to rename or delete">
+                   ToolTip.Tip="Double-click to edit; right-click to rename, import as a song or delete">
             <ListBox.ItemTemplate>
               <DataTemplate x:DataType="vm:PadSetItem">
                 <StackPanel Spacing="2">
@@ -431,7 +439,7 @@
               <ItemsControl.ItemsPanel><ItemsPanelTemplate><UniformGrid Columns="6" ColumnSpacing="2" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
               <ItemsControl.ItemTemplate>
                   <DataTemplate x:DataType="vm:PadKeyViewModel">
-                    <ToggleButton Classes="ms pad" Tag="{Binding PitchClass}" Click="OnPadKeyClick" IsChecked="{Binding IsPlaying, Mode=OneWay}" Content="{Binding Label}"
+                    <ToggleButton Classes="ms pad" Tag="{Binding PitchClass}" Click="OnPadKeyClick" IsChecked="{Binding IsPlaying, Mode=OneWay}" Content="{Binding Label}" IsEnabled="{Binding HasFile}" ToolTip.ShowOnDisabled="True"
                                   HorizontalAlignment="Stretch" Padding="0" AutomationProperties.Name="{Binding AccessibleName}"
                                   ToolTip.Tip="{Binding AccessibleName}" />
                   </DataTemplate>
@@ -441,7 +449,7 @@
               <ItemsControl.ItemsPanel><ItemsPanelTemplate><UniformGrid Columns="6" ColumnSpacing="2" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
               <ItemsControl.ItemTemplate>
                   <DataTemplate x:DataType="vm:PadKeyViewModel">
-                    <ToggleButton Classes="ms pad" Tag="{Binding PitchClass}" Click="OnPadKeyClick" IsChecked="{Binding IsPlaying, Mode=OneWay}" Content="{Binding Label}"
+                    <ToggleButton Classes="ms pad" Tag="{Binding PitchClass}" Click="OnPadKeyClick" IsChecked="{Binding IsPlaying, Mode=OneWay}" Content="{Binding Label}" IsEnabled="{Binding HasFile}" ToolTip.ShowOnDisabled="True"
                                   HorizontalAlignment="Stretch" Padding="0" AutomationProperties.Name="{Binding AccessibleName}"
                                   ToolTip.Tip="{Binding AccessibleName}" />
                   </DataTemplate>

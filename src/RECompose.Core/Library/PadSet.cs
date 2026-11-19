@@ -1,12 +1,26 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-using RECompose.Core.Import;
 using RECompose.Core.Music;
 
 namespace RECompose.Core.Library;
 
+/// <summary>Where a pad set's loop points come from.</summary>
+public enum PadLoopMode
+{
+    /// <summary>Each file's own (a WAV <c>smpl</c> chunk), else 25 % to 90 % of it.</summary>
+    File,
+
+    /// <summary>25 % to 90 % of each file, ignoring loop points in the files (SL-46).</summary>
+    Default,
+
+    /// <summary><see cref="PadLoop.StartSec"/> to <see cref="PadLoop.EndSec"/> in every file, kept inside each file.</summary>
+    Custom,
+}
+
 /// <summary>Loop points inside a pad file, in seconds (DM-60, SL-46).</summary>
 public sealed record PadLoop
 {
+    public PadLoopMode Mode { get; init; } = PadLoopMode.Custom;
+
     public double StartSec { get; init; }
     public double EndSec { get; init; }
 
@@ -37,6 +51,12 @@ public sealed record PadSet
     /// <summary>Loop points shared by every file, or null for each file's own (embedded or the SL-46 default).</summary>
     public PadLoop? Loop { get; init; }
 
+    /// <summary>The set's own volume, added to the pad volume, in dB.</summary>
+    public double GainDb { get; init; }
+
+    /// <summary>Keys the app made by transposing another key: pitch class to the pitch class it was made from.</summary>
+    public Dictionary<int, int> Made { get; init; } = [];
+
     public DateTimeOffset CreatedAt { get; init; } = DateTimeOffset.UtcNow;
 
     public static string NewId() => Guid.NewGuid().ToString("N")[..12];
@@ -45,7 +65,25 @@ public sealed record PadSet
 
     public string? FileFor(int pitchClass) => Samples.TryGetValue(((pitchClass % 12) + 12) % 12, out var file) ? file : null;
 
-    public PadSet Normalized() => this with { Samples = Samples ?? [] };
+    /// <summary>The pitch classes without a file, in button order.</summary>
+    public IEnumerable<int> MissingKeys => Enumerable.Range(0, 12).Where(k => !Samples.ContainsKey(k));
+
+    /// <summary>"12 keys", or "11 keys · E missing", "9 keys · 3 missing".</summary>
+    public string MetaLine
+    {
+        get
+        {
+            var missing = MissingKeys.ToList();
+            return missing.Count switch
+            {
+                0 => "12 keys",
+                <= 2 => $"{Samples.Count} keys · {string.Join(", ", missing.Select(k => new Key(k).ToDisplayString()))} missing",
+                _ => $"{Samples.Count} keys · {missing.Count} missing",
+            };
+        }
+    }
+
+    public PadSet Normalized() => this with { Samples = Samples ?? [], Made = Made ?? [] };
 }
 
 /// <summary>padsets.json (DM-90).</summary>
@@ -60,46 +98,9 @@ public sealed record PadLibrary
     public PadSet? Current => PadSets.FirstOrDefault(p => p.Id == CurrentId) ?? PadSets.FirstOrDefault();
 }
 
-/// <summary>
-/// SL-47: a folder whose audio files are named by key and cover all twelve pitch classes is a pad set, not a
-/// song. Enharmonic names count as the same pitch class (C# = Db). A folder with a click or guide track is a song.
-/// </summary>
+/// <summary>Pad set names and the pad keys (SL-47, UI-12); the import rules are <see cref="PadImport"/>.</summary>
 public static class PadSetDetector
 {
-    /// <summary>The pad set in <paramref name="files"/> (absolute paths), or null when the folder is a song.</summary>
-    public static PadSet? Detect(string folder, IEnumerable<string> files)
-    {
-        var audio = files
-            .Where(f => ImportRules.AudioExtensions.Contains(Path.GetExtension(f)))
-            .OrderBy(f => Path.GetFileName(f), NaturalComparer.Instance)
-            .ToList();
-        if (audio.Count < 12)
-            return null;
-        if (audio.Any(f => ImportRules.Detect(Path.GetFileName(f)).Role != TrackRole.Music))
-            return null;
-
-        var samples = new Dictionary<int, string>();
-        var keyed = new List<string>();
-        foreach (var file in audio)
-        {
-            if (ImportRules.ParseKey(Path.GetFileNameWithoutExtension(file)) is not { } key)
-                continue;
-            keyed.Add(file);
-            samples.TryAdd(key.PitchClass, file); // the first name wins when two spell the same pitch
-        }
-
-        if (samples.Count < 12)
-            return null;
-
-        return new PadSet
-        {
-            Id = PadSet.NewId(),
-            Name = CommonName(keyed.Select(f => Path.GetFileNameWithoutExtension(f)!), Path.GetFileName(Path.TrimEndingDirectorySeparator(folder))),
-            Folder = folder,
-            Samples = samples,
-        };
-    }
-
     /// <summary>The common prefix of the file names without separators ("OB Pad"), else the folder name.</summary>
     public static string CommonName(IEnumerable<string> names, string folderName)
     {
