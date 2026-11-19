@@ -2,7 +2,7 @@
 
 Live multitrack stem playback for a church music director, on Windows and macOS. The MD shapes each song's arrangement for this week's service, rehearses it with the band, and runs it live, hands-free, by voice or foot pedal.
 
-**Status:** the latest release is **0.2.1**. Download the Windows installer or the macOS DMG from [Releases](https://github.com/nathtjan/RECompose/releases); an installed app downloads updates in the background and installs them after you quit, never in Perform or while playing. What changed: [CHANGELOG.md](CHANGELOG.md). How releases are made: [docs/packaging.md](docs/packaging.md).
+**Status:** the latest release is **0.3.0**. Download the Windows installer or the macOS DMG from [Releases](https://github.com/nathtjan/RECompose/releases); an installed app downloads updates in the background and installs them after you quit, never in Perform or while playing. What changed: [CHANGELOG.md](CHANGELOG.md). How releases are made: [docs/packaging.md](docs/packaging.md).
 
 All ten milestones of the build order are in:
 
@@ -10,7 +10,7 @@ All ten milestones of the build order are in:
 - **M2:** sections and analysis.
 - **M3:** arrangements.
 - **M4:** services, key and tempo, count-ins, pads and transitions.
-- **M5:** the Perform view and live control. Ctrl+P turns the window into the Perform screen with NOW, NEXT, the plan strip, the mini timeline and a key deck. Jumps, vamps, repeats, move on, end and cancel change the song while it plays with no gap; holds wait for GO; Service lock guards the keys; a page-turner, keys or a MIDI foot pedal drive it, with Learn; Rehearsal loops a section with a count-in.
+- **M5:** the Perform view and live control. Ctrl+P turns the window into the Perform screen with NOW, NEXT, the plan strip, the mini timeline and a key deck. Jumps, vamps, repeats, move on, end and cancel change the song while it plays with no gap; holds wait for GO; Service lock guards the keys; a page-turner, keys or a MIDI foot pedal drive it, with Learn, and MIDI controllers jump to sections, play pads, move faders and switch profiles; Rehearsal loops a section with a count-in.
 - **M6:** a service check before the service, rendered keys and tempos, a fallback audio device and a silent clock when the interface is lost, resume after a crash or PANIC, version history, and service export and import.
 - **M7:** voice control. The MD talks into a talkback mic and RECompose acts on band directions as it does on a key or a pedal.
 - **M8:** automation and the log. Section notes and cues go out over MIDI for the lights, a spoken guide calls each section a bar ahead, the guide's own call is replaced when a change makes it wrong, count-ins are spoken, and a LOG tab and a service report record what happened.
@@ -76,7 +76,7 @@ dotnet run --project src/RECompose.App
 
 The script builds the engine with CMake, runs its tests, copies `recompose-engine` to `artifacts/native/bin/`, then builds and tests the .NET solution (the build copies the engine next to the app). After changing only C# code, `dotnet build` / `dotnet test` / `dotnet run` are enough.
 
-CI builds and tests every push on Windows, macOS and Linux, and attaches a runnable app for Windows (`RECompose-win-x64`) and macOS (`RECompose-osx-arm64`) to each run. A tag such as `v0.2.1` builds the installers and publishes a release ([docs/packaging.md](docs/packaging.md)).
+CI builds and tests every push on Windows, macOS and Linux, and attaches a runnable app for Windows (`RECompose-win-x64`) and macOS (`RECompose-osx-arm64`) to each run. A tag such as `v0.3.0` builds the installers and publishes a release ([docs/packaging.md](docs/packaging.md)).
 
 ## Licence
 
