@@ -19,7 +19,7 @@ The app (C#) and the audio engine (`recompose-engine`, C++/JUCE) are separate pr
 | App starts, engine already running | The app connects and says hello: it **reattaches**. `getState` tells it which song is loaded and where the transport is (for example after an app crash while a song kept playing). |
 | A second connection arrives | It replaces the current one. |
 | App disconnects or crashes | The engine keeps running and keeps playing. |
-| No app connected for `idle-exit-seconds` and nothing playing | The engine exits. This stops orphaned engines. |
+| No app connected for `idle-exit-seconds` and nothing playing | The engine exits. This stops orphaned engines. Until the first app connects it waits at least 30 s, so a slow start doesn't lose the app that launched it. |
 | App quits normally | It sends `shutdown`; the engine exits. |
 | Engine crashes | The app sees the connection close, starts a new engine, opens the device and reloads the song at the last position, stopped. |
 | Engine speaks another protocol version | `hello` fails with `protocolMismatch`; the app sends `shutdown` (which every version accepts) and starts its own engine. |

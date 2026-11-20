@@ -120,7 +120,32 @@ TEST ("server: keeps running when the app disconnects, and a new app can attach"
 TEST ("server: exits by itself when no app is connected")
 {
     const auto endpoint = tempEndpoint ("idle");
-    rec::EngineServer server (options (endpoint, 0.2), identity());
+    auto o = options (endpoint, 0.2);
+    o.firstConnectSeconds = 0.5;
+    rec::EngineServer server (o, identity());
+    std::string error;
+    CHECK (server.start (error));
+
+    const auto started = std::chrono::steady_clock::now();
+    auto reason = rec::EngineServer::ExitReason::stopped;
+    std::thread loop ([&] { reason = server.run(); });
+    {
+        auto app = connectWithRetry (endpoint);
+        CHECK (request (app, hello)["type"].toString() == "hello");
+    } // the app goes away: idleExitSeconds from here
+    loop.join();
+    const auto elapsed = std::chrono::steady_clock::now() - started;
+
+    CHECK (reason == rec::EngineServer::ExitReason::idle);
+    CHECK (elapsed < std::chrono::seconds (2));
+}
+
+TEST ("server: waits firstConnectSeconds, not idleExitSeconds, for its first app")
+{
+    const auto endpoint = tempEndpoint ("first");
+    auto o = options (endpoint, 0.1);
+    o.firstConnectSeconds = 0.6;
+    rec::EngineServer server (o, identity());
     std::string error;
     CHECK (server.start (error));
 
@@ -129,7 +154,8 @@ TEST ("server: exits by itself when no app is connected")
     const auto elapsed = std::chrono::steady_clock::now() - started;
 
     CHECK (reason == rec::EngineServer::ExitReason::idle);
-    CHECK (elapsed < std::chrono::seconds (2));
+    CHECK (elapsed >= std::chrono::milliseconds (600));
+    CHECK (elapsed < std::chrono::seconds (3));
 }
 
 TEST ("server: replaces a stale socket file")

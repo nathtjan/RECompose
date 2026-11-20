@@ -18,6 +18,7 @@ import struct
 import subprocess
 import sys
 import tempfile
+import time
 import wave
 
 RATE = 44100
@@ -46,6 +47,17 @@ def bar_time(bar: int) -> float:
 
 
 def speak(text: str, path: str) -> None:
+    # A busy macOS runner's `say` has written empty clips, which left calls missing from the guide.
+    for attempt in range(4):
+        _speak_once(text, path)
+        voice = read_wav(path)
+        if len(voice) > RATE // 5 and max(abs(v) for v in voice) > 0.01:
+            return
+        time.sleep(1 + attempt)
+    raise SystemExit(f"The text-to-speech voice gave no audio for {text!r}")
+
+
+def _speak_once(text: str, path: str) -> None:
     system = platform.system()
     if system == "Linux":
         subprocess.run(["espeak-ng", "-v", "en-us", "-s", "150", "-w", path, text], check=True)

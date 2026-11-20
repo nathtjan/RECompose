@@ -4,6 +4,7 @@
 #include "ipc/frame.h"
 #include "protocol.h"
 
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <memory>
@@ -49,6 +50,8 @@ EngineServer::ExitReason EngineServer::run()
     std::unique_ptr<Connection> connection;
     auto lastConnected = Clock::now();
     const auto idleLimit = std::chrono::duration<double> (options_.idleExitSeconds);
+    const auto firstLimit = std::chrono::duration<double> (std::max (options_.idleExitSeconds, options_.firstConnectSeconds));
+    bool everConnected = false;
     std::array<char, 64 * 1024> buffer {};
 
     while (! stopRequested_.load())
@@ -56,7 +59,10 @@ EngineServer::ExitReason EngineServer::run()
         // A new connection (an app that restarted, or a second app) replaces the current one.
         const int acceptWait = connection ? 0 : options_.pollIntervalMs;
         if (auto incoming = listener_.accept (acceptWait); incoming.isOpen())
+        {
             connection = std::make_unique<Connection> (std::move (incoming), identity_, options_.requests);
+            everConnected = true;
+        }
 
         // Snapshots and events from the engine; dropped while no app is connected.
         if (options_.outgoing)
@@ -68,7 +74,7 @@ EngineServer::ExitReason EngineServer::run()
         {
             if (options_.busy && options_.busy())
                 lastConnected = Clock::now(); // still playing: the band needs the music (REL-34)
-            else if (Clock::now() - lastConnected >= idleLimit)
+            else if (Clock::now() - lastConnected >= (everConnected ? idleLimit : firstLimit))
                 return ExitReason::idle;
             continue;
         }

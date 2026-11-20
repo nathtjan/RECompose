@@ -388,9 +388,10 @@ public sealed class LiveControlTests : IDisposable
             Assert.DoesNotContain(controls.Bindings, b => b.Action == ControlAction.Next);
 
             await vm.EngineForTests.InjectMidiAsync("pc", 16, 1, 0, ct);
-            await Eventually(() => controls.ActiveProfile == ControlProfiles.DefaultName);
+            // The name changes first and the settings are saved after it, on the MIDI thread.
+            await Eventually(() => vm.Settings.ActiveControlProfile == ControlProfiles.DefaultName);
+            Assert.Equal(ControlProfiles.DefaultName, controls.ActiveProfile);
             Assert.Contains(controls.Bindings, b => b.Action == ControlAction.Next);
-            Assert.Equal(ControlProfiles.DefaultName, vm.Settings.ActiveControlProfile);
             Assert.Equal(2, vm.Settings.ControlProfiles!.Count);
         }
         finally

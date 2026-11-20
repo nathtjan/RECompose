@@ -14,6 +14,7 @@ namespace RECompose.Presentation.Tests;
 public sealed class MainViewModelTests : IDisposable
 {
     private readonly string _root = Path.Combine(Path.GetTempPath(), "rec-vm-" + Guid.NewGuid().ToString("N"));
+    private readonly LockedDispatcher _ui = new();
     private readonly string _endpoint = Path.Combine(Path.GetTempPath(), $"rec-{Guid.NewGuid():N}"[..14] + ".sock");
     private readonly ScriptedDialogs _dialogs = new();
 
@@ -46,7 +47,7 @@ public sealed class MainViewModelTests : IDisposable
     {
         var executable = Executable();
         var store = new DataStore(Path.Combine(_root, "data"));
-        return new MainViewModel(store, new EngineHostOptions(executable, _endpoint) { IdleExitSeconds = 3 }, new EngineTools(executable), new LockedDispatcher(), _dialogs,
+        return new MainViewModel(store, new EngineHostOptions(executable, _endpoint) { IdleExitSeconds = 3 }, new EngineTools(executable), _ui, _dialogs,
             new SpeechModel(store.Root, allowDownload: false));
     }
 
@@ -470,7 +471,7 @@ public sealed class MainViewModelTests : IDisposable
         vm.MoveTrack(vm.Song!.Tracks.Single(t => t.Name == "Bass").Id, -1);
         vm.UndoCommand.Execute(null); // undoes the move
 
-        vm.LogChip = "Tracks";
+        _ui.Post(() => vm.LogChip = "Tracks"); // on the UI side, or a filter can race the log arriving and drop a line
         bool Shown(string text) => vm.ShownLog.Any(e => e.Text.Contains(text, StringComparison.Ordinal)); // the log reaches the tab a moment later
         await Eventually(() => Shown("Bass offset 250 ms") && Shown("moved Bass to place 3 of 6") && Shown("undid moving Bass"));
         Assert.All(vm.ShownLog, e => Assert.Equal("Tracks", e.Chip));

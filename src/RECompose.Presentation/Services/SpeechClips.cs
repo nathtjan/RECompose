@@ -34,14 +34,25 @@ public sealed class SpeechClips(string folder)
             var part = path[..^4] + ".part.wav";
             if (Command(text, part) is not { } start)
                 return null;
-            using var process = Process.Start(start);
-            if (process is null)
-                return null;
-            await process.WaitForExitAsync(ct).ConfigureAwait(false);
-            if (process.ExitCode != 0 || !File.Exists(part))
-                return null;
-            File.Move(part, path, overwrite: true);
-            return path;
+            // A busy voice service can write a clip with no audio; one that short is never cached.
+            for (var attempt = 0; attempt < 2; attempt++)
+            {
+                using var process = Process.Start(start);
+                if (process is null)
+                    return null;
+                await process.WaitForExitAsync(ct).ConfigureAwait(false);
+                if (process.ExitCode != 0 || !File.Exists(part))
+                    return null;
+                if (new FileInfo(part).Length > MinClipBytes)
+                {
+                    File.Move(part, path, overwrite: true);
+                    return path;
+                }
+            }
+
+            File.Delete(part);
+            AppLog.Write("Voice", $"Speech clip not made: the voice gave no audio for \"{text}\"");
+            return null;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception)
         {
@@ -53,6 +64,8 @@ public sealed class SpeechClips(string folder)
             _gate.Release();
         }
     }
+
+    private const int MinClipBytes = 4096; // a WAV header and a tenth of a second at 22 kHz
 
     private static ProcessStartInfo? Command(string text, string path)
     {

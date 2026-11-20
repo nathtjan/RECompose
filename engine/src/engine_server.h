@@ -7,7 +7,8 @@
 // Lifetime rules (REL-34): the engine keeps running when the app disconnects, so a UI
 // crash can't stop the music. A newly started app reattaches to the running engine (a
 // new connection replaces the old one). The engine exits on "shutdown", on stop(), or
-// once no app has been connected for idleExitSeconds while nothing is playing.
+// once no app has been connected for idleExitSeconds while nothing is playing; until
+// the first app connects it waits at least firstConnectSeconds.
 #pragma once
 
 #include "ipc/local_socket.h"
@@ -27,6 +28,7 @@ public:
     {
         std::string endpoint;
         double idleExitSeconds = 10.0;
+        double firstConnectSeconds = 30.0; // before any app has connected: a busy machine may be slow to (REL-34)
         int pollIntervalMs = 100;
 
         // Optional hooks to the engine (absent in protocol-only tests).
