@@ -1,9 +1,12 @@
 name: CI
 
+# Docs-only changes don't run CI; a push that also touches code runs it as usual.
 on:
   push:
     branches: ["**"]
+    paths-ignore: ["**.md", "docs/**"]
   pull_request:
+    paths-ignore: ["**.md", "docs/**"]
   workflow_dispatch:
 
 permissions:
@@ -58,12 +61,24 @@ jobs:
         with:
           global-json-file: global.json
 
+      # The engine's build folder: its downloaded libraries (JUCE, whisper.cpp...) and compiled objects.
+      # Restored from the last run, so configure downloads nothing and the build compiles only what
+      # changed. An exact hit means engine/ is unchanged; otherwise the newest folder for this OS is
+      # the starting point and the run saves a new one.
+      - name: Cache engine build
+        uses: actions/cache@v6
+        with:
+          path: build/engine
+          key: engine-build-${{ runner.os }}-${{ hashFiles('engine/**') }}
+          restore-keys: engine-build-${{ runner.os }}-
+
+      # -U: the version is read from Directory.Build.props again, not kept from the cached folder.
       - name: Configure engine
         shell: bash
         run: |
           set -o pipefail
           mkdir -p ci-logs
-          cmake -S engine -B build/engine -DCMAKE_BUILD_TYPE=Release ${{ matrix.cmake-args }} 2>&1 | tee ci-logs/1-configure.txt
+          cmake -S engine -B build/engine -DCMAKE_BUILD_TYPE=Release -URECOMPOSE_VERSION -DFETCHCONTENT_UPDATES_DISCONNECTED=ON ${{ matrix.cmake-args }} 2>&1 | tee ci-logs/1-configure.txt
 
       - name: Build engine
         shell: bash
