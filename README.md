@@ -1,6 +1,39 @@
+<div align="center">
+
+<img src="design/logo/png/RECompose-disc-128.png" alt="" width="96" height="96">
+
 # RECompose
 
-Live multitrack stem playback for a church music director, on Windows and macOS. The MD shapes each song's arrangement for this week's service, rehearses it with the band, and runs it live, hands-free, by voice or foot pedal.
+**Live multitrack stem playback for church worship teams.**<br>
+Shape each song for this week's service, rehearse it with the band, and run it live, hands-free, by voice, foot pedal or MIDI.
+
+[![Latest release](https://img.shields.io/github/v/release/nathtjan/RECompose?label=release&color=FCD937&labelColor=1F1F1F)](https://github.com/nathtjan/RECompose/releases/latest)
+[![CI](https://img.shields.io/github/actions/workflow/status/nathtjan/RECompose/ci.yml?branch=main&label=CI&labelColor=1F1F1F)](https://github.com/nathtjan/RECompose/actions/workflows/ci.yml)
+[![Licence: AGPL-3.0](https://img.shields.io/github/license/nathtjan/RECompose?labelColor=1F1F1F)](LICENSE)
+![Platforms: Windows and macOS](https://img.shields.io/badge/platforms-Windows%20%7C%20macOS-555?labelColor=1F1F1F)
+
+<a href="https://github.com/nathtjan/RECompose/releases/latest/download/RECompose-win-x64-Setup.exe"><img alt="Windows: Download" src="https://img.shields.io/badge/Windows-Download-FCD937?style=for-the-badge&labelColor=1F1F1F"></a>
+<a href="https://github.com/nathtjan/RECompose/releases/latest/download/RECompose-osx-arm64.dmg"><img alt="macOS Apple Silicon: Download" src="https://img.shields.io/badge/macOS_Apple_Silicon-Download-FCD937?style=for-the-badge&labelColor=1F1F1F"></a>
+<a href="https://github.com/nathtjan/RECompose/releases/latest/download/RECompose-osx-x64.dmg"><img alt="macOS Intel: Download" src="https://img.shields.io/badge/macOS_Intel-Download-FCD937?style=for-the-badge&labelColor=1F1F1F"></a>
+
+[Install](#install) · [Getting started](#getting-started) · [Features](#features) · [Changelog](CHANGELOG.md) · [For developers](#for-developers)
+
+</div>
+
+<p align="center">
+  <img src="docs/images/perform.png" alt="The Perform screen: the current section in large type with the bar count, the next section and when it starts, the arrangement as tiles and a timeline, and the live keys Vamp, Repeat, Move on and End." width="100%">
+</p>
+
+## Why RECompose
+
+- **The arrangement is yours, every week.** Reorder, repeat and cut sections of any multitrack without editing audio, and change key and tempo per service.
+- **Change the song while it plays.** Vamp, repeat, jump or end on the next bar or at the end of the section, with no gap, from a pedal, a MIDI controller or your voice.
+- **Built not to stop.** The audio engine is a separate process: if the app closes or crashes, the music keeps playing. A fallback device and PANIC are always at hand.
+- **Works offline.** Voice control and the spoken guide run on your computer. The assistant is optional and uses your own API key.
+
+<p align="center">
+  <img src="docs/images/prepare.png" alt="The Prepare screen: the service on the left with three songs, the song's arrangement over its stems on the timeline, key and tempo controls, and the pad keys." width="100%">
+</p>
 
 ## Install
 
