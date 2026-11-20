@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 using RECompose.Core.Library;
+using RECompose.Core.Logging;
 using RECompose.Core.Persistence;
 using RECompose.Engine;
 using RECompose.Presentation.Mvvm;
@@ -87,21 +88,40 @@ public sealed class MainViewModelTests : IDisposable
     [Fact]
     public async Task Settings_open_on_the_tab_that_was_asked_for_and_the_voice_light_opens_Voice()
     {
-        await using var vm = NewViewModel();
-        await vm.InitializeAsync();
+        // On Windows CI the window has opened on Controls, which means the engine was gone; the log says why.
+        // AppLog is static, so lines from tests running in parallel can be mixed in.
+        var log = new System.Collections.Concurrent.ConcurrentQueue<string>();
+        void OnLog(LogEntry e)
+        {
+            if (e.Chip is "Engine" or "Errors" || e.Text.Contains("engine", StringComparison.OrdinalIgnoreCase))
+                log.Enqueue($"{e.Time:HH:mm:ss.fff} {e.Text}");
+        }
 
-        vm.OpenSettingsCommand.Execute(null);
-        // The Audio tab lists the engine's devices first; on a busy Windows runner that scan took over 5 s.
-        await Eventually(() => _dialogs.LastSettings is not null, 20000);
-        Assert.Equal((int)SettingsTab.Audio, _dialogs.LastSettings!.SelectedIndex);
-        Assert.True(_dialogs.LastSettings.HasAudio);
+        AppLog.Added += OnLog;
+        try
+        {
+            await using var vm = NewViewModel();
+            await vm.InitializeAsync();
 
-        vm.OpenControlsCommand.Execute(null);
-        await Eventually(() => _dialogs.LastSettings!.SelectedIndex == (int)SettingsTab.Controls, 5000);
+            vm.OpenSettingsCommand.Execute(null);
+            // The Audio tab lists the engine's devices first; on a busy Windows runner that scan took over 5 s.
+            await Eventually(() => _dialogs.LastSettings is not null, 20000);
+            Assert.True(_dialogs.LastSettings!.SelectedIndex == (int)SettingsTab.Audio,
+                $"Opened on tab {(SettingsTab)_dialogs.LastSettings.SelectedIndex}. Audio status: {vm.AudioStatus}. Banner: {vm.Banner}.\n"
+                + string.Join("\n", log));
+            Assert.True(_dialogs.LastSettings.HasAudio);
 
-        vm.Assistant.SettingsCommand.Execute(null);
-        await Eventually(() => _dialogs.LastSettings!.SelectedIndex == (int)SettingsTab.Assistant, 5000);
-        Assert.Same(vm.Assistant, _dialogs.LastSettings!.Assistant);
+            vm.OpenControlsCommand.Execute(null);
+            await Eventually(() => _dialogs.LastSettings!.SelectedIndex == (int)SettingsTab.Controls, 5000);
+
+            vm.Assistant.SettingsCommand.Execute(null);
+            await Eventually(() => _dialogs.LastSettings!.SelectedIndex == (int)SettingsTab.Assistant, 5000);
+            Assert.Same(vm.Assistant, _dialogs.LastSettings!.Assistant);
+        }
+        finally
+        {
+            AppLog.Added -= OnLog;
+        }
     }
 
     [Fact]
