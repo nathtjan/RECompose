@@ -65,17 +65,20 @@ jobs:
       # Restored from the last run, so configure downloads nothing and the build compiles only what
       # changed. An exact hit means engine/ is unchanged; otherwise the newest folder for this OS is
       # the starting point and the run saves a new one.
-      # Per runner image: another image's CMake re-detects everything and rebuilds from scratch.
+      # The same runner image first: another image's CMake may re-detect the compilers and rebuild
+      # from scratch. Failing that, any image of this OS, which still saves the downloads.
       - name: Runner image
         shell: bash
-        run: echo "RUNNER_IMAGE=${ImageOS:-unknown}-${ImageVersion:-unknown}" >> "$GITHUB_ENV"
+        run: echo "RUNNER_IMAGE=${ImageVersion:-unknown}" >> "$GITHUB_ENV"
 
       - name: Cache engine build
         uses: actions/cache@v6
         with:
           path: build/engine
-          key: engine-build-${{ env.RUNNER_IMAGE }}-${{ hashFiles('engine/**') }}
-          restore-keys: engine-build-${{ env.RUNNER_IMAGE }}-
+          key: engine-build-${{ runner.os }}-${{ env.RUNNER_IMAGE }}-${{ hashFiles('engine/**') }}
+          restore-keys: |
+            engine-build-${{ runner.os }}-${{ env.RUNNER_IMAGE }}-
+            engine-build-${{ runner.os }}-
 
       # -U: the version is read from Directory.Build.props again, not kept from the cached folder.
       - name: Configure engine
