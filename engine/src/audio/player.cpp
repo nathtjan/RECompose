@@ -121,6 +121,7 @@ void Player::handle (const Command& command) noexcept
             swapPlan_ = nullptr;
             currentVersion_ = plan_ != nullptr ? plan_->version : 0;
             holding_ = false;
+            releasedAt_ = -1;
             segmentIndex_ = 0;
             transport_ = TransportState::stopped;
             fade_ = 0.0f;
@@ -195,6 +196,7 @@ void Player::handle (const Command& command) noexcept
         case Command::Type::seek:
             if (song_ == nullptr)
                 return;
+            releasedAt_ = -1; // a seek back to a hold waits there again
             seekTo (std::clamp<std::int64_t> (command.frame, 0, planLength()), command.generation);
             return;
 
@@ -306,7 +308,10 @@ void Player::resetHolds() noexcept
     if (plan_ != nullptr)
     {
         const auto& holds = plan_->holds;
-        while (holdIndex_ < holds.size() && holds[holdIndex_].frame < position_frames_)
+        // A plan sent after GO, before the playhead has moved, must not catch it at the hold it was released from.
+        while (holdIndex_ < holds.size()
+               && (holds[holdIndex_].frame < position_frames_
+                   || (! was && position_frames_ == releasedAt_ && holds[holdIndex_].frame == releasedAt_)))
             ++holdIndex_;
     }
 
@@ -332,6 +337,7 @@ void Player::releaseHold() noexcept
 {
     const auto* hold = nextHold();
     holding_ = false;
+    releasedAt_ = position_frames_;
     if (hold != nullptr)
     {
         if (pads_ != nullptr && hold->pad)
@@ -425,6 +431,7 @@ void Player::rewindToStart() noexcept
     position_frames_ = 0;
     dropStaleBlocks();
     holding_ = false;
+    releasedAt_ = -1;
     resetHolds();
 }
 

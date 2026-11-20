@@ -261,7 +261,7 @@ public sealed class LiveControlTests : IDisposable
 
             await vm.PlayPauseAsync(); // the play key: GO reaches the engine before the render
             await RenderAsync(vm, 0.5);
-            // shortcut: failed once in 160 Linux runs (still holding after GO), never reproduced; the message shows the engine's side.
+            // On a failure the message shows the engine's side.
             if (!await EventuallyAsync(() => !vm.IsHolding))
             {
                 var (_, _, s) = await vm.EngineForTests!.RenderOfflineAsync(4800, 2, ct: TestContext.Current.CancellationToken);

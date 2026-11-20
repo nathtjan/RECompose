@@ -91,7 +91,8 @@ public sealed class MainViewModelTests : IDisposable
         await vm.InitializeAsync();
 
         vm.OpenSettingsCommand.Execute(null);
-        await Eventually(() => _dialogs.LastSettings is not null, 5000);
+        // The Audio tab lists the engine's devices first; on a busy Windows runner that scan took over 5 s.
+        await Eventually(() => _dialogs.LastSettings is not null, 20000);
         Assert.Equal((int)SettingsTab.Audio, _dialogs.LastSettings!.SelectedIndex);
         Assert.True(_dialogs.LastSettings.HasAudio);
 

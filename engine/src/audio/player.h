@@ -179,6 +179,7 @@ private:
     bool holding_ = false;
     std::size_t holdIndex_ = 0;         // the next hold the playhead reaches, or the one it waits at
     std::int64_t holdFrames_ = 0;       // how long it has waited
+    std::int64_t releasedAt_ = -1;      // where GO released a hold: a new plan there must not hold again
     std::size_t segmentIndex_ = 0;
 
     std::vector<float> scratch_[kMaxTrackChannels];

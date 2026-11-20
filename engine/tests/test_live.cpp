@@ -248,6 +248,20 @@ TEST ("hold: the playhead waits at the marker, the stems are silent, and GO move
     CHECK (follows (rig.left, 40000, 49000, holdAt));
 }
 
+TEST ("hold: a plan swapped in after GO, before the playhead moves, does not hold again (AT-13)")
+{
+    constexpr std::int64_t holdAt = 20000;
+    Rig rig (plan ({ seg (0, 300000, 0) }, { PlanHold { holdAt, false, -1, false } }));
+    rig.render (30000);
+    CHECK (rig.player.holding());
+
+    rig.send (Command::Type::go);
+    rig.swap (plan ({ seg (0, 300000, 0) }, { PlanHold { holdAt, false, -1, false } }), holdAt);
+    rig.render (10000);
+    CHECK (! rig.player.holding());
+    CHECK (follows (rig.left, 31000, 39000, holdAt + 1000));
+}
+
 TEST ("hold: a click runs at the song tempo while it waits and stops at GO (PB-52)")
 {
     constexpr std::int64_t holdAt = 20000;
