@@ -2,24 +2,81 @@
 
 Live multitrack stem playback for a church music director, on Windows and macOS. The MD shapes each song's arrangement for this week's service, rehearses it with the band, and runs it live, hands-free, by voice or foot pedal.
 
-**Status:** the latest release is **0.3.0**. Download the Windows installer or the macOS DMG from [Releases](https://github.com/nathtjan/RECompose/releases); an installed app downloads updates in the background and installs them after you quit, never in Perform or while playing. What changed: [CHANGELOG.md](CHANGELOG.md). How releases are made: [docs/packaging.md](docs/packaging.md).
+## Install
 
-All ten milestones of the build order are in:
+Download the latest version from [Releases](https://github.com/nathtjan/RECompose/releases).
 
-- **M1:** the engine, import, mixer, routing, transport and timeline.
-- **M2:** sections and analysis.
-- **M3:** arrangements.
-- **M4:** services, key and tempo, count-ins, pads and transitions. Pad folders are reviewed on import, and a pad set's keys, loop and volume can be edited.
-- **M5:** the Perform view and live control. Ctrl+P turns the window into the Perform screen with NOW, NEXT, the plan strip, the mini timeline and a key deck. Jumps, vamps, repeats, move on, end and cancel change the song while it plays with no gap; holds wait for GO; Service lock guards the keys; a page-turner, keys or a MIDI foot pedal drive it, with Learn, and MIDI controllers jump to sections, play pads, move faders and switch profiles; Rehearsal loops a section with a count-in.
-- **M6:** a service check before the service, rendered keys and tempos, a fallback audio device and a silent clock when the interface is lost, resume after a crash or PANIC, version history, and service export and import.
-- **M7:** voice control. The MD talks into a talkback mic and RECompose acts on band directions as it does on a key or a pedal.
-- **M8:** automation and the log. Section notes and cues go out over MIDI for the lights, a spoken guide calls each section a bar ahead, the guide's own call is replaced when a change makes it wrong, count-ins are spoken, and a LOG tab and a service report record what happened.
-- **M9:** the assistant. With an Anthropic or OpenAI API key the MD types or dictates a change to the service, a song or its cues ("make song 3 short: V1, C, V2, C, end") and the assistant makes it with the editor's own edits, one undo step per message, asking for confirmation in Perform. Without a key nothing changes.
-- **M10:** platform polish and packaging. A per-user Windows installer and macOS DMGs, background updates, the microphone permission with a link to the system page, and the menus.
+| System | Download | How to install |
+|---|---|---|
+| Windows, 64-bit | `RECompose-win-x64-Setup.exe` | Run it. It installs for your user account, with no administrator rights, and adds RECompose to the Start menu. |
+| macOS 13 or later, Apple Silicon | `RECompose-osx-arm64.dmg` | Open it and drag RECompose to Applications. |
+| macOS 13 or later, Intel | `RECompose-osx-x64.dmg` | Open it and drag RECompose to Applications. |
 
-What is left is the known gaps in each milestone plan. How to try each milestone: [M1](docs/testing/M1-test-guide.md), [M2](docs/testing/M2-test-guide.md), [M3](docs/testing/M3-test-guide.md), [M4](docs/testing/M4-test-guide.md), [M5](docs/testing/M5-test-guide.md), [M6](docs/testing/M6-test-guide.md), [M7](docs/testing/M7-test-guide.md), [M8](docs/testing/M8-test-guide.md), [M9](docs/testing/M9-test-guide.md), [M10](docs/testing/M10-test-guide.md). Plans: [M1](docs/milestones/M1-engine-and-import.md), [M2](docs/milestones/M2-sections-and-analysis.md), [M3](docs/milestones/M3-arrangements.md), [M4](docs/milestones/M4-services.md), [M5](docs/milestones/M5-perform-and-live-control.md), [M6](docs/milestones/M6-reliability.md), [M7](docs/milestones/M7-voice-control.md), [M8](docs/milestones/M8-automation-and-log.md), [M9](docs/milestones/M9-assistant.md), [M10](docs/milestones/M10-packaging.md).
+If a download isn't signed, Windows SmartScreen warns the first time: choose **More info**, then **Run anyway**. On macOS, right-click the app and choose **Open** the first time. macOS asks for the microphone the first time you use voice control; if you said no, **Settings** has a link to the system page.
 
-When the app hits an error it did not expect, it shows a window with the details to copy into a bug report; the log is in the `logs` folder of the data folder.
+**Updates:** the installed app checks for a new version after it starts, downloads it in the background and installs it when you quit. It never updates in Perform or while a song plays. Your settings, library and logs are kept across updates and reinstalls, in `%APPDATA%\RECompose` on Windows and `~/Library/Application Support/RECompose` on macOS. What changed in each version is in [CHANGELOG.md](CHANGELOG.md).
+
+You need an audio interface or your computer's own output. A multi-output interface lets you send the click and guide to the band's in-ears and the music to front of house.
+
+## Getting started
+
+1. **Import a song.** Drag a folder of stems onto the window, or use **File › Import stems folder…** (Ctrl+I). Pad sets have their own **File › Import pad set…**. RECompose names each track (click, guide, drums, bass, keys and so on), reads the tempo and key, and finds the sections.
+2. **Shape the arrangement.** Check the sections on the timeline, then build this week's order: Verse 1, Chorus, Verse 2, Chorus 2, Bridge, Chorus to the end.
+3. **Build the service.** Add songs to a service and choose for each the arrangement, key, tempo, count-in, mix and the transition into the next song.
+4. **Run Service › Service check.** It finds missing stem files, arrangements that won't play, keys and tempos still to render, and audio device problems, most with a button to fix them.
+5. **Perform.** Press Ctrl+P (Cmd+P on macOS), or **View › Prepare or Perform**, for the Perform screen, then play the service with the keyboard, a page-turner, a foot pedal, a MIDI controller or your voice.
+
+## Features
+
+**Library and import**
+- Imports a folder of stems, recognises click, guide and instrument tracks, and finds tempo, key and sections.
+- Pad folders are recognised and shown for review before import; you can import either way.
+
+**Arrangements**
+- Reorder, repeat, cut and shorten sections with no editing of the audio.
+- Section names in band words (Verse 2, Chorus 3), with checks for arrangements that won't play as written.
+- Version history and undo for every change.
+
+**Services**
+- A song's arrangement, key, tempo, count-in, mix preset and transition (segue, crossfade or pad) for each service.
+- Key and tempo changes play live, and can be rendered ahead of time for the best sound.
+- Service export and import, to share a service with another computer.
+
+**Pads**
+- Ambient pad sets that follow the song's key, with a play/stop button and their own volume.
+- Edit a pad set's files per key, loop points and volume, and make a missing key from the nearest one.
+
+**Mixer and outputs**
+- Per-track volume, mute and solo, track groups and mix presets.
+- Route click, guide, music and pads to separate outputs.
+- A fallback audio device: if the interface is lost, the click keeps time and playback moves to the fallback.
+
+**Perform and live control**
+- The Perform screen shows NOW, NEXT, the plan strip, a mini timeline and a key deck.
+- Change the song while it plays, with no gap: jump to a section, vamp, repeat, move on, end or cancel. Holds wait for GO.
+- Service lock guards against stray keys.
+- Drive it with keys, a page-turner, a MIDI foot pedal or a MIDI controller, all set with Learn. Controllers can jump to sections, play pads, move faders, switch profiles and light up to show what is playing.
+- Rehearsal loops a section with a count-in.
+
+**Voice control**
+- Talk into a talkback mic and RECompose follows band directions ("go to the bridge after this", "back to chorus two", "never mind") as it does a key or a pedal. Speech is recognised on your computer, with no internet connection.
+
+**Spoken guide and automation**
+- A spoken guide calls each section a bar ahead, and count-ins are spoken. When a live change makes the guide track's own call wrong, it is replaced.
+- Section changes and cues go out over MIDI for lights and other software.
+- A LOG tab and a service report record what happened in the service.
+
+**Assistant (optional)**
+- With your own Anthropic or OpenAI API key, type or dictate a change ("make song 3 short: V1, C, V2, C, end") and the assistant makes it, one undo step per message, and asks first in Perform. The key is kept in your system's credential store. Without a key, nothing is sent anywhere.
+
+**Reliability**
+- The audio engine is a separate process: if the app closes or crashes, the music keeps playing, and the app picks up where it was when it restarts. PANIC stops everything at once.
+
+## Problems and feedback
+
+If something goes wrong, RECompose shows a window with the details to copy into a bug report. Open an issue on [GitHub](https://github.com/nathtjan/RECompose/issues) with those details; the log is in the `logs` folder of the data folder above.
+
+# For developers
 
 ## Stack
 
@@ -29,7 +86,7 @@ When the app hits an error it did not expect, it shows a window with the details
 | Audio engine | C++20 on [JUCE](https://juce.com) 9, a separate process (`recompose-engine`) the app talks to over a local socket | `engine/` |
 | Design system "Instrument" | tokens, fonts, icons (source of truth for the UI) | `design/` |
 
-Why this split, and what is still open, is recorded in [docs/adr/0001-stack-and-architecture.md](docs/adr/0001-stack-and-architecture.md).
+Why this split is recorded in [docs/adr/0001-stack-and-architecture.md](docs/adr/0001-stack-and-architecture.md).
 
 ```
 engine/            the engine process (CMake); docs/engine-protocol.md is the only interface
@@ -40,7 +97,7 @@ src/RECompose.App      Avalonia desktop app
 tests/             xUnit v3 tests, including headless window tests (RECompose.App.Tests)
 tools/             generators for design resources (tokens, icons) and CI helpers
 design/            tokens.json, fonts, icons, design-system notes
-docs/              decisions, the engine protocol, milestone plans
+docs/              decisions, the engine protocol, design and test notes
 ```
 
 ## Build
