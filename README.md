@@ -34,6 +34,7 @@ Shape each song for this week's service, rehearse it with the band, and run it l
 <p align="center">
   <img src="docs/images/prepare.png" alt="The Prepare screen: the service on the left with three songs, the song's arrangement over its stems on the timeline, key and tempo controls, and the pad keys." width="100%">
 </p>
+<p align="center"><sub>Screenshots use multitracks from the <a href="https://cambridge-mt.com/ms3/mtk/">Cambridge-MT Mixing Secrets</a> free multitrack library.</sub></p>
 
 ## Install
 
