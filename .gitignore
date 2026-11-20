@@ -30,3 +30,4 @@ ci-logs/
 
 # Product spec: kept local, never committed
 /specs/
+__pycache__/
