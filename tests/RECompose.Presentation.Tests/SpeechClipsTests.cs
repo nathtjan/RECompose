@@ -14,7 +14,7 @@ public sealed class SpeechClipsTests : IDisposable
         {
             Directory.Delete(_folder, true);
         }
-        catch (IOException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) // Windows: a file still open
         {
         }
     }

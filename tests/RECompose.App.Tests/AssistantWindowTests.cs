@@ -27,7 +27,7 @@ public sealed class AssistantWindowTests : IDisposable
         {
             Directory.Delete(_root, true);
         }
-        catch (IOException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) // Windows: a file still open
         {
         }
     }
